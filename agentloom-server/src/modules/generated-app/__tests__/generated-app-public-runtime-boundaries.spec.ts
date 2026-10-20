@@ -52,7 +52,9 @@ describe('GeneratedAppPublicRuntimeService public boundaries', () => {
   });
 
   it('token-like 匿名会话值应替换为随机 UUID', () => {
-    const normalized = service.normalizePublicAnonymousSessionId('a'.repeat(64));
+    const normalized = service.normalizePublicAnonymousSessionId(
+      'a'.repeat(64),
+    );
 
     expect(normalized).not.toBe('a'.repeat(64));
     expect(normalized).toMatch(

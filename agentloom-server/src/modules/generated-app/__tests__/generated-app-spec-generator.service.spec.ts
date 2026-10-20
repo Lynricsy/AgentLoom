@@ -23,20 +23,20 @@ import type {
   GeneratedAppBindingCandidate,
 } from '../types/generation-v2.ports';
 import {
-  QA_MODEL_ID,
-  QA_PROMPT,
-  QA_TENANT_ID,
-  QA_USER_ID,
-  QA_WORKFLOW_ID,
-  QA_WORKFLOW_VERSION_ID,
-  qaDraft,
-  qaWorkflowCandidate,
-} from './app-spec-v2.fixtures';
+  V2_MODEL_CONFIG_ID,
+  V2_PROMPT,
+  TENANT_ID,
+  USER_ID,
+  WORKFLOW_DEFINITION_ID,
+  WORKFLOW_VERSION_ID,
+  createAppSpecDraftFixture,
+  createWorkflowBindingCandidateFixture,
+} from './generated-app-test-support';
 
 type DraftInput = z.input<typeof GeneratedAppSpecDraftSchema>;
 
 const CHAT_MODEL = {
-  id: QA_MODEL_ID,
+  id: V2_MODEL_CONFIG_ID,
   name: 'minimax-m3.1-flash-free',
   modelType: 'chat',
   isEnabled: true,
@@ -72,7 +72,7 @@ function formatResult(
 
 /** 草稿里的 question 字段换成单选，并让浏览器步骤改用 select */
 function draftWithSelectQuestion(): DraftInput {
-  const draft = qaDraft();
+  const draft = createAppSpecDraftFixture();
   return {
     ...draft,
     inputForm: {
@@ -118,7 +118,7 @@ describe('GeneratedAppSpecGeneratorService', () => {
     };
     piAiAdapter = { getModel: vi.fn().mockResolvedValue({ id: 'model' }) };
     outputFormatService = { executeStructuredOutput: vi.fn() };
-    candidates = [qaWorkflowCandidate()];
+    candidates = [createWorkflowBindingCandidateFixture()];
     // 解析器的读库部分换成固定候选，映射兼容性用真实规则
     resolver = {
       listCandidates: vi.fn(async () => candidates),
@@ -161,10 +161,10 @@ describe('GeneratedAppSpecGeneratorService', () => {
     overrides: Partial<AppSpecGenerationInput> = {},
   ): Promise<AppSpecGenerationResult> {
     return generator.generate({
-      tenantId: QA_TENANT_ID,
-      userId: QA_USER_ID,
-      prompt: QA_PROMPT,
-      modelConfigId: QA_MODEL_ID,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      prompt: V2_PROMPT,
+      modelConfigId: V2_MODEL_CONFIG_ID,
       bindingTarget: null,
       feedback: null,
       signal: new AbortController().signal,
@@ -174,7 +174,7 @@ describe('GeneratedAppSpecGeneratorService', () => {
 
   it('首轮输出合规：固定到候选的已发布版本，整体通过 v2 schema，按草稿 schema 调用结构化输出', async () => {
     outputFormatService.executeStructuredOutput.mockResolvedValueOnce(
-      formatResult(qaDraft()),
+      formatResult(createAppSpecDraftFixture()),
     );
 
     const result = await generate();
@@ -182,15 +182,15 @@ describe('GeneratedAppSpecGeneratorService', () => {
     expect(result.status).toBe('generated');
     if (result.status !== 'generated') return;
     expect(result.attempts).toBe(1);
-    expect(result.modelConfigId).toBe(QA_MODEL_ID);
+    expect(result.modelConfigId).toBe(V2_MODEL_CONFIG_ID);
     expect(result.usage).toEqual({ promptTokens: 100, completionTokens: 50 });
     expect(GeneratedAppSpecV2Schema.safeParse(result.appSpec).success).toBe(
       true,
     );
     expect(result.appSpec.binding).toMatchObject({
       kind: 'workflow',
-      workflowDefinitionId: QA_WORKFLOW_ID,
-      workflowVersionId: QA_WORKFLOW_VERSION_ID,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      workflowVersionId: WORKFLOW_VERSION_ID,
     });
     expect(result.appSpec.inputForm.fields.map((field) => field.id)).toEqual([
       'question',
@@ -212,16 +212,19 @@ describe('GeneratedAppSpecGeneratorService', () => {
       required: expect.arrayContaining(['requirements', 'binding']),
     });
     expect(request.system).toContain('只能从用户消息中的「候选绑定目标」');
-    expect(request.prompt).toContain(QA_PROMPT);
-    expect(request.prompt).toContain(QA_WORKFLOW_ID);
+    expect(request.prompt).toContain(V2_PROMPT);
+    expect(request.prompt).toContain(WORKFLOW_DEFINITION_ID);
     // 版本由服务端固定，不交给模型
-    expect(request.prompt).not.toContain(QA_WORKFLOW_VERSION_ID);
+    expect(request.prompt).not.toContain(WORKFLOW_VERSION_ID);
     expect(request.abortSignal).toBeInstanceOf(AbortSignal);
-    expect(llmService.findById).toHaveBeenCalledWith(QA_MODEL_ID, QA_TENANT_ID);
+    expect(llmService.findById).toHaveBeenCalledWith(
+      V2_MODEL_CONFIG_ID,
+      TENANT_ID,
+    );
   });
 
   it('首轮引用错误：第二轮带上问题列表重试并成功，用量累计', async () => {
-    const draft = qaDraft();
+    const draft = createAppSpecDraftFixture();
     const withoutSubmit: DraftInput = {
       ...draft,
       acceptanceScenarios: draft.acceptanceScenarios.map((scenario) => ({
@@ -242,7 +245,9 @@ describe('GeneratedAppSpecGeneratorService', () => {
       attempts: 2,
       usage: { promptTokens: 200, completionTokens: 100 },
     });
-    expect(result.status === 'generated' && result.appSpec.generation.attempt).toBe(2);
+    expect(
+      result.status === 'generated' && result.appSpec.generation.attempt,
+    ).toBe(2);
     const firstPrompt: string =
       outputFormatService.executeStructuredOutput.mock.calls[0]?.[0].prompt;
     const secondPrompt: string =
@@ -278,7 +283,7 @@ describe('GeneratedAppSpecGeneratorService', () => {
       status: 'failed',
       code: 'app-spec-model-output-invalid',
       attempts: GENERATED_APP_SPEC_MAX_ATTEMPTS,
-      modelConfigId: QA_MODEL_ID,
+      modelConfigId: V2_MODEL_CONFIG_ID,
       usage: { promptTokens: 300, completionTokens: 150 },
     });
     if (result.status !== 'failed') return;
@@ -302,16 +307,23 @@ describe('GeneratedAppSpecGeneratorService', () => {
       modelConfigId: null,
     });
     expect(llmService.findDefaultByType).toHaveBeenCalledWith(
-      QA_TENANT_ID,
+      TENANT_ID,
       'chat',
     );
     expect(outputFormatService.executeStructuredOutput).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['已删除', () => Promise.reject(new LlmModelConfigNotFoundException(QA_MODEL_ID))],
+    [
+      '已删除',
+      () =>
+        Promise.reject(new LlmModelConfigNotFoundException(V2_MODEL_CONFIG_ID)),
+    ],
     ['已停用', () => Promise.resolve({ ...CHAT_MODEL, isEnabled: false })],
-    ['不是 chat 模型', () => Promise.resolve({ ...CHAT_MODEL, modelType: 'embedding' })],
+    [
+      '不是 chat 模型',
+      () => Promise.resolve({ ...CHAT_MODEL, modelType: 'embedding' }),
+    ],
   ])('指定的生成模型%s：app-spec-model-unavailable', async (_label, lookup) => {
     llmService.findById.mockImplementationOnce(lookup);
 
@@ -334,15 +346,18 @@ describe('GeneratedAppSpecGeneratorService', () => {
       code: 'app-spec-binding-candidates-empty',
       message: '当前租户没有已发布的工作流或 Agent 可供绑定。',
     });
-    expect(resolver.listCandidates).toHaveBeenCalledWith(QA_TENANT_ID, null);
+    expect(resolver.listCandidates).toHaveBeenCalledWith(TENANT_ID, null);
     expect(outputFormatService.executeStructuredOutput).not.toHaveBeenCalled();
   });
 
   it('指定的绑定目标已发布版本没有输出节点：直接 app-spec-binding-invalid，不调用模型', async () => {
-    candidates = [qaWorkflowCandidate({ outputNodes: [] })];
+    candidates = [createWorkflowBindingCandidateFixture({ outputNodes: [] })];
 
     const result = await generate({
-      bindingTarget: { kind: 'workflow', workflowDefinitionId: QA_WORKFLOW_ID },
+      bindingTarget: {
+        kind: 'workflow',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      },
     });
 
     expect(result).toMatchObject({
@@ -352,30 +367,34 @@ describe('GeneratedAppSpecGeneratorService', () => {
     expect(outputFormatService.executeStructuredOutput).not.toHaveBeenCalled();
   });
 
-  it.each<[string, () => DraftInput, () => GeneratedAppBindingCandidate, string]>([
+  it.each<
+    [string, () => DraftInput, () => GeneratedAppBindingCandidate, string]
+  >([
     [
       '映射到 inputSchema 中不存在的字段',
       () => ({
-        ...qaDraft(),
+        ...createAppSpecDraftFixture(),
         binding: {
-          ...qaDraft().binding,
-          inputMapping: [{ fieldId: 'question', workflowInputFieldId: 'query' }],
+          ...createAppSpecDraftFixture().binding,
+          inputMapping: [
+            { fieldId: 'question', workflowInputFieldId: 'query' },
+          ],
         } as DraftInput['binding'],
       }),
-      () => qaWorkflowCandidate(),
+      () => createWorkflowBindingCandidateFixture(),
       '工作流输入契约中没有字段 query',
     ],
     [
       '字段类型与工作流输入不兼容',
       draftWithSelectQuestion,
-      () => qaWorkflowCandidate(),
+      () => createWorkflowBindingCandidateFixture(),
       '表单字段 question（single_select）不能映射到工作流输入 question（text）',
     ],
     [
       '工作流必填输入没有被映射',
-      () => qaDraft(),
+      () => createAppSpecDraftFixture(),
       () => {
-        const candidate = qaWorkflowCandidate();
+        const candidate = createWorkflowBindingCandidateFixture();
         return {
           ...candidate,
           inputSchema: {
@@ -390,39 +409,45 @@ describe('GeneratedAppSpecGeneratorService', () => {
       },
       '工作流必填输入 language（语言）没有被任何表单字段映射',
     ],
-  ])('三轮都%s：app-spec-binding-invalid', async (_label, draft, candidate, issue) => {
-    candidates = [candidate()];
-    outputFormatService.executeStructuredOutput.mockResolvedValue(
-      formatResult(draft()),
-    );
+  ])(
+    '三轮都%s：app-spec-binding-invalid',
+    async (_label, draft, candidate, issue) => {
+      candidates = [candidate()];
+      outputFormatService.executeStructuredOutput.mockResolvedValue(
+        formatResult(draft()),
+      );
 
-    const result = await generate();
+      const result = await generate();
 
-    expect(result).toMatchObject({
-      status: 'failed',
-      code: 'app-spec-binding-invalid',
-      attempts: GENERATED_APP_SPEC_MAX_ATTEMPTS,
-    });
-    if (result.status !== 'failed') return;
-    expect(result.issues).toEqual(
-      expect.arrayContaining([expect.stringContaining(issue)]),
-    );
-    // 每轮的绑定问题都作为下一轮的反馈
-    const lastPrompt: string =
-      outputFormatService.executeStructuredOutput.mock.calls[2]?.[0].prompt;
-    expect(lastPrompt).toContain(issue);
-  });
+      expect(result).toMatchObject({
+        status: 'failed',
+        code: 'app-spec-binding-invalid',
+        attempts: GENERATED_APP_SPEC_MAX_ATTEMPTS,
+      });
+      if (result.status !== 'failed') return;
+      expect(result.issues).toEqual(
+        expect.arrayContaining([expect.stringContaining(issue)]),
+      );
+      // 每轮的绑定问题都作为下一轮的反馈
+      const lastPrompt: string =
+        outputFormatService.executeStructuredOutput.mock.calls[2]?.[0].prompt;
+      expect(lastPrompt).toContain(issue);
+    },
+  );
 
   it('模型选了候选目录之外的目标：绑定问题作为反馈，不查询该目标', async () => {
     const outsider = '01a15536-0000-7000-8000-00000000abcd';
     outputFormatService.executeStructuredOutput
       .mockResolvedValueOnce(
         formatResult({
-          ...qaDraft(),
-          binding: { ...qaDraft().binding, workflowDefinitionId: outsider },
+          ...createAppSpecDraftFixture(),
+          binding: {
+            ...createAppSpecDraftFixture().binding,
+            workflowDefinitionId: outsider,
+          },
         }),
       )
-      .mockResolvedValueOnce(formatResult(qaDraft()));
+      .mockResolvedValueOnce(formatResult(createAppSpecDraftFixture()));
 
     const result = await generate();
 
@@ -447,7 +472,9 @@ describe('GeneratedAppSpecGeneratorService', () => {
       code: 'app-spec-generation-timeout',
       attempts: 1,
     });
-    expect(outputFormatService.executeStructuredOutput).toHaveBeenCalledTimes(1);
+    expect(outputFormatService.executeStructuredOutput).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it('开始前已经超时：不调用模型', async () => {

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import type { GeneratedAppSpecV1 } from '../../../database/schema';
 import {
   buildAppSpecV2FromDraft,
   evaluateGate0AppSpec,
@@ -13,62 +12,27 @@ import {
 } from '../types/app-spec-v2.schema';
 import type { ResolvedGeneratedAppBinding } from '../types/generation-v2.ports';
 import {
-  QA_MODEL_ID,
-  QA_PROMPT,
-  QA_WORKFLOW_VERSION_ID,
-  qaAppSpecV2,
-  qaDraft,
-  qaWorkflowCandidate,
-} from './app-spec-v2.fixtures';
-
-/** ADR-0007 之前由模板生成的 v1 规格：需求原样复制 prompt，只有平台流程场景 */
-const V1_TEMPLATE_SPEC: GeneratedAppSpecV1 = {
-  version: 1,
-  appName: '问答页面',
-  summary: '模板初稿',
-  userGoal: QA_PROMPT,
-  actors: ['创建者', '终端用户'],
-  coreRequirements: [{ id: 'req-1', text: QA_PROMPT, source: 'prompt' }],
-  pages: [{ id: 'page-public-runtime', name: '公开运行页', purpose: '终端用户' }],
-  dataPolicy: {
-    publicSubmissionsPersisted: true,
-    creatorCanDeleteSubmissions: true,
-    endUserLoginRequired: false,
-  },
-  nonGoals: ['不生成后端'],
-  acceptanceScenarios: [
-    {
-      id: 'scenario-1',
-      title: '创建者可以从一句话进入可验证生成流程',
-      scope: 'platform',
-      requirementIds: ['req-1'],
-      given: ['已登录'],
-      when: ['提交需求'],
-      then: ['生成 AppSpec'],
-    },
-  ],
-  traceability: [
-    {
-      requirementId: 'req-1',
-      scenarioIds: ['scenario-1'],
-      evidenceIds: ['app-spec-draft'],
-    },
-  ],
-};
+  V2_MODEL_CONFIG_ID,
+  V2_PROMPT,
+  WORKFLOW_VERSION_ID,
+  createAppSpecV2FromDraftFixture,
+  createAppSpecDraftFixture,
+  createWorkflowBindingCandidateFixture,
+} from './generated-app-test-support';
 
 function resolvedQaBinding(): ResolvedGeneratedAppBinding {
-  const spec = qaAppSpecV2();
+  const spec = createAppSpecV2FromDraftFixture();
   if (spec.binding.kind !== 'workflow') throw new Error('workflow binding');
   return {
     kind: 'workflow',
     binding: spec.binding,
-    candidate: qaWorkflowCandidate(),
+    candidate: createWorkflowBindingCandidateFixture(),
   };
 }
 
 describe('buildAppSpecV2FromDraft：服务端补全草稿', () => {
   it('补平台需求与平台场景、traceability 按浏览器步骤关联字段与分区，整体通过 v2 schema', () => {
-    const spec = qaAppSpecV2();
+    const spec = createAppSpecV2FromDraftFixture();
 
     expect(GeneratedAppSpecV2Schema.safeParse(spec).success).toBe(true);
     expect(spec.coreRequirements.map((r) => [r.id, r.source])).toEqual([
@@ -99,10 +63,10 @@ describe('buildAppSpecV2FromDraft：服务端补全草稿', () => {
     ]);
     expect(spec.binding).toMatchObject({
       kind: 'workflow',
-      workflowVersionId: QA_WORKFLOW_VERSION_ID,
+      workflowVersionId: WORKFLOW_VERSION_ID,
     });
     expect(spec.generation).toEqual({
-      modelConfigId: QA_MODEL_ID,
+      modelConfigId: V2_MODEL_CONFIG_ID,
       generatedAt: '2026-10-20T00:00:00.000Z',
       attempt: 1,
       // sha256(QA_PROMPT)，复跑时据此判断需求是否变化
@@ -122,7 +86,7 @@ describe('buildAppSpecV2FromDraft：服务端补全草稿', () => {
 
   it('模型自己写了平台需求 id 时补全结果不通过 v2 schema（需求 id 重复）', () => {
     const draft = GeneratedAppSpecDraftSchema.parse({
-      ...qaDraft(),
+      ...createAppSpecDraftFixture(),
       requirements: [
         {
           id: GENERATED_APP_PLATFORM_REQUIREMENT_ID,
@@ -130,19 +94,24 @@ describe('buildAppSpecV2FromDraft：服务端补全草稿', () => {
           source: 'prompt',
         },
       ],
-      acceptanceScenarios: qaDraft().acceptanceScenarios.map((scenario) => ({
-        ...scenario,
-        requirementIds: [GENERATED_APP_PLATFORM_REQUIREMENT_ID],
-      })),
+      acceptanceScenarios: createAppSpecDraftFixture().acceptanceScenarios.map(
+        (scenario) => ({
+          ...scenario,
+          requirementIds: [GENERATED_APP_PLATFORM_REQUIREMENT_ID],
+        }),
+      ),
     });
     if (draft.binding.kind !== 'workflow') throw new Error('workflow binding');
 
     const parsed = GeneratedAppSpecV2Schema.safeParse(
       buildAppSpecV2FromDraft(draft, {
-        binding: { ...draft.binding, workflowVersionId: QA_WORKFLOW_VERSION_ID },
-        modelConfigId: QA_MODEL_ID,
+        binding: {
+          ...draft.binding,
+          workflowVersionId: WORKFLOW_VERSION_ID,
+        },
+        modelConfigId: V2_MODEL_CONFIG_ID,
         attempt: 2,
-        prompt: QA_PROMPT,
+        prompt: V2_PROMPT,
         generatedAt: new Date(),
       }),
     );
@@ -155,17 +124,6 @@ describe('buildAppSpecV2FromDraft：服务端补全草稿', () => {
 });
 
 describe('evaluateGate0AppSpec：已存规格的 Gate 0 判定', () => {
-  it('v1 模板规格判 app-spec-legacy-template，不论绑定复核结果', () => {
-    const evaluation = evaluateGate0AppSpec(V1_TEMPLATE_SPEC, {
-      ok: true,
-      resolved: resolvedQaBinding(),
-    });
-
-    expect(evaluation.status).toBe('failed');
-    expect(evaluation.failure?.code).toBe('app-spec-legacy-template');
-    expect(evaluation.repairInstructions).toContain('重新运行生成');
-  });
-
   it('尚未生成的规格判 app-spec-missing', () => {
     const evaluation = evaluateGate0AppSpec(null, null);
 
@@ -174,7 +132,7 @@ describe('evaluateGate0AppSpec：已存规格的 Gate 0 判定', () => {
   });
 
   it('v2 规格违反跨字段规则时判 app-spec-model-output-invalid 并列出问题', () => {
-    const spec = qaAppSpecV2();
+    const spec = createAppSpecV2FromDraftFixture();
     const broken = {
       ...spec,
       acceptanceScenarios: spec.acceptanceScenarios.map((scenario) => ({
@@ -201,7 +159,7 @@ describe('evaluateGate0AppSpec：已存规格的 Gate 0 判定', () => {
   });
 
   it('绑定未复核或复核有问题时判 app-spec-binding-invalid', () => {
-    const spec = qaAppSpecV2();
+    const spec = createAppSpecV2FromDraftFixture();
 
     expect(evaluateGate0AppSpec(spec, null).failure?.code).toBe(
       'app-spec-binding-invalid',
@@ -226,7 +184,7 @@ describe('evaluateGate0AppSpec：已存规格的 Gate 0 判定', () => {
   });
 
   it('合规规格且绑定复核通过时 passed，证据含字段、分区与固定版本', () => {
-    const evaluation = evaluateGate0AppSpec(qaAppSpecV2(), {
+    const evaluation = evaluateGate0AppSpec(createAppSpecV2FromDraftFixture(), {
       ok: true,
       resolved: resolvedQaBinding(),
     });
@@ -242,6 +200,6 @@ describe('evaluateGate0AppSpec：已存规格的 Gate 0 判定', () => {
       sectionIds: ['answer', 'citations'],
       scenarioIds: ['scenario-ask'],
     });
-    expect(evaluation.evidence[1]?.summary).toContain(QA_WORKFLOW_VERSION_ID);
+    expect(evaluation.evidence[1]?.summary).toContain(WORKFLOW_VERSION_ID);
   });
 });

@@ -69,7 +69,10 @@ describe('mapGeneratedAppSubmission', () => {
       { question: '你好', topics: ['a', 'b'] },
     );
 
-    expect(request.inputParams).toEqual({ question: '你好', topics: ['a', 'b'] });
+    expect(request.inputParams).toEqual({
+      question: '你好',
+      topics: ['a', 'b'],
+    });
     expect(request.schemaVersion).toBeUndefined();
   });
 });
@@ -82,12 +85,17 @@ describe('extractGeneratedAppRuntimeResult', () => {
       status: 'completed',
       steps: [
         completedStep('trigger', { payload: { question: 'q' } }),
-        completedStep('out-answer', { content: '最多可以同时运行 10 个子 Agent。' }),
+        completedStep('out-answer', {
+          content: '最多可以同时运行 10 个子 Agent。',
+        }),
         completedStep('out-structured', {
           json: {
             answer: '10 个',
             citations: [
-              { doc: 'AgentLoom-系统介绍.pdf', quote: '最多同时运行 10 个子 Agent' },
+              {
+                doc: 'AgentLoom-系统介绍.pdf',
+                quote: '最多同时运行 10 个子 Agent',
+              },
               '委派深度上限 5 层',
               { unrelated: true },
             ],
@@ -216,7 +224,9 @@ describe('extractGeneratedAppRuntimeResult', () => {
         kind: 'workflow',
         workflowDefinitionId: WORKFLOW_DEFINITION_ID,
         workflowVersionId: WORKFLOW_VERSION_ID,
-        inputMapping: [{ fieldId: 'question', workflowInputFieldId: 'question' }],
+        inputMapping: [
+          { fieldId: 'question', workflowInputFieldId: 'question' },
+        ],
         outputMapping: [
           { sectionId: 'answer', nodeId: 'out-text', path: 'answer' },
           { sectionId: 'citations', nodeId: 'out-array' },
@@ -273,13 +283,16 @@ describe('extractGeneratedAppRuntimeResult', () => {
 
 describe('buildAgentWrapperWorkflowGraph', () => {
   it('trigger → agent → text-output 通过发布前的图结构与端口类型校验', () => {
-    const graph = buildAgentWrapperWorkflowGraph(createAgentAppSpecV2Fixture(), {
-      appId: APP_ID,
-    });
-
-    expect(collectWorkflowGraphStructureErrors(graph.nodes, graph.edges)).toEqual(
-      [],
+    const graph = buildAgentWrapperWorkflowGraph(
+      createAgentAppSpecV2Fixture(),
+      {
+        appId: APP_ID,
+      },
     );
+
+    expect(
+      collectWorkflowGraphStructureErrors(graph.nodes, graph.edges),
+    ).toEqual([]);
     for (const edge of graph.edges) {
       const detail = resolveEdgePortTypes(edge, graph.nodes);
       if (detail) {
@@ -351,7 +364,9 @@ describe('buildAgentWrapperWorkflowGraph', () => {
 
   it('工作流绑定不构建包装工作流', () => {
     expect(() =>
-      buildAgentWrapperWorkflowGraph(createAppSpecV2Fixture(), { appId: APP_ID }),
+      buildAgentWrapperWorkflowGraph(createAppSpecV2Fixture(), {
+        appId: APP_ID,
+      }),
     ).toThrow('只有 Agent 绑定');
   });
 });

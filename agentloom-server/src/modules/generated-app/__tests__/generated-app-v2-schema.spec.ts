@@ -3,7 +3,6 @@ import type { SQL } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 import type { DrizzleDB } from '../../../database/database.module';
-import type { GeneratedAppSpecV2 } from '../../../database/schema';
 import {
   CreateGeneratedAppSchema,
   StartGeneratedAppGenerationRunSchema,
@@ -13,7 +12,6 @@ import {
   GeneratedAppNotFoundException,
 } from '../generated-app.exceptions';
 import { GeneratedAppRepository } from '../generated-app.repository';
-import { isAppSpecV2 } from '../types/generated-app.types';
 import {
   LlmModelConfigNotFoundException,
   LlmModelConfigValidationException,
@@ -28,15 +26,13 @@ import {
   createSelectChain,
   createUpdateReturningChain,
   mockTenantDb,
+  V2_MODEL_CONFIG_ID,
+  createAppSpecV2FromDraftFixture,
 } from './generated-app-test-support';
-import { QA_MODEL_ID, qaAppSpecV2 } from './app-spec-v2.fixtures';
 
 const MODEL_ID = '01a154d7-8c8f-7c7b-87f3-a94220c05251';
 const WORKFLOW_ID = '01a15774-77fd-7887-9fcf-5ff62bfb97c2';
 const AGENT_ID = '01a15774-0000-7000-8000-000000000001';
-
-// 只有判别字段参与 isAppSpecV2 与公开路由的版本分流；完整 v2 契约见 app-spec-v2.schema.spec.ts
-const APP_SPEC_V2 = { version: 2 } as GeneratedAppSpecV2;
 
 const dialect = new PgDialect();
 
@@ -100,12 +96,6 @@ describe('生成应用 v2 创建入参', () => {
         regenerateAppSpec: 'yes',
       }).success,
     ).toBe(false);
-  });
-
-  it('isAppSpecV2 只把 version 2 判为 v2，v1 与尚未生成的 null 都不是', () => {
-    expect(isAppSpecV2(APP_SPEC_V2)).toBe(true);
-    expect(isAppSpecV2(createGeneratedApp().appSpec)).toBe(false);
-    expect(isAppSpecV2(null)).toBe(false);
   });
 });
 
@@ -243,7 +233,7 @@ describe('GeneratedAppRepository 创建引用校验与公开令牌查找', () =>
     expect(mockTenantDb.insert).not.toHaveBeenCalled();
   });
 
-  it('公开令牌命中已发布应用时直接返回，不再按验收令牌查询；AppSpec 版本由公开运行时判断', async () => {
+  it('公开令牌命中已发布应用时直接返回，不再按验收令牌查询；尚未生成规格由公开运行时判断', async () => {
     const publishedApp = createGeneratedApp({
       status: 'published',
       publicShareEnabled: true,
@@ -251,7 +241,7 @@ describe('GeneratedAppRepository 创建引用校验与公开令牌查找', () =>
       readiness: createPublishCandidateReadiness(),
     });
 
-    for (const appSpec of [APP_SPEC_V2, null]) {
+    for (const appSpec of [createAppSpecV2FromDraftFixture(), null]) {
       mockTenantDb.select.mockReturnValueOnce(
         createSelectChain([{ ...publishedApp, appSpec }]),
       );
@@ -310,14 +300,14 @@ describe('GeneratedAppRepository：AppSpec 由 Gate 0 生成后落库', () => {
   it('saveGeneratedAppSpec 写入规格、名称、描述与生成模型，只把 app_spec_generating 推进到 app_spec_ready', async () => {
     const updateChain = createUpdateReturningChain([{ id: 'app-1' }]);
     mockTenantDb.update.mockReturnValueOnce(updateChain);
-    const appSpec = qaAppSpecV2();
+    const appSpec = createAppSpecV2FromDraftFixture();
 
     await repository.saveGeneratedAppSpec({
       tenantId: TENANT_ID,
       userId: USER_ID,
       appId: 'app-1',
       appSpec,
-      generationModelConfigId: QA_MODEL_ID,
+      generationModelConfigId: V2_MODEL_CONFIG_ID,
     });
 
     const payload = updateChain.set.mock.calls[0]?.[0];
@@ -325,7 +315,7 @@ describe('GeneratedAppRepository：AppSpec 由 Gate 0 生成后落库', () => {
       appSpec,
       appName: '文档问答',
       description: appSpec.summary,
-      generationModelConfigId: QA_MODEL_ID,
+      generationModelConfigId: V2_MODEL_CONFIG_ID,
       updatedBy: USER_ID,
     });
     expect(dialect.sqlToQuery(payload.status as SQL).sql).toBe(
@@ -344,8 +334,8 @@ describe('GeneratedAppRepository：AppSpec 由 Gate 0 生成后落库', () => {
         tenantId: TENANT_ID,
         userId: USER_ID,
         appId: 'app-1',
-        appSpec: qaAppSpecV2(),
-        generationModelConfigId: QA_MODEL_ID,
+        appSpec: createAppSpecV2FromDraftFixture(),
+        generationModelConfigId: V2_MODEL_CONFIG_ID,
       }),
     ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
   });

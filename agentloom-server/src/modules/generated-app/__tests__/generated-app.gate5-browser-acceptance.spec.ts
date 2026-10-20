@@ -9,11 +9,11 @@ import type {
 } from '../types/browser-acceptance-job.schema';
 import type { GeneratedAppGateContextV2 } from '../types/generation-v2.ports';
 import {
-  QA_WORKFLOW_ID,
-  QA_WORKFLOW_VERSION_ID,
-  qaAppSpecV2,
-  qaWorkflowCandidate,
-} from './app-spec-v2.fixtures';
+  WORKFLOW_DEFINITION_ID,
+  WORKFLOW_VERSION_ID,
+  createAppSpecV2FromDraftFixture,
+  createWorkflowBindingCandidateFixture,
+} from './generated-app-test-support';
 
 const TENANT_ID = '01a15800-0000-7000-8000-0000000000a1';
 const APP_ID = '01a15800-0000-7000-8000-0000000000b2';
@@ -22,7 +22,7 @@ const JOB_ID = `gate5-${RUN_ID}`;
 const ARTIFACT_PREFIX = `tenants/${TENANT_ID}/generated-apps/${APP_ID}/runs/${RUN_ID}/gate-5`;
 
 function createContext(
-  appSpec: GeneratedAppSpecV2 = qaAppSpecV2(),
+  appSpec: GeneratedAppSpecV2 = createAppSpecV2FromDraftFixture(),
   signal: AbortSignal = new AbortController().signal,
 ): GeneratedAppGateContextV2 {
   if (appSpec.binding.kind !== 'workflow') {
@@ -37,7 +37,7 @@ function createContext(
     resolvedBinding: {
       kind: 'workflow',
       binding: appSpec.binding,
-      candidate: qaWorkflowCandidate(),
+      candidate: createWorkflowBindingCandidateFixture(),
     },
     previousGates: [],
     generationPlan: {
@@ -46,8 +46,8 @@ function createContext(
       appSpecSha256: '0'.repeat(64),
       binding: {
         kind: 'workflow',
-        workflowDefinitionId: QA_WORKFLOW_ID,
-        workflowVersionId: QA_WORKFLOW_VERSION_ID,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        workflowVersionId: WORKFLOW_VERSION_ID,
       },
       coverage: {
         requirements: [],
@@ -136,7 +136,10 @@ describe('GeneratedAppGate5BrowserAcceptance', () => {
   it('real 模式把 requirement 场景的浏览器步骤按两个视口交给 runner，并透传运行截止信号', async () => {
     const { gate5, dispatcher } = createGate5(undefined);
     const controller = new AbortController();
-    const context = createContext(qaAppSpecV2(), controller.signal);
+    const context = createContext(
+      createAppSpecV2FromDraftFixture(),
+      controller.signal,
+    );
 
     await gate5.run(context);
 
@@ -346,7 +349,7 @@ describe('GeneratedAppGate5BrowserAcceptance', () => {
 
   it('AppSpec 没有带浏览器步骤的 requirement 场景时不投递并失败', async () => {
     const { gate5, dispatcher } = createGate5('real');
-    const appSpec = qaAppSpecV2();
+    const appSpec = createAppSpecV2FromDraftFixture();
     const withoutSteps: GeneratedAppSpecV2 = {
       ...appSpec,
       acceptanceScenarios: appSpec.acceptanceScenarios.map((scenario) => ({

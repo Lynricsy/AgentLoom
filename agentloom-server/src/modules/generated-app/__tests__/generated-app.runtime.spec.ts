@@ -150,9 +150,7 @@ describe('validateGeneratedAppSubmission', () => {
     const spec = createMixedFieldSpec();
 
     for (const question of [undefined, '   ', null]) {
-      expect(
-        validateGeneratedAppSubmission(spec, { question }),
-      ).toMatchObject({
+      expect(validateGeneratedAppSubmission(spec, { question })).toMatchObject({
         ok: false,
         errors: [{ field: 'input.question', message: '该字段为必填项' }],
       });
@@ -183,7 +181,9 @@ describe('validateGeneratedAppSubmission', () => {
     });
     expect(oversized).toMatchObject({
       ok: false,
-      errors: [{ field: 'input', message: expect.stringContaining('字节上限') }],
+      errors: [
+        { field: 'input', message: expect.stringContaining('字节上限') },
+      ],
     });
   });
 });

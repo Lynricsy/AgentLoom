@@ -13,14 +13,14 @@ import type {
   GeneratedAppField,
 } from '../types/app-spec-v2.schema';
 import {
-  QA_AGENT_ID,
-  QA_AGENT_VERSION_ID,
-  QA_TENANT_ID,
-  QA_WORKFLOW_ID,
-  QA_WORKFLOW_VERSION_ID,
-  qaAppSpecV2,
-  qaWorkflowCandidate,
-} from './app-spec-v2.fixtures';
+  V2_AGENT_DEFINITION_ID,
+  V2_AGENT_VERSION_ID,
+  TENANT_ID,
+  WORKFLOW_DEFINITION_ID,
+  WORKFLOW_VERSION_ID,
+  createAppSpecV2FromDraftFixture,
+  createWorkflowBindingCandidateFixture,
+} from './generated-app-test-support';
 
 type WorkflowBinding = Extract<GeneratedAppBinding, { kind: 'workflow' }>;
 
@@ -71,14 +71,18 @@ function createTenantDb(rowsByTable: Map<unknown, unknown[]>) {
 }
 
 function qaWorkflowBinding(): WorkflowBinding {
-  const binding = qaAppSpecV2().binding;
+  const binding = createAppSpecV2FromDraftFixture().binding;
   if (binding.kind !== 'workflow') throw new Error('workflow binding');
   return binding;
 }
 
 const QA_SNAPSHOT: schema.WorkflowVersionSnapshot = {
   nodes: [
-    { id: 'trigger', position: { x: 0, y: 0 }, data: { nodeType: 'manual-trigger' } },
+    {
+      id: 'trigger',
+      position: { x: 0, y: 0 },
+      data: { nodeType: 'manual-trigger' },
+    },
     {
       id: 'out-answer',
       position: { x: 0, y: 0 },
@@ -99,7 +103,7 @@ const QA_SNAPSHOT: schema.WorkflowVersionSnapshot = {
   ],
   edges: [],
   viewport: null,
-  inputSchema: qaWorkflowCandidate().inputSchema,
+  inputSchema: createWorkflowBindingCandidateFixture().inputSchema,
   metadata: { nodeCount: 4, edgeCount: 0, createdFromVersion: 1 },
 };
 
@@ -117,25 +121,43 @@ describe('collectWorkflowBindingIssues：映射与固定版本快照的兼容性
     }) as GeneratedAppField;
 
   it('问答规格与问答工作流兼容', () => {
-    const spec = qaAppSpecV2();
+    const spec = createAppSpecV2FromDraftFixture();
     expect(
       collectWorkflowBindingIssues(
         qaWorkflowBinding(),
         spec.inputForm.fields,
-        qaWorkflowCandidate(),
+        createWorkflowBindingCandidateFixture(),
       ),
     ).toEqual([]);
   });
 
   it('选项不是工作流选项的子集、可选字段映射必填输入、长度与范围比工作流宽时逐条报告', () => {
-    const candidate = qaWorkflowCandidate({
+    const candidate = createWorkflowBindingCandidateFixture({
       inputSchema: {
         version: 3,
         collectionMode: 'form',
         fields: [
-          { id: 'question', type: 'text', label: '问题', required: true, validation: { maxLength: 500 } },
-          { id: 'tone', type: 'single_select', label: '语气', required: false, options: ['正式', '轻松'] },
-          { id: 'topK', type: 'number', label: '条数', required: false, validation: { min: 1, max: 10 } },
+          {
+            id: 'question',
+            type: 'text',
+            label: '问题',
+            required: true,
+            validation: { maxLength: 500 },
+          },
+          {
+            id: 'tone',
+            type: 'single_select',
+            label: '语气',
+            required: false,
+            options: ['正式', '轻松'],
+          },
+          {
+            id: 'topK',
+            type: 'number',
+            label: '条数',
+            required: false,
+            validation: { min: 1, max: 10 },
+          },
         ],
       },
     });
@@ -172,9 +194,11 @@ describe('collectWorkflowBindingIssues：映射与固定版本快照的兼容性
       ],
     };
 
-    const messages = collectWorkflowBindingIssues(binding, fields, candidate).map(
-      (issue) => issue.message,
-    );
+    const messages = collectWorkflowBindingIssues(
+      binding,
+      fields,
+      candidate,
+    ).map((issue) => issue.message);
 
     expect(messages).toEqual([
       '表单字段 question 的 maxLength 2000 超过工作流输入 question 的 maxLength 500',
@@ -197,8 +221,8 @@ describe('collectWorkflowBindingIssues：映射与固定版本快照的兼容性
     expect(
       collectWorkflowBindingIssues(
         binding,
-        qaAppSpecV2().inputForm.fields,
-        qaWorkflowCandidate(),
+        createAppSpecV2FromDraftFixture().inputForm.fields,
+        createWorkflowBindingCandidateFixture(),
       ),
     ).toEqual([
       {
@@ -222,8 +246,8 @@ describe('collectWorkflowBindingIssues：映射与固定版本快照的兼容性
     expect(
       collectWorkflowBindingIssues(
         binding,
-        qaAppSpecV2().inputForm.fields,
-        qaWorkflowCandidate({ inputSchema: null }),
+        createAppSpecV2FromDraftFixture().inputForm.fields,
+        createWorkflowBindingCandidateFixture({ inputSchema: null }),
       ),
     ).toEqual([]);
   });
@@ -247,51 +271,55 @@ describe('GeneratedAppBindingResolverService', () => {
   it('候选：已发布工作流（排除生成应用自建的工作流）与 Agent 按更新时间合并，工作流带快照的输入契约与顶层输出节点', async () => {
     rowsByTable.set(schema.workflowDefinitions, [
       {
-        id: QA_WORKFLOW_ID,
+        id: WORKFLOW_DEFINITION_ID,
         name: '文档问答',
         description: null,
-        publishedVersionId: QA_WORKFLOW_VERSION_ID,
+        publishedVersionId: WORKFLOW_VERSION_ID,
         updatedAt: new Date('2026-10-20T10:00:00Z'),
       },
     ]);
     rowsByTable.set(schema.workflowVersions, [
       {
-        id: QA_WORKFLOW_VERSION_ID,
-        workflowDefinitionId: QA_WORKFLOW_ID,
+        id: WORKFLOW_VERSION_ID,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
         snapshot: QA_SNAPSHOT,
       },
     ]);
     rowsByTable.set(schema.agentDefinitions, [
       {
-        id: QA_AGENT_ID,
+        id: V2_AGENT_DEFINITION_ID,
         name: '文档问答 Agent',
         description: '回答问题',
-        publishedVersionId: QA_AGENT_VERSION_ID,
+        publishedVersionId: V2_AGENT_VERSION_ID,
         updatedAt: new Date('2026-10-20T11:00:00Z'),
       },
     ]);
     const { resolver, whereSqlFor } = createResolver();
 
-    const candidates = await resolver.listCandidates(QA_TENANT_ID, null);
+    const candidates = await resolver.listCandidates(TENANT_ID, null);
 
     expect(candidates).toEqual([
       {
         kind: 'agent',
-        agentDefinitionId: QA_AGENT_ID,
-        agentVersionId: QA_AGENT_VERSION_ID,
+        agentDefinitionId: V2_AGENT_DEFINITION_ID,
+        agentVersionId: V2_AGENT_VERSION_ID,
         name: '文档问答 Agent',
         description: '回答问题',
       },
       {
         kind: 'workflow',
-        workflowDefinitionId: QA_WORKFLOW_ID,
-        workflowVersionId: QA_WORKFLOW_VERSION_ID,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        workflowVersionId: WORKFLOW_VERSION_ID,
         name: '文档问答',
         description: null,
-        inputSchema: qaWorkflowCandidate().inputSchema,
+        inputSchema: createWorkflowBindingCandidateFixture().inputSchema,
         outputNodes: [
           { nodeId: 'out-answer', nodeType: 'text-output', label: '答案' },
-          { nodeId: 'out-structured', nodeType: 'json-output', label: '结构化答案' },
+          {
+            nodeId: 'out-structured',
+            nodeType: 'json-output',
+            label: '结构化答案',
+          },
         ],
       },
     ]);
@@ -307,9 +335,9 @@ describe('GeneratedAppBindingResolverService', () => {
     rowsByTable.set(schema.agentDefinitions, []);
     const { resolver, select, whereSqlFor } = createResolver();
 
-    const candidates = await resolver.listCandidates(QA_TENANT_ID, {
+    const candidates = await resolver.listCandidates(TENANT_ID, {
       kind: 'agent',
-      agentDefinitionId: QA_AGENT_ID,
+      agentDefinitionId: V2_AGENT_DEFINITION_ID,
     });
 
     expect(candidates).toEqual([]);
@@ -320,52 +348,52 @@ describe('GeneratedAppBindingResolverService', () => {
   });
 
   it('解析工作流绑定：目标不存在、未发布、固定版本已归档时返回问题', async () => {
-    const spec = qaAppSpecV2();
+    const spec = createAppSpecV2FromDraftFixture();
 
     rowsByTable.set(schema.workflowDefinitions, []);
-    let result = await createResolver().resolver.resolve(QA_TENANT_ID, spec);
+    let result = await createResolver().resolver.resolve(TENANT_ID, spec);
     expect(result).toEqual({
       ok: false,
       issues: [
         {
           path: ['binding', 'workflowDefinitionId'],
-          message: `绑定的工作流 ${QA_WORKFLOW_ID} 不存在或不属于当前租户`,
+          message: `绑定的工作流 ${WORKFLOW_DEFINITION_ID} 不存在或不属于当前租户`,
         },
       ],
     });
 
     rowsByTable.set(schema.workflowDefinitions, [
       {
-        id: QA_WORKFLOW_ID,
+        id: WORKFLOW_DEFINITION_ID,
         name: '文档问答',
         description: null,
         status: 'archived',
-        publishedVersionId: QA_WORKFLOW_VERSION_ID,
+        publishedVersionId: WORKFLOW_VERSION_ID,
       },
     ]);
-    result = await createResolver().resolver.resolve(QA_TENANT_ID, spec);
+    result = await createResolver().resolver.resolve(TENANT_ID, spec);
     expect(result.ok === false && result.issues[0]?.message).toBe(
       '绑定的工作流「文档问答」当前不是已发布状态（archived）',
     );
 
     rowsByTable.set(schema.workflowDefinitions, [
       {
-        id: QA_WORKFLOW_ID,
+        id: WORKFLOW_DEFINITION_ID,
         name: '文档问答',
         description: null,
         status: 'published',
-        publishedVersionId: QA_WORKFLOW_VERSION_ID,
+        publishedVersionId: WORKFLOW_VERSION_ID,
       },
     ]);
     rowsByTable.set(schema.workflowVersions, [
       {
-        id: QA_WORKFLOW_VERSION_ID,
-        workflowDefinitionId: QA_WORKFLOW_ID,
+        id: WORKFLOW_VERSION_ID,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
         snapshot: QA_SNAPSHOT,
         archivedAt: new Date(),
       },
     ]);
-    result = await createResolver().resolver.resolve(QA_TENANT_ID, spec);
+    result = await createResolver().resolver.resolve(TENANT_ID, spec);
     expect(result.ok === false && result.issues[0]?.path).toEqual([
       'binding',
       'workflowVersionId',
@@ -375,7 +403,7 @@ describe('GeneratedAppBindingResolverService', () => {
   it('解析工作流绑定：固定版本可用且映射兼容时返回快照构成的候选（源工作流重新发布不影响）', async () => {
     rowsByTable.set(schema.workflowDefinitions, [
       {
-        id: QA_WORKFLOW_ID,
+        id: WORKFLOW_DEFINITION_ID,
         name: '文档问答',
         description: null,
         status: 'published',
@@ -385,62 +413,65 @@ describe('GeneratedAppBindingResolverService', () => {
     ]);
     rowsByTable.set(schema.workflowVersions, [
       {
-        id: QA_WORKFLOW_VERSION_ID,
-        workflowDefinitionId: QA_WORKFLOW_ID,
+        id: WORKFLOW_VERSION_ID,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
         snapshot: QA_SNAPSHOT,
         archivedAt: null,
       },
     ]);
     const { resolver } = createResolver();
 
-    const result = await resolver.resolve(QA_TENANT_ID, qaAppSpecV2());
+    const result = await resolver.resolve(
+      TENANT_ID,
+      createAppSpecV2FromDraftFixture(),
+    );
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.resolved.kind).toBe('workflow');
     expect(result.resolved.candidate).toMatchObject({
-      workflowVersionId: QA_WORKFLOW_VERSION_ID,
-      outputNodes: [
-        { nodeId: 'out-answer' },
-        { nodeId: 'out-structured' },
-      ],
+      workflowVersionId: WORKFLOW_VERSION_ID,
+      outputNodes: [{ nodeId: 'out-answer' }, { nodeId: 'out-structured' }],
     });
   });
 
   it('解析 Agent 绑定：固定版本存在时通过，不存在时返回问题', async () => {
     const spec = {
-      inputForm: qaAppSpecV2().inputForm,
+      inputForm: createAppSpecV2FromDraftFixture().inputForm,
       binding: {
         kind: 'agent' as const,
-        agentDefinitionId: QA_AGENT_ID,
-        agentVersionId: QA_AGENT_VERSION_ID,
+        agentDefinitionId: V2_AGENT_DEFINITION_ID,
+        agentVersionId: V2_AGENT_VERSION_ID,
         replySectionId: 'answer',
       },
     };
     rowsByTable.set(schema.agentDefinitions, [
       {
-        id: QA_AGENT_ID,
+        id: V2_AGENT_DEFINITION_ID,
         name: '文档问答 Agent',
         description: null,
         status: 'published',
-        publishedVersionId: QA_AGENT_VERSION_ID,
+        publishedVersionId: V2_AGENT_VERSION_ID,
       },
     ]);
     rowsByTable.set(schema.agentVersions, [
-      { id: QA_AGENT_VERSION_ID, archivedAt: null },
+      { id: V2_AGENT_VERSION_ID, archivedAt: null },
     ]);
 
-    const passed = await createResolver().resolver.resolve(QA_TENANT_ID, spec);
+    const passed = await createResolver().resolver.resolve(TENANT_ID, spec);
     expect(passed).toMatchObject({
       ok: true,
       resolved: {
         kind: 'agent',
-        candidate: { agentVersionId: QA_AGENT_VERSION_ID, name: '文档问答 Agent' },
+        candidate: {
+          agentVersionId: V2_AGENT_VERSION_ID,
+          name: '文档问答 Agent',
+        },
       },
     });
 
     rowsByTable.set(schema.agentVersions, []);
-    const failed = await createResolver().resolver.resolve(QA_TENANT_ID, spec);
+    const failed = await createResolver().resolver.resolve(TENANT_ID, spec);
     expect(failed.ok === false && failed.issues[0]?.path).toEqual([
       'binding',
       'agentVersionId',
