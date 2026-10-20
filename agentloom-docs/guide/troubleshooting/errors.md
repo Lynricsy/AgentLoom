@@ -255,10 +255,14 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `generated-app-public-share-not-ready` | 409 | 应用就绪状态不是发布候选，不能开启公开分享 | 见[生成应用](/guide/generated-apps/#门禁与就绪状态) |
 | `generated-app-public-submission-invalid` | 422 | 公开应用的提交内容未通过校验 | 按页面提示补齐必填字段 |
 | `generated-app-not-found` | 404 | 生成应用不存在或不属于当前组织 | 确认链接与当前组织 |
-| `generated-app-artifact-not-found` | 404 | 生成应用的交付物不存在 | 重新生成 |
+| `generated-app-artifact-not-found` | 404 | 生成应用的交付物不存在 | 重新运行生成 |
+| `generated-app-artifact-too-large` | 413 | 交付物超过内联读取上限，不能以文本方式查看 | 无需处理；大文件不在 Studio 内联展示 |
 | `generated-app-submission-not-found` | 404 | 生成应用的提交记录不存在 | 确认提交 ID |
+| `generated-app-generation-run-not-found` | 404 | 生成运行不存在或不属于该应用 | 确认应用与运行 ID |
+| `generated-app-repair-attempt-not-found` | 404 | 修复尝试不存在或不属于该运行 | 确认运行与修复尝试 ID |
+| `generated-app-gate-definition-not-found` | 400 | 记录门禁结果时用了不存在的 Gate id | Gate id 只能是 `gate-0` 到 `gate-7` |
 | `generated-app-binding-target-not-found` | 422 | 创建应用时指定的工作流或 Agent 不存在、不属于当前组织或尚未发布 | 先发布该工作流或 Agent，或不指定绑定目标、由生成过程从已发布的工作流与 Agent 中选择 |
-| `generated-app-generation-run-in-progress` | 409 | 该应用已有排队中或运行中的生成运行 | 等当前运行结束后再启动 |
+| `generated-app-generation-run-in-progress` | 409 | 该应用已有排队中或运行中的生成运行；创建应用时已自动排队首次运行，紧接着再调用 start 也会得到它 | 等当前运行结束后再启动；用创建响应的 `generationRunId` 或运行列表轮询进度 |
 | `share-not-found` | 404 | 分享链接不存在或无权访问 | 确认链接完整 |
 | `share-copy-not-allowed` | 409 | 该分享链接不允许导入副本 | 请分享者改为可复制的分享 |
 | `share-agent-not-published` | 409 | 被分享的 Agent 尚未发布，无法导入 | 请分享者发布 Agent |

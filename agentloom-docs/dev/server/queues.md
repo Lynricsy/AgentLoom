@@ -54,7 +54,7 @@ docType: reference
 
 ## Gate 5 browser-runner
 
-`generated-app-browser-acceptance` 队列的消费者不在 server/worker 中，而是独立进程 `agentloom-server/src/generated-app-browser-runner.main.ts`（镜像为 server Dockerfile 的 `browser-runner` 构建目标，Compose 服务 `generated-app-browser-runner`，Helm `browserRunner`）。它用 `NestFactory.createApplicationContext` 只装配配置（`browserRunnerEnvSchema`：Redis、MinIO、`APP_GENERATED_APP_BROWSER_*`）、BullMQ、对象存储与 `GeneratedAppBrowserAcceptanceProcessor`，不连数据库，进程关闭同样经 `QueueWorkerShutdownService`。
+`generated-app-browser-acceptance` 队列的消费者不在 server/worker 中，而是独立进程 `agentloom-server/src/generated-app-browser-runner.main.ts`（镜像为 server Dockerfile 的 `browser-runner` 构建目标，Compose 服务 `generated-app-browser-runner`，Helm `browserRunner`）。它用 `NestFactory.createApplicationContext` 只装配配置（`browserRunnerEnvSchema`：Redis、MinIO 与 `APP_GENERATED_APP_BROWSER_BASE_URL`、`APP_GENERATED_APP_BROWSER_CONCURRENCY`、`APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS`、`APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS`）、BullMQ、对象存储与 `GeneratedAppBrowserAcceptanceProcessor`，不连数据库，进程关闭同样经 `QueueWorkerShutdownService`。
 
 worker 侧由 `GeneratedAppBrowserAcceptanceDispatcher` 投递：
 

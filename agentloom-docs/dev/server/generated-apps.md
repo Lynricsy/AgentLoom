@@ -6,34 +6,60 @@ docType: explanation
 
 > 本页回答：一句自然语言需求在服务端经过哪些阶段才变成可公开访问的应用，代码按什么职责分层？
 
-用户操作流程见 [生成应用](/guide/generated-apps/)，对外接入接口见 [生成应用 API](/api/generated-apps)。代码在 `agentloom-server/src/modules/generated-app/`。
+用户操作流程见 [生成应用](/guide/generated-apps/)，对外接入接口见 [生成应用 API](/api/generated-apps)，设计取舍见 [ADR-0007](/dev/decisions/0007-generated-app-spec-generation)。代码在 `agentloom-server/src/modules/generated-app/`。
 
 ## 生命周期
 
 ```mermaid
 stateDiagram-v2
-    [*] --> app_spec_ready: POST /generated-apps（prompt）
-    app_spec_ready --> preview_ready: 生成运行结束，阻断门禁未全部通过
-    app_spec_ready --> failed: 生成运行中有阻断门禁失败
-    app_spec_ready --> trial_ready: 阻断门禁全过，仍有 warning
-    app_spec_ready --> publish_candidate: 门禁全过且无 warning
-    preview_ready --> publish_candidate: 再次生成运行
-    failed --> publish_candidate: retry 运行
+    [*] --> app_spec_generating: POST /generated-apps（排队 initial 运行）
+    app_spec_generating --> app_spec_ready: Gate 0 生成并保存 AppSpec
+    app_spec_generating --> failed: Gate 0 失败
+    app_spec_ready --> preview_ready: 门禁结果写入，阻断门禁未全部通过
+    app_spec_ready --> failed: 有阻断门禁失败
+    preview_ready --> publish_candidate: Gate 7 通过且无 warning
+    preview_ready --> trial_ready: 阻断门禁全过，仍有 warning
+    failed --> publish_candidate: 再次生成运行
     publish_candidate --> published: POST /:appId/public-share
     published --> publish_candidate: DELETE /:appId/public-share
 ```
 
-应用状态枚举 `generated_app_status` 为 `app_spec_generating`、`app_spec_ready`、`preview_ready`、`trial_ready`、`publish_candidate`、`published`、`failed`（`agentloom-server/src/database/schema/generated-apps.schema.ts`）。`app_spec_generating` 留给 v2 异步生成（[ADR-0007](/dev/decisions/0007-generated-app-spec-generation)）：应用已创建、`app_spec` 仍为 `null`。除 `published` 外，状态都由门禁结果计算得出（见下文「就绪度」）。
+应用状态枚举 `generated_app_status` 为 `app_spec_generating`、`app_spec_ready`、`preview_ready`、`trial_ready`、`publish_candidate`、`published`、`failed`（`agentloom-server/src/database/schema/generated-apps.schema.ts`）。`app_spec_generating` 表示应用已创建、`app_spec` 仍为 `null`。除 `published` 外，状态都由门禁结果计算得出（见下文「就绪度」）。
 
-`app_spec` 列存 `GeneratedAppSpec = GeneratedAppSpecV1 | GeneratedAppSpecV2`（`types/generated-app.types.ts`，按 `version` 用 `isAppSpecV2()` 区分），v2 契约见 `types/app-spec-v2.schema.ts`。v1 是 ADR-0007 之前的模板规格，只剩存量数据：Gate 0 判它 `app-spec-legacy-template`，下一次生成运行会按需求重新生成；v1 公开运行时只服务 v1 规格的应用。迁移 `0089_generated_app_v2` 把存量 v1 应用的公开分享关闭、状态回到 `app_spec_ready`、`readiness` 置为 `blocked`。
+`app_spec` 列只存 AppSpec v2（`types/app-spec-v2.schema.ts` 的 `GeneratedAppSpecV2Schema`）或 `null`。迁移 `0089_generated_app_v2` 关闭了存量 v1 应用的公开分享，`0090` 把 v1 的 `app_spec` 与 `generation_plan` 置空；这些应用的下一次生成运行由 Gate 0 按需求重新生成规格。
 
 ### 1. 创建
 
-`POST /api/v1/generated-apps` 接收 `prompt`，以及可选的 `modelConfigId`（本组织已启用的 chat 模型）与 `bindingTarget`（本组织已发布的工作流或 Agent）。两者在写入前按当前租户校验（外键不受 RLS 约束），分别存入 `generation_model_config_id` 与 `binding_target`，供生成运行解析模型与绑定目标。创建时不生成 AppSpec：应用以 `app_spec_generating` 状态写入，`app_spec` 为 `null`，名称取 prompt 第一句，Gate 0–7 全部 `pending`（`readiness` 为 `preview`、不能分享）。
+`POST /api/v1/generated-apps` 接收 `prompt`，以及可选的 `modelConfigId`（本组织已启用的 chat 模型）与 `bindingTarget`（本组织已发布的工作流或 Agent）。两者在写入前按当前租户校验（外键不受 RLS 约束）：模型不存在返回 `llm/config-not-found`、不是已启用的 chat 模型返回模型配置校验错误，绑定目标不存在或未发布返回 422 `generated-app-binding-target-not-found`。通过后分别存入 `generation_model_config_id` 与 `binding_target`，供生成运行解析模型与绑定目标。
+
+创建时不生成 AppSpec：应用以 `app_spec_generating` 写入，`app_spec` 为 `null`，名称取 prompt 第一句，Gate 0–7 全部 `pending`（`readiness` 为 `preview`、不能分享）。随后 `GeneratedAppGenerationPipelineService.enqueueRun` 排队一次 `initial` 生成运行，201 响应在应用字段之外带 `generationRunId`，调用方用它轮询，不需要再调用 start。
+
+### 2. 生成运行：排队与执行
+
+`POST /api/v1/generated-apps/:appId/generation-runs/start` 只排队，返回 **202**：`generationRun.status = 'queued'`、`gateRuns` 为空数组、`app` 为当前应用。参数：
+
+| 字段 | 默认 | 范围 |
+| --- | --- | --- |
+| `triggerSource` | `manual` | `initial`、`manual`、`retry`、`system` |
+| `maxRepairAttempts` | 3 | 0–20 |
+| `maxRuntimeSeconds` | 1800 | 1–86400 |
+| `regenerateAppSpec` | `false` | `true` 时 Gate 0 丢弃已存规格重新生成；`triggerSource: 'retry'` 同样重新生成 |
+
+`enqueueRun`（`generated-app-generation-pipeline.service.ts`）在一个租户事务内 `FOR UPDATE` 锁住应用行：已有 `queued` / `running` 运行时返回 409 `generated-app-generation-run-in-progress`；否则写入 `queued` 运行。事务提交后才把任务加入 BullMQ 队列 `generated-app-generation`（`generated-app-generation.constants.ts`：attempts 1、jobId 为运行 id、`removeOnComplete` 500 / `removeOnFail` 1000），入队失败时把运行标记为失败。
+
+worker（`generated-app-generation.worker.ts`，并发 `APP_GENERATED_APP_GENERATION_CONCURRENCY`，默认 2）调用 `executeRun`：
+
+1. 只认领 `queued` 运行（改为 `running`），重复投递直接跳过。
+2. 按序执行 Gate 0–7，前一个失败即停止。每个 Gate 的读写各用一个短 `runInTenantTransaction`；模型调用与等待 Gate 5 的 browser-runner 时不持有事务。
+3. 每个 Gate 结束时写一条 `generated_app_gate_runs`（`createGateRunAndUpdateApp` 同时重算应用的 `gate_results`、`readiness` 与状态），并把运行 `summary` 改为该 Gate 的结论。Gate 开始时不写记录，所以运行中的 Gate 由「第一个还没有记录的 Gate」推出（Studio 进度组件就这样显示）。
+4. `maxRuntimeSeconds` 用 job 内的 AbortSignal 计时，超时取消当前 Gate。
+5. `runGenerationToTerminal`（`generated-app-generation-terminal.util.ts`）保证运行无论以何种方式退出都会落终态：未显式写入终态时标记为失败，worker 的 `failed` 事件同样兜底，避免应用永远 409。
+
+运行记录在 `generated_app_generation_runs`（`queued` / `running` / `repairing` / `passed` / `failed` / `cancelled`），门禁记录在 `generated_app_gate_runs`（`running` / `passed` / `failed` / `warning` / `skipped`）。调用方用 `GET /:appId/generation-runs/:runId` 与 `GET /:appId/gate-runs?generationRunId=` 轮询。
 
 ### Gate 0：生成 AppSpec 与绑定解析
 
-Gate 0 由 `GeneratedAppGate0Service.evaluate`（`generated-app-gate0.service.ts`）完成。AppSpec 缺失、是 v1 规格，或调用方要求重新生成（`regenerateAppSpec` / `triggerSource: 'retry'`）时调用模型生成；否则用 `GeneratedAppSpecV2Schema` 复核已存规格并重新解析绑定。读写库各用一个短租户事务，模型调用期间不持有事务。
+Gate 0 由 `GeneratedAppGate0Service.evaluate`（`generated-app-gate0.service.ts`）完成。AppSpec 缺失，或调用方要求重新生成（`regenerateAppSpec` / `triggerSource: 'retry'`）时调用模型生成；否则用 `GeneratedAppSpecV2Schema` 复核已存规格并重新解析绑定。读写库各用一个短租户事务，模型调用期间不持有事务。
 
 生成由 `GeneratedAppSpecGeneratorService`（`generated-app-spec-generator.service.ts`）执行：
 
@@ -56,48 +82,31 @@ Gate 0 失败码写在 gate run 的 `failure.code`，`failure.details` 带问题
 | `app-spec-model-output-invalid` | 模型连续 3 次输出不符合草稿 schema 或跨字段规则；复核已存规格不符合 v2 schema 时也用此码 |
 | `app-spec-binding-invalid` | 绑定与目标不兼容（见上），或指定的工作流已发布版本没有输出节点 |
 | `app-spec-generation-timeout` | 超过 `APP_GENERATED_APP_SPEC_TIMEOUT_MS` |
-| `app-spec-legacy-template` | 已存规格是 v1 模板（复核已存规格时） |
 | `app-spec-missing` | 已存规格为空（复核已存规格时；生成运行遇到空规格会先生成） |
 
-### 2. 生成运行：门禁序列
+### Gate 1–7
 
-`POST /api/v1/generated-apps/:appId/generation-runs/start` 在**请求内同步**执行一次生成运行（`GeneratedAppGenerationOrchestratorService.startGenerationRun`），参数：
+| 门禁 | 名称 | 实现 | 失败码 |
+| --- | --- | --- | --- |
+| `gate-1` | 架构计划门禁 | `generated-app.gate1-generation-plan.ts`：`planVersion: 2` 的覆盖矩阵（需求 → 场景 → 字段/结果分区 → 绑定），写入 `generation_plan` | `generation-plan-coverage-gap` |
+| `gate-2` | 静态合约门禁 | `generated-app.gate2-static-contracts.ts`：由表单生成公开输入 JSON Schema、由结果分区生成结果合约，比对固定版本 `inputSchema`；Agent 绑定的包装工作流图经现有图结构校验 | `static-contract-mismatch` |
+| `gate-3` | 构建与单元门禁 | `generated-app.gate3-workspace.ts`：在 `GENERATED_APP_WORKSPACE_ROOT` 下物化 `app-spec.ts`、`runtime-form.ts`、`static-contracts.ts`；对每个 requirement 场景执行真实的提交校验与 `inputSchema` 校验，另跑未知字段、缺必填字段两个拒绝用例 | `gate-3-workspace-materialization-failed` / `gate-3-command-failed` |
+| `gate-4` | 集成门禁 | `generated-app.gate4-integration.ts`：复核目标仍发布、固定版本仍是当前版本、创建者角色可运行、Agent 的模型配置可用；Agent 绑定在这里创建并发布包装工作流（Gate 5 的提交经它执行），绑定已不可用时不创建 | `binding-drifted` / `binding-unavailable` |
+| `gate-5` | 浏览器验收门禁 | `generated-app.gate5-browser-acceptance.ts` + `generated-app-browser-acceptance.dispatcher.ts`：签发验收令牌，把 requirement 场景投递给 browser-runner 在桌面与移动视口真实执行（见 ADR-0007 §6） | `gate-5-browser-runner-unavailable` / `gate-5-browser-runner-timeout` / `gate-5-browser-launch-failed` / `gate-5-scenario-failed` |
+| `gate-6` | 独立审查门禁 | `generated-app.gate6-independent-verifier.ts`：确定性复核 Gate 5 证据——两个视口都通过、无 console error、无失败请求、结果分区非空、截图与 trace 在对象存储中存在 | `verifier-blocking-finding` |
+| `gate-7` | 发布候选门禁 | `generated-app.gate7-publish-candidate.ts`：写 manifest（AppSpec sha256、固定绑定版本、各 Gate 证据 id、artifact key），调用 `ensureRuntimeWorkflow` 把运行时工作流写到应用上 | `gate-7-fixture-not-publish-candidate` / `gate-7-publish-candidate-contract-blocked` |
 
-| 字段 | 默认 | 范围 |
-| --- | --- | --- |
-| `triggerSource` | `manual` | `initial`、`manual`、`retry`、`system` |
-| `maxRepairAttempts` | 3 | 0–20 |
-| `maxRuntimeSeconds` | 1800 | 1–86400 |
+门禁定义（名称、是否阻断）的唯一来源是 `GENERATED_APP_GATE_DEFINITIONS`（`generated-app.gates.ts`），全部为阻断门禁。Gate 依赖经 `generated-app.v2-tokens.ts` 的 DI token 注入流水线。
 
-运行记录写入 `generated_app_generation_runs`（状态 `queued` / `running` / `repairing` / `passed` / `failed` / `cancelled`），每个门禁的结果写入 `generated_app_gate_runs`（状态 `running` / `passed` / `failed` / `warning` / `skipped`）。门禁严格按序执行，前一个失败则停止：
+Gate 3–7 的执行级别由 `GENERATED_APP_GATE<N>_EXECUTOR_MODE` 决定：未设置为 `real`，`fixture` 只用于单测，其他值一律按 `disabled` 处理（失败关闭，`generated-app.gate-v2.util.ts`）。Gate 5 在任何模式下都不会在未启动浏览器时判通过；`fixture` 的计划 `executionLevel` 为 `fixture`，Gate 6 不把它当作真实证据，Gate 7 对 fixture 直接失败。变量清单与默认值见 [配置参考](/deploy/configuration)。
 
-| 门禁 | 名称 | 实现 |
-| --- | --- | --- |
-| `gate-0` | 需求规格门禁 | `GeneratedAppGate0Service`：按需生成 AppSpec v2，复核 schema 与绑定（见上文「Gate 0」） |
-| `gate-1` | 架构计划门禁 | `buildGenerationPlan` 生成实现计划，校验其覆盖 AppSpec |
-| `gate-2` | 静态合约门禁 | `buildStaticContracts`，校验 API 合约、图 schema、DAG、插件 manifest |
-| `gate-3` | 构建与单元门禁 | `GeneratedAppGate3WorkspaceRunner`（`agentloom-server/src/modules/generated-app/generated-app.workspace.ts`）在本地工作区物化代码并执行命令计划 |
-| `gate-4` | 集成门禁 | `GeneratedAppGate4IntegrationRunner` |
-| `gate-5` | 浏览器验收门禁 | `GeneratedAppGate5BrowserAcceptanceRunner` |
-| `gate-6` | 独立审查门禁 | `GeneratedAppGate6IndependentVerifierRunner` |
-| `gate-7` | 发布候选门禁 | `GeneratedAppGate7PublishCandidateRunner` |
-
-门禁定义（名称、是否阻断）的唯一来源是 `GENERATED_APP_GATE_DEFINITIONS`（`agentloom-server/src/modules/generated-app/generated-app.gates.ts`），当前全部为阻断门禁。各门禁的计划由 `agentloom-server/src/modules/generated-app/plan-builders/` 下的构建器生成。
-
-门禁 3–7 的 runner 有 `real` / `fixture` / `disabled` 三种执行模式，默认 `real`，由各 runner 的 `getExecutorMode()` 经 `ConfigService` 读取 `GENERATED_APP_GATE<N>_EXECUTOR_MODE`。这些变量（以及 `GENERATED_APP_WORKSPACE_ROOT`、`GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS`）在 `agentloom-server/src/config/env.schema.ts` 中声明，清单与默认值见 [配置参考](/deploy/configuration) 的 server 变量表。变量名不带 `APP_` 前缀，是因为 Gate 5 的证据中已持久化字面量 `GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e`。
-
-Gate 5 的 `real` 模式（`real-local-browser-contract`）只在服务端执行确定性的 DOM/无障碍/网络/console 契约，不启动浏览器；契约全部通过时仍返回 `failed`（`gate-5-real-browser-not-executed`），因为门禁定义是浏览器验收。`real-browser-e2e` 模式检查 `playwright` 包后也会 fail-closed（`gate-5-real-browser-e2e-unavailable` / `gate-5-real-browser-e2e-not-implemented`），服务端尚未接入 Playwright 执行适配层，server 镜像也不含 Playwright 与浏览器。只有显式的 `fixture` 模式会让 Gate 5 通过，仅用于测试。
-
-`runGenerationToTerminal` 保证运行无论以何种方式退出都会落一个终态：未显式写入终态时，`finally` 中把运行标记为失败。
+写入门禁结果前有一道发布候选守卫（`applyPublishCandidateGuard`，`generated-app.gate7-publish-candidate.ts`）：readiness 将变为 `publish_candidate` 时，只有 `generation_plan` 里有 `real` 执行的 Gate 7 manifest、manifest 与计划属于同一次运行、指纹与当前 AppSpec 一致且运行时工作流已就绪，Gate 7 才算通过，否则改为 `failed`。经 `PATCH /:appId/gates` 手工记录的门禁结果同样经过这道守卫。
 
 ### 3. 修复
 
-- **门禁内自动修复**：`gate-3` 失败且 `maxRepairAttempts > 0` 时，`GeneratedAppGenerationRepairService` 创建一条修复尝试（`generated_app_repair_attempts`，状态 `planned` / `running` / `completed` / `failed` / `skipped`），runner 应用修复补丁后重跑 `gate-3`。
-- **失败运行的修复记录**：运行以失败结束时，记录一条自动修复尝试，供下一次运行使用。
-- **retry 运行**：`triggerSource = 'retry'` 时，先读取最近一次失败的修复上下文，再据此构建生成计划。
-- 修复尝试也可通过 `/:appId/generation-runs/:runId/repair-attempts` 手动管理。
+v2 不自动打补丁。运行以失败结束且 `maxRepairAttempts > 0` 时，`GeneratedAppGenerationRepairService.recordAutomaticRepairAttemptForFailedRun` 为第一个失败的 Gate 记一条修复尝试（`generated_app_repair_attempts`，状态 `planned` / `running` / `completed` / `failed` / `skipped`）：工单只给出失败证据、该 Gate 允许调整的范围与重新运行的验收标准。修复尝试也可通过 `/:appId/generation-runs/:runId/repair-attempts` 手动管理。要按调整后的需求重来，用 `triggerSource: 'retry'` 或 `regenerateAppSpec: true` 启动新运行。
 
-### 4. 就绪度与预览
+### 4. 就绪度与交付物
 
 每次门禁结果写入后，`evaluateGeneratedAppReadiness` 重新计算 `readiness`，`getGeneratedAppStatusForReadiness` 据此更新应用状态：
 
@@ -108,23 +117,23 @@ Gate 5 的 `real` 模式（`real-local-browser-contract`）只在服务端执行
 | `trial` | 阻断门禁全过，有 warning | `trial_ready` | 否 |
 | `publish_candidate` | 全过且无 warning | `publish_candidate` | 是 |
 
-创建者通过 `/:appId/artifacts` 查看生成产物（`GeneratedAppArtifactService`），通过 `/:appId/runtime-binding-readiness` 查看运行时绑定状态。
+`/:appId/artifacts`（`GeneratedAppArtifactService`）按 `buildUnitPlan.workspace` 列出 Gate 3 物化的文件（`/:appId/artifacts/:artifactId` 读内容），并为 Gate 5 的截图与 trace 签发 15 分钟有效的预签名 `downloadUrl`（只签本应用本次运行 `gate-5` 前缀下的 key）。`/:appId/runtime-binding-readiness` 返回运行时绑定状态。
 
 ### 5. 运行时绑定
 
-`gate-7` 通过后，`GeneratedAppRuntimeBindingService`（`agentloom-server/src/modules/generated-app/generated-app-runtime-binding.service.ts`）：
+`GeneratedAppRuntimeBindingService`（`generated-app-runtime-binding.service.ts`）的 `ensureRuntimeWorkflow` 由 Gate 4（Agent 包装工作流）与 Gate 7 调用：
 
-- 注册并激活通过门禁的**租户私有生成插件**（经 `PluginService`，见 [插件系统](/dev/server/plugins)）；
-- 创建或复用一个已发布的工作流，作为应用的运行时，记在 `generated_apps.workflow_definition_id`。
+- 工作流绑定：直接使用被绑定工作流与 AppSpec 中的固定版本，不创建任何工作流。
+- Agent 绑定：创建或复用本应用的包装工作流 manual-trigger → agent → text-output（`inputSchema` 由表单字段生成，metadata 标 `generatedAppId`）；图与当前 AppSpec 一致的已发布版本存在时原样返回，否则更新画布并经发布校验链发布新版本。
 
-生成运行不会自动创建公开链接。
+两种绑定都把运行时工作流写入 `generated_apps.workflow_definition_id`。绑定的工作流重新发布后，readiness 报 `workflow_version_drift`（提示，不阻断），应用仍执行固定版本。删除应用时，它自动创建的包装工作流一并归档。生成运行不会自动创建公开链接。
 
 ### 6. 公开运行
 
 - `POST /api/v1/generated-apps/:appId/public-share` 要求 `readiness.state = 'publish_candidate'`，生成 32 字节随机 hex token，把应用置为 `published`；`/public-share/regenerate` 换新 token，`DELETE` 停用并把状态退回由就绪度决定的值。
-- 公开控制器 `GeneratedAppPublicController` 挂在 `/api/v1/generated-apps/public`，整体 `@Public()`，且该路径被排除在 `TenantMiddleware` 之外。按 token 查找应用时同时要求 `publicShareEnabled`、`status = 'published'` 且仍满足发布条件，任一不满足返回 404。
-- 终端用户提交（`POST /public/:token/submissions`）的处理顺序：先按 AppSpec 生成的运行表单严格校验输入（不合法直接拒绝，而不是截断后接受）→ 本地运行时评估 → 评估完成且绑定了已发布工作流时，经 `ExecutionService.runWorkflow` 触发一次工作流执行 → 写入 `generated_app_submissions`（状态 `received` / `running` / `completed` / `failed`），记录匿名会话 id。创建者在 `/:appId/submissions` 查看提交。
-- `generated_apps` 另有 Gate 5 验收令牌三列 `acceptance_token_hash`（只存 sha256，唯一索引）、`acceptance_token_expires_at`、`acceptance_generation_run_id`；`generated_app_submissions` 有 `origin`（`public` / `gate-acceptance`，默认 `public`）与 `generation_run_id`，`public_share_token` 对验收提交为 `null`。签发、按令牌取应用与验收提交的写入见 ADR-0007 §6。
+- 公开控制器 `GeneratedAppPublicController` 挂在 `/api/v1/generated-apps/public`，整体 `@Public()`，且该路径被排除在 `TenantMiddleware` 之外。按 token 查找应用时先按公开分享令牌（同时要求 `publicShareEnabled`、`status = 'published'` 且仍满足发布条件），再按未过期的 Gate 5 验收令牌，都不满足返回 404。
+- 终端用户提交（`POST /public/:token/submissions`）：按 AppSpec 表单严格校验输入（未知字段、类型、必填、长度、范围、选项，不合法直接拒绝）→ 按绑定投影为工作流输入 → `ExecutionService.runWorkflow` 以固定版本执行 → 写入 `generated_app_submissions`（状态 `received` / `running` / `completed` / `failed`，记录匿名会话 id）；执行结束后按 outputMapping 取步骤结果，公开脱敏后写入 `result.sections`。创建者在 `/:appId/submissions` 查看提交，默认排除 Gate 5 验收提交。
+- `generated_apps` 的验收令牌三列 `acceptance_token_hash`（只存 sha256，唯一索引）、`acceptance_token_expires_at`、`acceptance_generation_run_id` 由 Gate 5 签发与撤销；验收令牌创建的提交 `origin = 'gate-acceptance'` 并记 `generation_run_id`，不计浏览量，见 ADR-0007 §6。
 
 ## 代码分层
 
@@ -132,15 +141,15 @@ Gate 5 的 `real` 模式（`real-local-browser-contract`）只在服务端执行
 | --- | --- | --- |
 | HTTP | `generated-app.controller.ts` | 认证路由（`GeneratedAppController`）与公开路由（`GeneratedAppPublicController`） |
 | 门面 | `generated-app.service.ts` | 控制器唯一依赖的入口，把调用分派给下列服务 |
-| 编排 | `generated-app-generation-orchestrator.service.ts` | 生成运行与门禁序列 |
-| 修复 | `generated-app-generation-repair.service.ts` | 修复尝试的创建、完成与上下文解析 |
-| 门禁 runner | `generated-app.workspace.ts`、`generated-app.integration-runner.ts`、`generated-app.browser-acceptance-runner.ts`、`generated-app.independent-verifier-runner.ts`、`generated-app.publish-candidate-runner.ts` | `gate-3` 至 `gate-7` 的执行 |
-| 计划 | `plan-builders/*.builder.ts` | 各门禁的计划与评估函数 |
-| 规则 | `generated-app.gates.ts`、`generated-app.app-spec.util.ts`、`generated-app.plan-validation.util.ts` | 门禁定义、就绪度计算、AppSpec 构造与校验（纯函数） |
-| 产物 | `generated-app-artifact.service.ts` | 产物清单与内容读取 |
-| 运行时 | `generated-app-runtime-binding.service.ts`、`generated-app.runtime.ts`、`generated-app.runtime-binding.util.ts` | 工作流/插件绑定、公开运行表单与本地评估 |
-| 公开运行 | `generated-app-public-runtime.service.ts`、`generated-app-public-submission.util.ts`、`generated-app.public-sanitizer.util.ts` | 公开链接、提交、对外数据脱敏 |
+| 编排 | `generated-app-generation-pipeline.service.ts`、`generated-app-generation.worker.ts`、`generated-app-generation.constants.ts`、`generated-app-generation-terminal.util.ts` | 排队、worker 执行 Gate 0–7、终态保护 |
+| Gate 0 | `generated-app-gate0.service.ts`、`generated-app-spec-generator.service.ts`、`generated-app-binding-resolver.service.ts`、`generated-app.app-spec-prompt.ts` | AppSpec 生成与绑定解析 |
+| Gate 1–7 | `generated-app.gate1-generation-plan.ts` 至 `generated-app.gate7-publish-candidate.ts`、`generated-app-browser-acceptance.dispatcher.ts`、`generated-app.gate-v2.util.ts`、`generated-app.v2-tokens.ts` | 各门禁的执行、执行级别与注入 |
+| 修复 | `generated-app-generation-repair.service.ts` | 失败运行的修复工单 |
+| 规则 | `generated-app.gates.ts`、`generated-app.app-spec.util.ts`、`generated-app.plan-validation.util.ts` | 门禁定义、就绪度计算、AppSpec 补全与校验（纯函数） |
+| 产物 | `generated-app-artifact.service.ts` | 工作区文件清单与内容、Gate 5 截图/trace 预签名链接 |
+| 运行时 | `generated-app-runtime-binding.service.ts`、`generated-app.runtime.ts`、`generated-app.runtime-binding.util.ts` | 运行时工作流、公开表单构建与提交校验、投影与结果抽取 |
+| 公开运行 | `generated-app-public-runtime.service.ts`、`generated-app-public-submission.util.ts`、`generated-app.public-sanitizer.util.ts` | 公开链接、验收令牌、提交、对外数据脱敏 |
 | 持久化 | `generated-app.repository.ts` | 所有表读写；公开链接发布条件 `assertCanEnablePublicShare` |
-| 类型与 DTO | `types/`、`dto/` | 领域类型与 Zod DTO |
+| 类型与 DTO | `types/`、`dto/` | 领域类型、AppSpec v2 与浏览器任务契约、Zod DTO |
 
-表中文件均位于 `agentloom-server/src/modules/generated-app/` 下。相关表：`generated_apps`、`generated_app_generation_runs`、`generated_app_gate_runs`、`generated_app_repair_attempts`、`generated_app_submissions`，列定义见 [数据库](/dev/server/database)。
+表中文件均位于 `agentloom-server/src/modules/generated-app/` 下；browser-runner 进程在 `agentloom-server/src/modules/generated-app-browser-runner/`。相关表：`generated_apps`、`generated_app_generation_runs`、`generated_app_gate_runs`、`generated_app_repair_attempts`、`generated_app_submissions`，列定义见 [数据库](/dev/server/database)。

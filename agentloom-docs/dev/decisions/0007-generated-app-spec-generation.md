@@ -4,7 +4,7 @@ docType: explanation
 
 # 0007 生成应用 v2：模型生成 AppSpec、按规格渲染表单、绑定真实工作流/Agent、Playwright 验收
 
-- 状态：提议
+- 状态：已实施
 - 日期：2026-10-20
 
 用户操作见 [生成应用](/guide/generated-apps/)，服务端现状见 [生成应用（服务端）](/dev/server/generated-apps)。本篇记录 v2 为什么这样设计。
@@ -38,7 +38,7 @@ docType: explanation
 | 调用 | `OutputFormatService.executeStructuredOutput`，`outputSchema = JSON.stringify(z.toJSONSchema(GeneratedAppSpecDraftSchema, { io: 'input' }))`，strictness strict、允许降级到 L2；超时 `APP_GENERATED_APP_SPEC_TIMEOUT_MS`（默认 120000）经 AbortSignal 取消 | 新写一套结构化输出：重复 F6 已有能力 |
 | 提示词 | `generated-app.app-spec-prompt.ts` 中文系统提示：角色与输出规则（只能用候选 id、字段 id camelCase、每条需求给出可执行的浏览器步骤与具体填写值、医疗/法律等高风险领域不输出诊断或建议类字段）；用户消息 = prompt 原文 + 候选目录 JSON（≤20 个、≤16KB，含输入字段与输出节点）+ 上一次的问题列表 | — |
 | 失败与自我修复 | Zod/引用/绑定解析的问题列表作为反馈重试，同一 Gate 0 内最多 `GENERATED_APP_SPEC_MAX_ATTEMPTS`（3）次；仍失败则 Gate 0 失败，failure 带问题列表、用量、模型输出前 2000 字符（脱敏）。原始输出不另存 | **失败即放弃**：结构化输出偶发不合规，带具体问题重试的成功率高 |
-| v1 存量 | 迁移把 v1 应用的公开分享关闭；v1 规格读取时 Gate 0 判 `app-spec-legacy-template`，下一次运行自动重新生成。删除 v1 模板、医疗/通用固定字段与本地 deterministic 报告 | **保留 v1 运行路径**：两套运行时并存，且 v1 本身就是缺陷 |
+| v1 存量 | 迁移 0089 把 v1 应用的公开分享关闭，0090 清空 v1 的 `app_spec` 与 `generation_plan`，下一次运行由 Gate 0 按需求重新生成。删除 v1 类型、模板、医疗/通用固定字段与本地 deterministic 报告 | **保留 v1 运行路径**：两套运行时并存，且 v1 本身就是缺陷 |
 
 ### 2. 表单字段模型
 
@@ -51,7 +51,7 @@ docType: explanation
 | 绑定目标 | 已发布工作流或已发布 Agent。创建 DTO 可选 `bindingTarget`；省略时候选为本租户最近更新的已发布工作流（排除生成应用运行时工作流）与 Agent，最多 20 个，模型从中选 id；候选为空 → `app-spec-binding-candidates-empty` | **生成新工作流**：模型拼图的可靠性无法由门禁证明，且与「调用上述工作流」的需求不符 |
 | 工作流输入映射 | 每个表单字段映射到固定版本快照 `inputSchema` 的一个字段：每个 required 输入都被映射，类型兼容（text/textarea→text、number→number、选择→同类型且选项是子集）；工作流无 `inputSchema` 时映射到顶层 `inputParams` 键 | — |
 | 工作流输出映射 | 每个结果分区对应固定版本快照中一个 `text-output` / `json-output` 节点，`json-output` 可取一个键（`path`） | **沿用白名单抽取全部步骤输出**：无法对应到页面分区，也无法断言 |
-| Agent 绑定 | Gate 7 构建并发布包装工作流 manual-trigger → agent（`agentDefinitionId` 固定版本）→ text-output，`inputSchema` 由表单字段生成，表单值以 JSON 作为用户消息；结果视图恰好一个分区承接回复。包装工作流 metadata 标 `generatedAppId`，删除应用时归档（D-150） | **直接调 Agent 对话 API**：提交、执行、结果、计费会分成两套路径 |
+| Agent 绑定 | Gate 4 构建并发布包装工作流 manual-trigger → agent（`agentDefinitionId` 固定版本）→ text-output，`inputSchema` 由表单字段生成，表单值以 JSON 作为用户消息；结果视图恰好一个分区承接回复。包装工作流 metadata 标 `generatedAppId`，删除应用时归档（D-150）。实施时由原定的 Gate 7 提前到 Gate 4：Gate 5 的验收提交要经它执行，Gate 7 只复用同一 AppSpec 对应的已发布版本 | **直接调 Agent 对话 API**：提交、执行、结果、计费会分成两套路径 |
 | 版本 | 生成时固定已发布版本（`workflowVersionId` / `agentVersionId`），Gate 4 复核，Gate 7 记录；公开提交以 `runWorkflow(…, { workflowVersionId })` 执行固定版本。源工作流重新发布后应用不受影响，要采用新版本需重新运行生成；runtime-binding-readiness 新增 `workflow_version_drift`（提示，不阻断） | **跟随最新发布**：上游改了 inputSchema 会让已发布应用直接 422，与 ADR-0006 的版本冻结原则相反 |
 | 结果 | 提交执行结束后按 outputMapping 取步骤结果，经公开脱敏后写入 submission `result.sections`；执行失败只给公开可见的通用原因 | — |
 
@@ -59,14 +59,14 @@ docType: explanation
 
 | Gate | v2 校验内容 | 失败码（Gate 内部，不是 HTTP 错误） |
 | --- | --- | --- |
-| 0 需求规格 | 生成（按需）→ `GeneratedAppSpecV2Schema` → 绑定解析（目标存在、已发布、创建者可访问、映射与快照兼容）；证据含模型 id、尝试次数、用量 | `app-spec-model-unavailable` / `app-spec-binding-candidates-empty` / `app-spec-model-output-invalid` / `app-spec-binding-invalid` / `app-spec-generation-timeout` / `app-spec-legacy-template` |
+| 0 需求规格 | 生成（按需）→ `GeneratedAppSpecV2Schema` → 绑定解析（目标存在、已发布、创建者可访问、映射与快照兼容）；证据含模型 id、尝试次数、用量 | `app-spec-model-unavailable` / `app-spec-binding-candidates-empty` / `app-spec-model-output-invalid` / `app-spec-binding-invalid` / `app-spec-generation-timeout` |
 | 1 架构计划 | `planVersion: 2`：需求 → 场景 → 字段/结果分区 → 绑定的覆盖矩阵，不含固定字段 | `generation-plan-coverage-gap` |
 | 2 静态合约 | 公开输入 JSON Schema 由表单生成；结果合约由分区生成；与固定版本 `inputSchema` 的兼容性；Agent 绑定的包装工作流图经现有图结构校验 | `static-contract-mismatch` |
-| 3 构建与单元 | 工作区由 v2 物化（`app-spec.ts`、`runtime-form.ts`），contract 测试对每个 requirement 场景：步骤值通过提交校验，投影后的 `inputParams` 通过 `validateSubmissionAgainstWorkflowInputSchema` | 沿用 Gate 3 现有码 |
-| 4 集成 | 不执行：重新解析绑定（仍发布、固定版本存在、创建者仍有权限、Agent 模型配置可用）；包装工作流走发布校验链 | `binding-drifted` / `binding-unavailable` |
+| 3 构建与单元 | 工作区由 v2 物化（`app-spec.ts`、`runtime-form.ts`、`static-contracts.ts`），contract 测试对每个 requirement 场景：步骤值通过提交校验，投影后的 `inputParams` 通过 `validateSubmissionAgainstWorkflowInputSchema`；另有未知字段、缺必填字段两个拒绝用例 | `gate-3-workspace-materialization-failed` / `gate-3-command-failed` |
+| 4 集成 | 不执行：重新解析绑定（仍发布、固定版本仍是当前版本、创建者仍有权限、Agent 模型配置可用）；Agent 绑定在此创建并发布包装工作流，走发布校验链 | `binding-drifted` / `binding-unavailable` |
 | 5 浏览器验收 | Playwright 真实执行每个 requirement 场景 × 桌面/移动视口：打开公开页 → 按步骤填写/选择 → 提交 → 等待执行结束 → 断言结果分区；收集 console error、同源失败请求、截图与 trace | `gate-5-browser-runner-unavailable` / `gate-5-browser-runner-timeout` / `gate-5-browser-launch-failed` / `gate-5-scenario-failed` |
 | 6 独立审查 | 确定性复核证据：每条 prompt 需求至少一个场景在两个视口都通过、无 console error、无公开 API 失败请求、结果分区非空、artifact 在对象存储中存在 | `verifier-blocking-finding` |
-| 7 发布候选 | manifest（AppSpec sha256、固定绑定版本、各 Gate 证据 id、artifact key）；Agent 绑定创建/发布包装工作流；写 `workflow_definition_id` 与固定版本 | 沿用 Gate 7 现有码 |
+| 7 发布候选 | manifest（AppSpec sha256、固定绑定版本、各 Gate 证据 id、artifact key）；`ensureRuntimeWorkflow` 写 `workflow_definition_id`（工作流绑定为被绑定工作流，Agent 绑定复用 Gate 4 的包装工作流）；fixture 结果不放行 | `gate-7-fixture-not-publish-candidate` / `gate-7-publish-candidate-contract-blocked` |
 
 Gate 6 不调用模型做主观评审：主观评分不可复现，且真实执行与断言已在 Gate 5 完成。各 runner 的执行模式收敛为 `real` / `fixture` / `disabled`，删除 `real-local-*` 执行级别与 `real-browser-e2e` 别名。
 
