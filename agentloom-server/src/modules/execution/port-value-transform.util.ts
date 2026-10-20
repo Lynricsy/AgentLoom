@@ -25,6 +25,7 @@ export const PORT_VALUE_TRANSFORMS: Readonly<
     } catch (error) {
       throw new Error(
         `文本不是合法 JSON（${error instanceof Error ? error.message : String(error)}）`,
+        { cause: error },
       );
     }
   },

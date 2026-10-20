@@ -813,7 +813,7 @@ export class AgentTaskWorker extends WorkerHost {
     let chunkIndex = 0;
     let toolCalls: ToolCallEvent[] = [];
     let segments: ConversationMessageSegmentRecord[] = [];
-    let loopUsage: { usageCalls?: AgentUsage[]; modelId?: string } = {};
+    let loopUsage: { usageCalls?: AgentUsage[]; modelId?: string };
     const effectiveAutonomyMode =
       await this.runtimeService.resolveEffectiveAutonomyMode(
         tenantId,
