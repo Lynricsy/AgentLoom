@@ -14,6 +14,7 @@ docType: index
 | [0004](/dev/decisions/0004-team-runtime) | 受控团队运行时：成员即对话、回合边界递送、team_messages 即 Outbox | 已实施 | 2026-10-15 |
 | [0005](/dev/decisions/0005-a2a-inbound) | A2A 入站适配：复用 Agent 对外 API 的薄协议层 | 已实施 | 2026-10-15 |
 | [0006](/dev/decisions/0006-evidence-driven-optimization) | 证据驱动配置优化：提案 → 回放评测 → 审批发布 → 回滚 | 已实施 | 2026-10-16 |
+| [0007](/dev/decisions/0007-generated-app-spec-generation) | 生成应用 v2：模型生成 AppSpec、按规格渲染表单、绑定真实工作流/Agent、Playwright 验收 | 提议 | 2026-10-20 |
 
 ## 模板
 
