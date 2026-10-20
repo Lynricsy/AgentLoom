@@ -5,6 +5,7 @@ import { MfaRequiredException } from '../../common/exceptions/auth.exceptions';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { TokenBlacklistService } from '../../common/services/token-blacklist.service';
+import { UserIdentityResolverService } from '../../common/services/user-identity-resolver.service';
 import type { AcpAuthContext } from './acp-types';
 
 @Injectable()
@@ -16,6 +17,8 @@ export class AcpAuthenticationService {
     private readonly configService: ConfigService,
     @Inject(TokenBlacklistService)
     private readonly tokenBlacklistService: TokenBlacklistService,
+    @Inject(UserIdentityResolverService)
+    private readonly userIdentityResolver: UserIdentityResolverService,
   ) {
     this.jwtSecret = this.configService.get<string>('APP_JWT_SECRET')!;
   }
@@ -49,9 +52,19 @@ export class AcpAuthenticationService {
       }
 
       const payload = this.normalizePayload(verified);
+      // 与 HTTP AuthGuard 一致：JWT sub 是 Supabase auth ID，组织成员与业务表都按应用层 users.id 关联，
+      // 角色校验（AcpAccessService）需要后者
+      const appUserId = await this.userIdentityResolver.resolveAppUserId(
+        payload.sub,
+      );
+      if (!appUserId) {
+        throw this.createInvalidTokenException(
+          'User account not found in application',
+        );
+      }
 
       return {
-        userId: payload.sub,
+        userId: appUserId,
         email: payload.email,
         tenantId: payload.tenantId,
         tenantRole: payload.tenantRole,

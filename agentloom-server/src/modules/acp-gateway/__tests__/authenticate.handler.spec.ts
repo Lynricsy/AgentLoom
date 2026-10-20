@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
 import { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
+import { UserIdentityResolverService } from '../../../common/services/user-identity-resolver.service';
 import { AuthenticateHandler } from '../handlers/authenticate.handler';
 import { AcpAuthenticationService } from '../acp-authentication.service';
 import type { AcpConnectionState } from '../acp-types';
@@ -29,6 +30,13 @@ async function createModule() {
   const tokenBlacklistService = {
     checkToken: vi.fn().mockResolvedValue('active'),
   };
+  const userIdentityResolver = {
+    resolveAppUserId: vi
+      .fn()
+      .mockImplementation(async (supabaseUserId: string) =>
+        supabaseUserId === 'user-1' ? 'app-user-1' : null,
+      ),
+  };
 
   const moduleRef: TestingModule = await Test.createTestingModule({
     providers: [
@@ -50,18 +58,24 @@ async function createModule() {
         provide: TokenBlacklistService,
         useValue: tokenBlacklistService,
       },
+      {
+        provide: UserIdentityResolverService,
+        useValue: userIdentityResolver,
+      },
     ],
   }).compile();
 
   return {
     handler: moduleRef.get(AuthenticateHandler),
     tokenBlacklistService,
+    userIdentityResolver,
   };
 }
 
 describe('AuthenticateHandler', () => {
-  it('应复用 JWT 语义并将认证上下文绑定到连接状态', async () => {
-    const { handler, tokenBlacklistService } = await createModule();
+  it('应复用 JWT 语义，把 Supabase sub 映射为应用用户 id 并绑定到连接状态', async () => {
+    const { handler, tokenBlacklistService, userIdentityResolver } =
+      await createModule();
     const state: AcpConnectionState = {
       initialized: true,
     };
@@ -80,13 +94,34 @@ describe('AuthenticateHandler', () => {
     expect(tokenBlacklistService.checkToken).toHaveBeenCalledOnce();
     expect(result).toEqual({ authenticated: true });
     expect(state.authContext).toEqual({
-      userId: 'user-1',
+      userId: 'app-user-1',
       email: 'user@example.com',
       tenantId: 'tenant-1',
       tenantRole: 'owner',
       orgId: 'org-1',
       authMethod: 'jwt',
     });
+    expect(userIdentityResolver.resolveAppUserId).toHaveBeenCalledWith(
+      'user-1',
+    );
+  });
+
+  it('应在 sub 没有对应应用用户时拒绝认证（与 HTTP AuthGuard 一致）', async () => {
+    const { handler } = await createModule();
+    const state: AcpConnectionState = {
+      initialized: true,
+    };
+
+    await expect(
+      handler.handle(
+        { token: createAccessToken({ sub: 'unknown-supabase-user' }) },
+        state,
+      ),
+    ).rejects.toMatchObject({
+      type: 'https://agentloom.dev/errors/token-invalid',
+      detail: 'User account not found in application',
+    });
+    expect(state.authContext).toBeUndefined();
   });
 
   it('应在 token 被撤销时拒绝认证且不污染连接状态', async () => {

@@ -6,6 +6,8 @@ import type { AcpConnectionState } from '../acp-types';
 
 const AGENT_ID = '01a15400-65d7-7252-86ee-3b411e23ebc2';
 const VERSION_ID = '01a15400-65d7-7252-86ee-3b411e23ebc3';
+const EXECUTION_ID = '019391d4-e000-7000-0000-000000000005';
+const CONVERSATION_ID = '019391d4-f000-7000-0000-000000000006';
 const RUNTIME_CONFIG = {
   runtimeMode: 'no_sandbox',
   modelConfig: { modelId: 'model-config-1' },
@@ -32,12 +34,13 @@ const PUBLISHED_VERSION = {
 };
 
 describe('SessionNewHandler', () => {
-  /** 事务内依次返回 agent 行与已发布版本行 */
+  /** 事务内依次返回 agent 行、已发布版本行，以及 serverSandbox 绑定校验各次查询的行 */
   function createMockDb(
     agentRows: AgentRow[] = [PUBLISHED_AGENT],
     versionRows: unknown[] = [PUBLISHED_VERSION],
+    bindingRows: unknown[][] = [],
   ) {
-    const queue = [agentRows, versionRows];
+    const queue = [agentRows, versionRows, ...bindingRows];
     const select = vi.fn(() => ({
       from: () => ({
         where: () => ({
@@ -84,12 +87,17 @@ describe('SessionNewHandler', () => {
     };
   }
 
+  function createAccessService() {
+    return { assertPermission: vi.fn().mockResolvedValue(undefined) };
+  }
+
   /** 依赖均以 `as never` 注入，测试只需提供要断言的 mock */
   function createHandler(options: {
     db?: unknown;
     runtime?: unknown;
     mcpSessionService?: unknown;
     agentDefinitionService?: unknown;
+    accessService?: unknown;
   }) {
     return new SessionNewHandler(
       (options.db ?? createMockDb()) as never,
@@ -97,6 +105,7 @@ describe('SessionNewHandler', () => {
       (options.mcpSessionService ?? createMcpSessionService()) as never,
       (options.agentDefinitionService ??
         createAgentDefinitionService()) as never,
+      (options.accessService ?? createAccessService()) as never,
     );
   }
 
@@ -114,10 +123,13 @@ describe('SessionNewHandler', () => {
     const runtime = createRuntime();
     const mcpSessionService = createMcpSessionService();
     const agentDefinitionService = createAgentDefinitionService();
+    const accessService = createAccessService();
     const handler = createHandler({
+      db: createMockDb(undefined, undefined, [[{ id: EXECUTION_ID }]]),
       runtime,
       mcpSessionService,
       agentDefinitionService,
+      accessService,
     });
     const state = createState();
 
@@ -192,6 +204,11 @@ describe('SessionNewHandler', () => {
         executionId: '019391d4-e000-7000-0000-000000000005',
       },
     });
+    // 绑定执行沙箱等同 HTTP 的执行控制
+    expect(accessService.assertPermission).toHaveBeenCalledWith(
+      state,
+      'execution:control',
+    );
   });
 
   it('画布未声明系统提示词时回退到快照 systemPrompt', async () => {
@@ -266,17 +283,20 @@ describe('SessionNewHandler', () => {
     expect(runtime.createSession).not.toHaveBeenCalled();
   });
 
-  it('应接受仅包含 agentConversationId 的 serverSandbox 绑定', async () => {
+  it('应接受属于同一 Agent 的 agentConversationId 绑定', async () => {
     const runtime = createRuntime('session-conv');
-    const handler = createHandler({ runtime });
+    const accessService = createAccessService();
+    const handler = createHandler({
+      db: createMockDb(undefined, undefined, [[{ agentId: AGENT_ID }]]),
+      runtime,
+      accessService,
+    });
 
     await expect(
       handler.handle(
         {
           agentId: AGENT_ID,
-          serverSandbox: {
-            agentConversationId: '019391d4-f000-7000-0000-000000000006',
-          },
+          serverSandbox: { agentConversationId: CONVERSATION_ID },
         } as never,
         createState(),
       ),
@@ -286,12 +306,59 @@ describe('SessionNewHandler', () => {
 
     expect(runtime.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        serverSandbox: {
-          agentConversationId: '019391d4-f000-7000-0000-000000000006',
-        },
+        serverSandbox: { agentConversationId: CONVERSATION_ID },
       }),
     );
+    expect(accessService.assertPermission).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      '对话属于另一个 Agent',
+      { agentConversationId: CONVERSATION_ID },
+      [[{ agentId: '01a15400-65d7-7252-86ee-3b411e23ffff' }]],
+      'server_sandbox_binding_agent_mismatch',
+    ],
+    [
+      '对话不存在（或属于其他租户，RLS 下同样查不到）',
+      { agentConversationId: CONVERSATION_ID },
+      [[]],
+      'server_sandbox_binding_not_found',
+    ],
+    [
+      '对话 id 不是 UUID',
+      { agentConversationId: 'not-a-uuid' },
+      [],
+      'server_sandbox_binding_not_found',
+    ],
+    [
+      '执行不存在',
+      { executionId: EXECUTION_ID },
+      [[]],
+      'server_sandbox_binding_not_found',
+    ],
+  ])(
+    'serverSandbox 绑定校验失败（%s）时返回 -32602 且不创建会话（D-199）',
+    async (_label, serverSandbox, bindingRows, reason) => {
+      const runtime = createRuntime();
+      const handler = createHandler({
+        db: createMockDb(undefined, undefined, bindingRows),
+        runtime,
+      });
+
+      await expect(
+        handler.handle(
+          { agentId: AGENT_ID, serverSandbox } as never,
+          createState(),
+        ),
+      ).rejects.toMatchObject({
+        code: -32602,
+        message: 'Invalid params',
+        data: { reason },
+      });
+      expect(runtime.createSession).not.toHaveBeenCalled();
+    },
+  );
 
   it('ACP MCP bootstrap 失败时应回滚 runtime session 并且不注册连接级 session', async () => {
     const runtime = createRuntime('session-001');

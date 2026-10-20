@@ -11,6 +11,8 @@ import {
   agentDefinitions,
   agentVersions,
 } from '../../../database/schema/agent-definitions.schema';
+import { agentConversations } from '../../../database/schema/agent-conversations.schema';
+import { workflowExecutions } from '../../../database/schema/workflow-executions.schema';
 import { AgentNotPublishedException } from '../../agent-api/agent-api.exceptions';
 import {
   AgentArchivedException,
@@ -24,6 +26,7 @@ import type {
   ServerSandboxBinding,
 } from '../../agent/types/agent-session.types';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
+import { AcpAccessService } from '../services/acp-access.service';
 import { AcpSessionMcpRegistryService } from '../services/acp-session-mcp-registry.service';
 import type {
   AcpConnectionState,
@@ -31,6 +34,10 @@ import type {
   AcpSessionNewResult,
   AcpTrackedSession,
 } from '../acp-types';
+
+/** Postgres uuid 列接受的形状（不校验版本与变体位），挡住会让查询报语法错误的非法 id */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -45,6 +52,7 @@ export class SessionNewHandler {
     private readonly moduleRef: ModuleRef,
     private readonly mcpSessionService: AcpSessionMcpRegistryService,
     private readonly agentDefinitionService: AgentDefinitionService,
+    private readonly accessService: AcpAccessService,
   ) {}
 
   async handle(
@@ -64,6 +72,15 @@ export class SessionNewHandler {
           tenantId,
           normalizedParams.agentId,
         );
+        if (normalizedParams.serverSandbox !== undefined) {
+          await this.assertServerSandboxBinding(
+            tx,
+            state,
+            tenantId,
+            normalizedParams.agentId,
+            normalizedParams.serverSandbox,
+          );
+        }
         const session = await this.getAgentRuntime().createSession({
           agentId: normalizedParams.agentId,
           mode: 'conversation',
@@ -224,6 +241,71 @@ export class SessionNewHandler {
         : {}),
       ...(systemPrompt ? { systemPrompt } : {}),
     };
+  }
+
+  /**
+   * serverSandbox 绑定在创建会话时校验，规则对齐 HTTP（路由器已校验 agent:run）：
+   * - 对话：同租户内存在，且属于本会话的 Agent，否则任一已发布的 no_sandbox Agent 都能操作别的 Agent 的沙箱。
+   *   HTTP 对话接口按组织共享、不区分创建者（发消息、PTY 写入只要求 agent:run），这里同样不要求是调用者自己的对话。
+   * - 执行：同租户内存在；操作执行沙箱对应 HTTP 的执行控制（终端写入等），另需 execution:control。
+   */
+  private async assertServerSandboxBinding(
+    tx: DrizzleDB,
+    state: AcpConnectionState,
+    tenantId: string,
+    agentId: string,
+    binding: ServerSandboxBinding,
+  ): Promise<void> {
+    const { agentConversationId, executionId } = binding;
+
+    if (agentConversationId !== undefined) {
+      const [conversation] = UUID_PATTERN.test(agentConversationId)
+        ? await tx
+            .select({ agentId: agentConversations.agentDefinitionId })
+            .from(agentConversations)
+            .where(
+              and(
+                eq(agentConversations.id, agentConversationId),
+                eq(agentConversations.tenantId, tenantId),
+              ),
+            )
+            .limit(1)
+        : [];
+      if (!conversation) {
+        throw new AcpJsonRpcError(-32602, 'Invalid params', {
+          agentConversationId,
+          reason: 'server_sandbox_binding_not_found',
+        });
+      }
+      if (conversation.agentId !== agentId) {
+        throw new AcpJsonRpcError(-32602, 'Invalid params', {
+          agentConversationId,
+          reason: 'server_sandbox_binding_agent_mismatch',
+        });
+      }
+    }
+
+    if (executionId !== undefined) {
+      const [execution] = UUID_PATTERN.test(executionId)
+        ? await tx
+            .select({ id: workflowExecutions.id })
+            .from(workflowExecutions)
+            .where(
+              and(
+                eq(workflowExecutions.id, executionId),
+                eq(workflowExecutions.tenantId, tenantId),
+              ),
+            )
+            .limit(1)
+        : [];
+      if (!execution) {
+        throw new AcpJsonRpcError(-32602, 'Invalid params', {
+          executionId,
+          reason: 'server_sandbox_binding_not_found',
+        });
+      }
+      await this.accessService.assertPermission(state, 'execution:control');
+    }
   }
 
   private getAgentRuntime(): IAgentRuntime {

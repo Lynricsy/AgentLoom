@@ -32,8 +32,18 @@ flowchart LR
 
 1. 未完成 `initialize` 时，除 `initialize` 外的请求返回 `-32001 Server not initialized`；通知被丢弃。
 2. `session/*`、`terminal/*`、`fs/*` 要求连接已经 `authenticate` 成功，否则返回 `-32002 Authentication required`。
-3. 除 `initialized` 与 `session/cancel` 外，以通知形式（无 `id`）发送的方法返回 `-32600 Invalid Request`。
-4. 未知方法返回 `-32601 Method not found`（通知则静默忽略）。
+3. 除 `session/cancel` 外，上述方法每次调用都做角色校验（见下文「权限」），失败返回 `-32000`，`data.type` 为 `insufficient-permissions`（`data.status` 403）。
+4. 除 `initialized` 与 `session/cancel` 外，以通知形式（无 `id`）发送的方法返回 `-32600 Invalid Request`。
+5. 未知方法返回 `-32601 Method not found`（通知则静默忽略）。
+
+### 权限
+
+ACP 与 HTTP 对话接口使用同一套角色判定（`agentloom-contracts/src/rbac.ts`，实现在 `agentloom-server/src/modules/acp-gateway/services/acp-access.service.ts`）：
+
+- `authenticate` 把 JWT 的 Supabase `sub` 映射为应用用户 id（找不到对应用户返回 `-32000 token-invalid`）。
+- 除 `session/cancel` 外的 `session/*`、`terminal/*`、`fs/*` 需要 `agent:run`（owner / admin / creator / operator）。角色每次从组织成员表经 Redis 缓存读取，JWT 里的 `tenant_role` 声明不作数；同一连接重新认证为低权限用户后，连接里已有的会话也随之不可操作。`session/cancel` 只做清理，不校验角色。
+- 会话按组织共享，与 HTTP 对话接口一致：不要求是调用者自己创建的对话。
+- 缺少租户上下文时返回 `-32002 Authentication required`。
 
 对通知产生的任何错误都不回写。
 
@@ -47,7 +57,7 @@ flowchart LR
 | `initialized` | 通知 | 路由器内联 | 无 | 仅记录已收到，无响应 |
 | `authenticate` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/authenticate.handler.ts` | `token`：Supabase 签发的 JWT | 认证上下文 |
 | `session/new` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-new.handler.ts` | `agentId`（当前租户内已发布、未归档的 `no_sandbox` Agent）、`cwd?`（必须为绝对路径）、`mcpServers?`、`serverSandbox?`（`executionId` 或 `agentConversationId`） | `{ sessionId }` |
-| `session/load` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-load.handler.ts` | `sessionId` | 先重放历史，再响应 |
+| `session/load` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-load.handler.ts` | `sessionId` | 先重放历史，再响应 `{ sessionId, releasedTerminalIds? }` |
 | `session/prompt` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-prompt.handler.ts` | `sessionId`、`content`（ContentBlock 数组） | `{ stopReason }` |
 | `session/cancel` | 通知或请求 | `agentloom-server/src/modules/acp-gateway/handlers/session-cancel.handler.ts` | `sessionId` | 请求形式回包 `result: null`；通知形式不回包 |
 | `terminal/create` | 请求 | `agentloom-server/src/modules/acp-gateway/handlers/acp-terminal.handler.ts` | `sessionId`、命令、`cwd?`、`mode?` | `terminalId` |
@@ -76,7 +86,9 @@ flowchart LR
 
 ### 会话与持久化
 
-`session/new` 在租户事务中按 `agentId` 读取 Agent：不存在、不是 UUID 或属于其他租户返回 `-32000`（`data.type` 为 `agent-not-found`），已归档为 `agent-archived`，未发布为 `agent-not-published`；`sandbox` 运行态的 Agent 返回 `-32602`（`data.reason` 为 `Only no_sandbox agents can run over ACP`），因为 ACP 会话由进程内运行时执行，不能绕过沙箱。通过校验后，网关用已发布版本快照经 `AgentDefinitionService.buildRuntimeConfigFromNodes` 编译运行配置（模型、画布工具与知识库绑定），系统提示词取画布解析结果，缺省时取快照的 `systemPrompt`，据此创建 `conversation` 模式的运行时会话，再通过 `AcpSessionMcpRegistryService` 注册客户端提供的 MCP 工具。记忆、技能、子 Agent 等对话执行器（`agent-execution`）注册的工具不在 ACP 会话中提供。会话状态持久化到 `acp_conversation_sessions`（`agentloom-server/src/database/schema/acp-conversation-sessions.schema.ts`，列含 `session_snapshot`、`replay_entries`）。
+`session/new` 在租户事务中按 `agentId` 读取 Agent：不存在、不是 UUID 或属于其他租户返回 `-32000`（`data.type` 为 `agent-not-found`），已归档为 `agent-archived`，未发布为 `agent-not-published`；`sandbox` 运行态的 Agent 返回 `-32602`（`data.reason` 为 `Only no_sandbox agents can run over ACP`），因为 ACP 会话由进程内运行时执行，不能绕过沙箱；相对路径的 `cwd` 返回不带 `reason` 的 `-32602 Invalid params`。`serverSandbox` 绑定在创建时校验：`agentConversationId` 必须是本租户内**属于同一 Agent** 的对话，`executionId` 必须是本租户内的工作流执行，且绑定执行另需 `execution:control`；不存在返回 `-32602`（`data.reason` 为 `server_sandbox_binding_not_found`），对话属于其他 Agent 返回 `-32602`（`server_sandbox_binding_agent_mismatch`）。绑定校验只看记录归属，沙箱本身是否在运行要到 `terminal/*`、`fs/*` 使用时才检查（不可用时返回 `-32004 sandbox_session_unavailable`）。通过校验后，网关用已发布版本快照经 `AgentDefinitionService.buildRuntimeConfigFromNodes` 编译运行配置（模型、画布工具与知识库绑定），系统提示词取画布解析结果，缺省时取快照的 `systemPrompt`，据此创建 `conversation` 模式的运行时会话，再通过 `AcpSessionMcpRegistryService` 注册客户端提供的 MCP 工具。记忆、技能、子 Agent 等对话执行器（`agent-execution`）注册的工具不在 ACP 会话中提供。会话状态持久化到 `acp_conversation_sessions`（`agentloom-server/src/database/schema/acp-conversation-sessions.schema.ts`，列含 `session_snapshot`、`replay_entries`）。
+
+协议形状是 AgentLoom 自定义的，与公开 ACP 规范不同：`session/prompt` 用 `content`（不是 `prompt`），`agent_message_chunk.content` 是字符串而非 ContentBlock，`initialize` 使用日期型 `protocolVersion` 并在 `serverInfo.capabilities` 返回能力。现成的标准 ACP 客户端不能直接对接。
 
 `session/load` 在返回响应**之前**，把每条持久化重放条目作为 `session/update` 通知发出（`update.replayed = true`），随后恢复 MCP 工具与终端。租户不匹配或会话模式不对时返回 `-32602`，`data.reason` 为 `Session not found`。
 
@@ -94,7 +106,9 @@ flowchart LR
 | `session/request_permission` | 请求 | 工具调用进入 `awaiting_permission` 时发出；`params: { sessionId, toolCall, options }` |
 | `fs/read_text_file` / `fs/write_text_file` | 请求 | 仅 `client_proxy` 模式，服务端把文件操作转发给客户端执行（`agentloom-server/src/modules/acp-gateway/services/acp-filesystem-proxy.service.ts`） |
 
-`session/request_permission` 的选项 id 为 `allow-once`、`allow-always`、`reject-once`、`reject-always`。客户端应答 `{ outcome: 'selected', optionId }` 或 `{ outcome: 'cancelled' }`。`allow-*` 映射为批准、`reject-*` 映射为拒绝；`always` 不会被持久记住，每次调用都会再次询问。
+`session/request_permission` 的选项 id 为 `allow-once`、`allow-always`、`reject-once`、`reject-always`。客户端应答的 `result` 是嵌套结构 `{ outcome: { outcome: 'selected', optionId } }` 或 `{ outcome: { outcome: 'cancelled' } }`（与 ACP 规范一致）；扁平的 `{ outcome: 'selected', optionId }` 不合法，触发请求返回 `-32603 Invalid permission response from ACP client`。`allow-*` 映射为批准、`reject-*` 映射为拒绝；`always` 不会被持久记住，每次调用都会再次询问。
+
+`client_proxy` 模式下客户端对 `fs/*` 代理请求回错误时，服务端把客户端的错误码与消息原样透传给原请求（例如客户端回 `-32601`，原请求也得到 `-32601`）；只有代理通道本身失败才返回 `-32603`。
 
 `session/update` 只由服务端发出，不存在入站的 `session/update` 方法。
 

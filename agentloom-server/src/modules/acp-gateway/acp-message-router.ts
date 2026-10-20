@@ -17,6 +17,7 @@ import { SessionCancelHandler } from './handlers/session-cancel.handler';
 import { SessionLoadHandler } from './handlers/session-load.handler';
 import { SessionNewHandler } from './handlers/session-new.handler';
 import { SessionPromptHandler } from './handlers/session-prompt.handler';
+import { AcpAccessService } from './services/acp-access.service';
 
 @Injectable()
 export class AcpMessageRouter {
@@ -29,6 +30,7 @@ export class AcpMessageRouter {
     private readonly sessionCancelHandler: SessionCancelHandler,
     private readonly terminalHandler: AcpTerminalHandler,
     private readonly filesystemHandler: AcpFilesystemHandler,
+    private readonly accessService: AcpAccessService,
   ) {}
 
   async routeMessage(
@@ -82,6 +84,15 @@ export class AcpMessageRouter {
 
       if (this.requiresAuthentication(request) && !state.authContext) {
         throw new AcpJsonRpcError(-32002, 'Authentication required');
+      }
+
+      // 与 HTTP 对话接口同一权限：发起与操作 Agent 会话（含会话绑定沙箱的终端与文件）需要 agent:run。
+      // session/cancel 只做清理，断开连接时网关也要靠它释放终端，不做角色校验。
+      if (
+        this.requiresAuthentication(request) &&
+        request.method !== 'session/cancel'
+      ) {
+        await this.accessService.assertPermission(state, 'agent:run');
       }
 
       if (request.method === 'session/new') {

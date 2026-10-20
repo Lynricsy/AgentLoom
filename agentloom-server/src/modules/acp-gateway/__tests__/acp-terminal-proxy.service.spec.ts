@@ -370,7 +370,10 @@ describe('AcpTerminalProxyService', () => {
       service.readTerminalOutput({ terminalId }, trackedSession),
     ).resolves.toMatchObject({ output: 'line-1\n', nextOffset: 7 });
     await expect(
-      service.waitForTerminalExit({ terminalId, timeoutMs: 10 }, trackedSession),
+      service.waitForTerminalExit(
+        { terminalId, timeoutMs: 10 },
+        trackedSession,
+      ),
     ).rejects.toMatchObject({
       code: -32004,
       data: { reason: 'terminal_wait_timeout', timeoutMs: 10 },
@@ -1130,8 +1133,7 @@ describe('AcpTerminalProxyService', () => {
   });
 
   it('session cleanup 时 kill 失败仍丢弃记录并持久化空 continuity，再报告失败（D-200）', async () => {
-    const { service, sandboxTerminalService, runtimeSession } =
-      createService();
+    const { service, sandboxTerminalService, runtimeSession } = createService();
     const trackedSession = createTrackedSession();
     sandboxTerminalService.createTerminal.mockResolvedValue({
       execId: 'exec-reaped',

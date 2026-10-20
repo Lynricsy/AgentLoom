@@ -45,6 +45,12 @@ const TEST_AGENT_ID =
 const TEST_AGENT_VERSION_ID =
   process.env.ACP_TEST_AGENT_VERSION_ID ??
   '99999999-9999-4999-8999-999999999999';
+// 角色从 organization_members 读取（与 HTTP RolesGuard 一致），JWT 的 tenant_role 不作数（D-199）
+const TEST_VIEWER_USER_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const TEST_VIEWER_SUPABASE_USER_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+// 另一个 Agent 的对话：ACP 会话不得绑定别的 Agent 的沙箱（D-199）
+const TEST_OTHER_AGENT_CONVERSATION_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const TEST_OTHER_AGENT_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const SANDBOX_SESSION_CWD = '/workspace/demo';
 const MCP_STDIO_FIXTURE_PATH = path.join(
   SERVER_DIR,
@@ -80,7 +86,8 @@ function createAccessToken(payload) {
     {
       aud: 'authenticated',
       email: 'user@example.com',
-      sub: 'user-1',
+      // sub 是 Supabase auth ID，网关按 users.supabase_user_id 映射到应用用户
+      sub: TEST_SUPABASE_USER_ID,
       ...payload,
     },
     TEST_JWT_SECRET,
@@ -113,7 +120,8 @@ function createAcpChildEnv(databaseUrl, sandboxWorkspaceRoot) {
   const env = {
     NODE_ENV: 'test',
     ACP_TEST_FAKE_RUNTIME: '1',
-    ACP_TEST_TERMINAL_TIMEOUT_MS: '500',
+    // 存活超时要留出 D-198 用例在运行中读输出、超时等待与并发上限的时间
+    ACP_TEST_TERMINAL_TIMEOUT_MS: '3000',
     ACP_TEST_SANDBOX_WORKSPACE_ROOT: sandboxWorkspaceRoot,
     // mcpServers 场景用 stdio fixture；stdio MCP 默认关闭，需显式开启
     APP_MCP_STDIO_ENABLED: 'true',
@@ -642,8 +650,33 @@ async function runScenario() {
         snapshot jsonb NOT NULL
       )
     `);
+    // RbacCacheService 读取的最小列集合（D-199：ACP 与 HTTP 同一角色判定）
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS organizations (
+        id uuid PRIMARY KEY,
+        tenant_id uuid NOT NULL
+      )
+    `);
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS organization_members (
+        organization_id uuid NOT NULL,
+        user_id uuid NOT NULL,
+        role text NOT NULL,
+        PRIMARY KEY (organization_id, user_id)
+      )
+    `);
+    // SessionNewHandler 校验 serverSandbox.agentConversationId 归属读取的最小列集合
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS agent_conversations (
+        id uuid PRIMARY KEY,
+        agent_definition_id uuid NOT NULL,
+        tenant_id uuid NOT NULL
+      )
+    `);
     await sql.unsafe(`GRANT SELECT ON agent_definitions TO authenticated`);
     await sql.unsafe(`GRANT SELECT ON agent_versions TO authenticated`);
+    await sql.unsafe(`GRANT SELECT ON agent_conversations TO authenticated`);
+    await sql.unsafe(`GRANT SELECT ON workflow_executions TO authenticated`);
     await sql.unsafe(
       `GRANT SELECT, INSERT, UPDATE, DELETE ON revoked_tokens TO authenticated`,
     );
@@ -665,21 +698,49 @@ async function runScenario() {
     await sql`DELETE FROM workflow_definitions WHERE id = ${TEST_WORKFLOW_DEFINITION_ID}`;
     await sql`DELETE FROM agent_versions WHERE id = ${TEST_AGENT_VERSION_ID}`;
     await sql`DELETE FROM agent_definitions WHERE id = ${TEST_AGENT_ID}`;
+    await sql`DELETE FROM agent_conversations WHERE id = ${TEST_OTHER_AGENT_CONVERSATION_ID}`;
+    await sql`DELETE FROM organization_members WHERE organization_id = ${TEST_ORG_ID}`;
+    await sql`DELETE FROM organizations WHERE id = ${TEST_ORG_ID}`;
 
     await sql`
       INSERT INTO auth.users (id)
-      VALUES (${TEST_SUPABASE_USER_ID})
+      VALUES (${TEST_SUPABASE_USER_ID}), (${TEST_VIEWER_SUPABASE_USER_ID})
       ON CONFLICT (id) DO NOTHING
     `;
     await sql`
       INSERT INTO users (id, supabase_user_id, email, display_name)
-      VALUES (
-        ${TEST_CREATED_BY_USER_ID},
-        ${TEST_SUPABASE_USER_ID},
-        ${'sandbox-owner@example.com'},
-        ${'Sandbox Owner'}
-      )
+      VALUES
+        (
+          ${TEST_CREATED_BY_USER_ID},
+          ${TEST_SUPABASE_USER_ID},
+          ${'sandbox-owner@example.com'},
+          ${'Sandbox Owner'}
+        ),
+        (
+          ${TEST_VIEWER_USER_ID},
+          ${TEST_VIEWER_SUPABASE_USER_ID},
+          ${'viewer@example.com'},
+          ${'Viewer'}
+        )
       ON CONFLICT (id) DO NOTHING
+    `;
+    await sql`
+      INSERT INTO organizations (id, tenant_id)
+      VALUES (${TEST_ORG_ID}, ${TEST_TENANT_ID})
+    `;
+    await sql`
+      INSERT INTO organization_members (organization_id, user_id, role)
+      VALUES
+        (${TEST_ORG_ID}, ${TEST_CREATED_BY_USER_ID}, ${'owner'}),
+        (${TEST_ORG_ID}, ${TEST_VIEWER_USER_ID}, ${'viewer'})
+    `;
+    await sql`
+      INSERT INTO agent_conversations (id, agent_definition_id, tenant_id)
+      VALUES (
+        ${TEST_OTHER_AGENT_CONVERSATION_ID},
+        ${TEST_OTHER_AGENT_ID},
+        ${TEST_TENANT_ID}
+      )
     `;
     await sql`
       INSERT INTO agent_definitions (
@@ -1139,6 +1200,114 @@ async function runScenario() {
       );
       const terminalLoadCreateResponse = await stdout.nextJson(10_000);
 
+      // D-198：长命令的 terminal/create 在进程启动后立即返回；运行中可读输出，
+      // wait_for_exit 超时、并发上限与 kill 都作用于仍在运行的进程
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(120, 'session/new', {
+          agentId: TEST_AGENT_ID,
+          cwd: SANDBOX_SESSION_CWD,
+          serverSandbox: {
+            executionId: TEST_EXECUTION_ID,
+          },
+        }),
+      );
+      const { response: longTerminalSessionNewResponse } =
+        await collectUntilResponse(child, stdout, 120, {
+          timeoutMs: 10_000,
+        });
+      const longTerminalSessionId =
+        longTerminalSessionNewResponse.result.sessionId;
+      const longTerminalCreateParams = {
+        sessionId: longTerminalSessionId,
+        command: 'node',
+        // 参数里不能有 `;`（终端策略按 shell 注入拒绝），用逗号表达式
+        args: [
+          '-e',
+          "process.stdout.write('tick'),setTimeout(() => {}, 10000)",
+        ],
+        mode: 'server_sandbox',
+      };
+      const longTerminalCreateStartedAt = Date.now();
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(121, 'terminal/create', longTerminalCreateParams),
+      );
+      const longTerminalCreateResponse = await stdout.nextJson(10_000);
+      const longTerminalCreateElapsedMs =
+        Date.now() - longTerminalCreateStartedAt;
+      const longTerminalId = longTerminalCreateResponse.result?.terminalId;
+
+      let longTerminalRunningOutputResponse;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        await writeJsonRpc(
+          child,
+          createJsonRpcRequest(122, 'terminal/output', {
+            sessionId: longTerminalSessionId,
+            terminalId: longTerminalId,
+          }),
+        );
+        longTerminalRunningOutputResponse = await stdout.nextJson(10_000);
+        if (longTerminalRunningOutputResponse.result?.output === 'tick') {
+          break;
+        }
+        await new Promise((resolve) => {
+          setTimeout(resolve, 25);
+        });
+      }
+
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(123, 'terminal/wait_for_exit', {
+          sessionId: longTerminalSessionId,
+          terminalId: longTerminalId,
+          timeoutMs: 100,
+        }),
+      );
+      const longTerminalWaitTimeoutResponse = await stdout.nextJson(10_000);
+
+      const longTerminalExtraCreateResponses = [];
+      for (let index = 0; index < 4; index += 1) {
+        await writeJsonRpc(
+          child,
+          createJsonRpcRequest(
+            124 + index,
+            'terminal/create',
+            longTerminalCreateParams,
+          ),
+        );
+        longTerminalExtraCreateResponses.push(await stdout.nextJson(10_000));
+      }
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(128, 'terminal/create', longTerminalCreateParams),
+      );
+      const longTerminalLimitResponse = await stdout.nextJson(10_000);
+
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(129, 'terminal/kill', {
+          sessionId: longTerminalSessionId,
+          terminalId: longTerminalId,
+        }),
+      );
+      const longTerminalKillResponse = await stdout.nextJson(10_000);
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(130, 'terminal/wait_for_exit', {
+          sessionId: longTerminalSessionId,
+          terminalId: longTerminalId,
+        }),
+      );
+      const longTerminalKilledWaitResponse = await stdout.nextJson(10_000);
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(131, 'session/cancel', {
+          sessionId: longTerminalSessionId,
+        }),
+      );
+      const longTerminalCancelResponse = await stdout.nextJson(10_000);
+
       await writeJsonRpc(
         child,
         createJsonRpcRequest(60, 'fs/read_text_file', {
@@ -1594,6 +1763,157 @@ async function runScenario() {
       );
       const revokedResponse = await stdout.nextJson(10_000);
 
+      // D-199：角色每次从 organization_members 读取，JWT 的 tenant_role 声明不作数；
+      // 同一连接重新认证为 viewer 后，连接里已有的会话也不能再操作
+      const viewerToken = createAccessToken({
+        sub: TEST_VIEWER_SUPABASE_USER_ID,
+        org_id: TEST_ORG_ID,
+        tenant_id: TEST_TENANT_ID,
+        tenant_role: 'owner',
+        jti: crypto.randomUUID(),
+      });
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(140, 'authenticate', { token: viewerToken }),
+      );
+      const viewerAuthResponse = await stdout.nextJson(10_000);
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(141, 'session/new', {
+          agentId: TEST_AGENT_ID,
+          cwd: SANDBOX_SESSION_CWD,
+          serverSandbox: {
+            executionId: TEST_EXECUTION_ID,
+          },
+        }),
+      );
+      const viewerSessionNewResponse = await stdout.nextJson(10_000);
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(142, 'terminal/create', {
+          sessionId,
+          command: 'node',
+          args: ['-e', '0'],
+          mode: 'server_sandbox',
+        }),
+      );
+      const viewerTerminalCreateResponse = await stdout.nextJson(10_000);
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(143, 'fs/read_text_file', {
+          sessionId,
+          path: './notes/sandbox.txt',
+          mode: 'server_sandbox',
+        }),
+      );
+      const viewerSandboxReadResponse = await stdout.nextJson(10_000);
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(144, 'session/prompt', {
+          sessionId,
+          content: [{ type: 'text', text: 'viewer 不应能调用模型' }],
+        }),
+      );
+      const viewerPromptResponse = await stdout.nextJson(10_000);
+
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(145, 'authenticate', { token: secondValidToken }),
+      );
+      const ownerReauthResponse = await stdout.nextJson(10_000);
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(146, 'session/new', {
+          agentId: TEST_AGENT_ID,
+          cwd: SANDBOX_SESSION_CWD,
+          serverSandbox: {
+            agentConversationId: TEST_OTHER_AGENT_CONVERSATION_ID,
+          },
+        }),
+      );
+      const otherAgentBindingResponse = await stdout.nextJson(10_000);
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(147, 'session/new', {
+          agentId: TEST_AGENT_ID,
+          cwd: SANDBOX_SESSION_CWD,
+          serverSandbox: {
+            executionId: crypto.randomUUID(),
+          },
+        }),
+      );
+      const missingExecutionBindingResponse = await stdout.nextJson(10_000);
+
+      // D-200：连接留有未释放的终端就断开（关闭 stdin），新连接仍能 session/load
+      const disconnectProcess = spawnAcpProcess(
+        DATABASE_URL,
+        sandboxWorkspaceRoot,
+      );
+      let disconnectSessionId;
+      let disconnectTerminalCreateResponse;
+      let disconnectExitCode;
+      try {
+        await initializeAndAuthenticate(
+          disconnectProcess.child,
+          disconnectProcess.stdout,
+          validToken,
+          150,
+          151,
+        );
+        await writeJsonRpc(
+          disconnectProcess.child,
+          createJsonRpcRequest(152, 'session/new', {
+            agentId: TEST_AGENT_ID,
+            cwd: SANDBOX_SESSION_CWD,
+            serverSandbox: {
+              executionId: TEST_EXECUTION_ID,
+            },
+          }),
+        );
+        const { response: disconnectSessionNewResponse } =
+          await collectUntilResponse(
+            disconnectProcess.child,
+            disconnectProcess.stdout,
+            152,
+            { timeoutMs: 10_000 },
+          );
+        disconnectSessionId = disconnectSessionNewResponse.result.sessionId;
+        await writeJsonRpc(
+          disconnectProcess.child,
+          createJsonRpcRequest(153, 'terminal/create', {
+            sessionId: disconnectSessionId,
+            command: 'node',
+            args: ['-e', 'setInterval(() => {}, 1000)'],
+            mode: 'server_sandbox',
+          }),
+        );
+        disconnectTerminalCreateResponse =
+          await disconnectProcess.stdout.nextJson(10_000);
+        const exited = once(disconnectProcess.child, 'exit');
+        disconnectProcess.child.stdin.end();
+        [disconnectExitCode] = await Promise.race([
+          exited,
+          new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(
+                new Error(
+                  `ACP stdio child did not exit after stdin closed. stderr: ${disconnectProcess.getStderr()}`,
+                ),
+              );
+            }, 15_000);
+          }),
+        ]);
+      } finally {
+        disconnectProcess.stdout.close();
+        await stopChild(disconnectProcess.child);
+      }
+      const disconnectKilledAuditRows = await sql`
+        SELECT event_type, metadata
+        FROM audit_logs
+        WHERE event_type = 'acp.terminal.server_sandbox.killed'
+          AND resource_id = ${disconnectSessionId}
+      `;
+
       loadProcess = spawnAcpProcess(DATABASE_URL, sandboxWorkspaceRoot);
       const {
         initializeResponse: loadInitializeResponse,
@@ -1622,13 +1942,53 @@ async function runScenario() {
         },
       );
 
+      // D-200：终端仍在另一个网关进程（child）里，本进程加载时把它视为已释放并告知客户端
       await writeJsonRpc(
         loadProcess.child,
         createJsonRpcRequest(94, 'session/load', {
           sessionId: terminalLoadSessionId,
         }),
       );
-      const loadTerminalFailClosedResponse =
+      const { response: loadTerminalReleasedResponse } =
+        await collectUntilResponse(loadProcess.child, loadProcess.stdout, 94, {
+          timeoutMs: 10_000,
+        });
+      await writeJsonRpc(
+        loadProcess.child,
+        createJsonRpcRequest(95, 'terminal/output', {
+          sessionId: terminalLoadSessionId,
+          terminalId: terminalLoadCreateResponse.result.terminalId,
+        }),
+      );
+      const loadReleasedTerminalOutputResponse =
+        await loadProcess.stdout.nextJson(10_000);
+      const continuityDroppedAuditRows = await sql`
+        SELECT event_type, metadata
+        FROM audit_logs
+        WHERE event_type = 'acp.terminal.server_sandbox.continuity_dropped'
+          AND resource_id = ${terminalLoadSessionId}
+      `;
+
+      await writeJsonRpc(
+        loadProcess.child,
+        createJsonRpcRequest(154, 'session/load', {
+          sessionId: disconnectSessionId,
+        }),
+      );
+      const { response: loadAfterDisconnectResponse } =
+        await collectUntilResponse(loadProcess.child, loadProcess.stdout, 154, {
+          timeoutMs: 10_000,
+        });
+      await writeJsonRpc(
+        loadProcess.child,
+        createJsonRpcRequest(155, 'terminal/create', {
+          sessionId: disconnectSessionId,
+          command: 'node',
+          args: ['-e', "process.stdout.write('after-load')"],
+          mode: 'server_sandbox',
+        }),
+      );
+      const loadAfterDisconnectTerminalCreateResponse =
         await loadProcess.stdout.nextJson(10_000);
 
       await writeJsonRpc(
@@ -1775,6 +2135,15 @@ async function runScenario() {
         terminalKilledAuditRows,
         terminalLoadSessionNewResponse,
         terminalLoadCreateResponse,
+        longTerminalCreateResponse,
+        longTerminalCreateElapsedMs,
+        longTerminalRunningOutputResponse,
+        longTerminalWaitTimeoutResponse,
+        longTerminalExtraCreateResponses,
+        longTerminalLimitResponse,
+        longTerminalKillResponse,
+        longTerminalKilledWaitResponse,
+        longTerminalCancelResponse,
         sandboxReadResponse,
         fsReadServerRequests: fsReadConversation.serverRequests,
         fsReadNotifications: fsReadConversation.notifications,
@@ -1825,12 +2194,27 @@ async function runScenario() {
         invalidIdResponse,
         secondValidAuthResponse,
         revokedResponse,
+        viewerAuthResponse,
+        viewerSessionNewResponse,
+        viewerTerminalCreateResponse,
+        viewerSandboxReadResponse,
+        viewerPromptResponse,
+        ownerReauthResponse,
+        otherAgentBindingResponse,
+        missingExecutionBindingResponse,
+        disconnectTerminalCreateResponse,
+        disconnectExitCode,
+        disconnectKilledAuditRows,
         loadInitializeResponse,
         loadInitializedNotificationSilent,
         loadAuthResponse,
         loadNotifications: loadConversation.notifications,
         loadResponse: loadConversation.response,
-        loadTerminalFailClosedResponse,
+        loadTerminalReleasedResponse,
+        loadReleasedTerminalOutputResponse,
+        continuityDroppedAuditRows,
+        loadAfterDisconnectResponse,
+        loadAfterDisconnectTerminalCreateResponse,
         loadFsReadServerRequests: loadFsReadConversation.serverRequests,
         loadFsReadNotifications: loadFsReadConversation.notifications,
         loadFsReadResponse: loadFsReadConversation.response,

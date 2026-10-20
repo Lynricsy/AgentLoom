@@ -97,7 +97,37 @@ type AcpStdioScenarioResult = {
   }>;
   terminalLoadSessionNewResponse?: JsonRpcResponse;
   terminalLoadCreateResponse?: JsonRpcResponse;
-  loadTerminalFailClosedResponse?: JsonRpcResponse;
+  longTerminalCreateResponse?: JsonRpcResponse;
+  longTerminalCreateElapsedMs?: number;
+  longTerminalRunningOutputResponse?: JsonRpcResponse;
+  longTerminalWaitTimeoutResponse?: JsonRpcResponse;
+  longTerminalExtraCreateResponses?: JsonRpcResponse[];
+  longTerminalLimitResponse?: JsonRpcResponse;
+  longTerminalKillResponse?: JsonRpcResponse;
+  longTerminalKilledWaitResponse?: JsonRpcResponse;
+  longTerminalCancelResponse?: JsonRpcResponse;
+  viewerAuthResponse?: JsonRpcResponse;
+  viewerSessionNewResponse?: JsonRpcResponse;
+  viewerTerminalCreateResponse?: JsonRpcResponse;
+  viewerSandboxReadResponse?: JsonRpcResponse;
+  viewerPromptResponse?: JsonRpcResponse;
+  ownerReauthResponse?: JsonRpcResponse;
+  otherAgentBindingResponse?: JsonRpcResponse;
+  missingExecutionBindingResponse?: JsonRpcResponse;
+  disconnectTerminalCreateResponse?: JsonRpcResponse;
+  disconnectExitCode?: number | null;
+  disconnectKilledAuditRows?: Array<{
+    event_type: string;
+    metadata: Record<string, unknown>;
+  }>;
+  loadTerminalReleasedResponse?: JsonRpcResponse;
+  loadReleasedTerminalOutputResponse?: JsonRpcResponse;
+  continuityDroppedAuditRows?: Array<{
+    event_type: string;
+    metadata: Record<string, unknown>;
+  }>;
+  loadAfterDisconnectResponse?: JsonRpcResponse;
+  loadAfterDisconnectTerminalCreateResponse?: JsonRpcResponse;
   sandboxReadResponse?: JsonRpcResponse;
   fsReadServerRequests?: JsonRpcRequest[];
   fsReadNotifications?: JsonRpcNotification[];
@@ -291,6 +321,23 @@ async function runAcpStdioScenario(
   };
 }
 
+function readTerminalId(response: JsonRpcResponse | undefined): string {
+  if (
+    response &&
+    'result' in response &&
+    typeof response.result === 'object' &&
+    response.result !== null &&
+    'terminalId' in response.result &&
+    typeof response.result.terminalId === 'string'
+  ) {
+    return response.result.terminalId;
+  }
+
+  throw new Error(
+    `Expected a terminal/create result: ${JSON.stringify(response)}`,
+  );
+}
+
 describe('ACP stdio E2E', () => {
   let container: StartedPostgreSqlContainer;
 
@@ -308,7 +355,7 @@ describe('ACP stdio E2E', () => {
     await container.stop();
   }, 30_000);
 
-  it('应通过 stdio 处理 terminal 主链、mcpServers lifecycle、session/load fail-closed、协议协商与 stdout hygiene', async () => {
+  it('应通过 stdio 处理 terminal 主链（含运行中长命令）、角色校验、mcpServers lifecycle、跨连接 session/load、协议协商与 stdout hygiene', async () => {
     const { exitCode, stderr, result } = await runAcpStdioScenario(
       container.getConnectionUri(),
     );
@@ -1073,6 +1120,114 @@ describe('ACP stdio E2E', () => {
       },
     });
 
+    // D-198：create 不等命令结束；运行中读到输出，wait 超时、并发上限与 kill 作用于运行中的进程
+    expect(result.longTerminalCreateResponse).toMatchObject({
+      id: 121,
+      result: { terminalId: expect.any(String) },
+    });
+    expect(result.longTerminalCreateElapsedMs).toBeLessThan(1_000);
+    expect(result.longTerminalRunningOutputResponse).toMatchObject({
+      id: 122,
+      result: { output: 'tick', nextOffset: 4, truncated: false },
+    });
+    expect(result.longTerminalWaitTimeoutResponse).toMatchObject({
+      id: 123,
+      error: {
+        code: -32004,
+        message: 'ACP terminal wait timed out',
+        data: { reason: 'terminal_wait_timeout', timeoutMs: 100 },
+      },
+    });
+    expect(
+      result.longTerminalExtraCreateResponses?.map((response) =>
+        'result' in response ? 'created' : response.error.code,
+      ),
+    ).toEqual(['created', 'created', 'created', 'created']);
+    expect(result.longTerminalLimitResponse).toMatchObject({
+      id: 128,
+      error: {
+        code: -32004,
+        data: { reason: 'terminal_session_limit_exceeded' },
+      },
+    });
+    expect(result.longTerminalKillResponse).toMatchObject({
+      id: 129,
+      result: { success: true },
+    });
+    expect(result.longTerminalKilledWaitResponse).toMatchObject({
+      id: 130,
+      result: { status: 'killed', signal: 'TERM' },
+    });
+    expect(result.longTerminalCancelResponse).toMatchObject({
+      id: 131,
+      result: null,
+    });
+
+    // D-199：与 HTTP 同一角色判定（agent:run 仅 operator 及以上），JWT 里的 tenant_role 不作数
+    expect(result.viewerAuthResponse).toMatchObject({
+      id: 140,
+      result: { authenticated: true },
+    });
+    const insufficientPermissions = {
+      code: -32000,
+      data: {
+        status: 403,
+        type: 'https://agentloom.dev/errors/insufficient-permissions',
+      },
+    };
+    expect(result.viewerSessionNewResponse).toMatchObject({
+      id: 141,
+      error: insufficientPermissions,
+    });
+    expect(result.viewerTerminalCreateResponse).toMatchObject({
+      id: 142,
+      error: insufficientPermissions,
+    });
+    expect(result.viewerSandboxReadResponse).toMatchObject({
+      id: 143,
+      error: insufficientPermissions,
+    });
+    expect(result.viewerPromptResponse).toMatchObject({
+      id: 144,
+      error: insufficientPermissions,
+    });
+    expect(result.ownerReauthResponse).toMatchObject({
+      id: 145,
+      result: { authenticated: true },
+    });
+    expect(result.otherAgentBindingResponse).toMatchObject({
+      id: 146,
+      error: {
+        code: -32602,
+        message: 'Invalid params',
+        data: { reason: 'server_sandbox_binding_agent_mismatch' },
+      },
+    });
+    expect(result.missingExecutionBindingResponse).toMatchObject({
+      id: 147,
+      error: {
+        code: -32602,
+        message: 'Invalid params',
+        data: { reason: 'server_sandbox_binding_not_found' },
+      },
+    });
+
+    // D-200：连接留着运行中的终端断开，断开清理终止终端后进程正常退出
+    expect(result.disconnectTerminalCreateResponse).toMatchObject({
+      id: 153,
+      result: { terminalId: expect.any(String) },
+    });
+    expect(result.disconnectExitCode).toBe(0);
+    expect(result.disconnectKilledAuditRows).toEqual([
+      {
+        event_type: 'acp.terminal.server_sandbox.killed',
+        metadata: expect.objectContaining({
+          terminalId: readTerminalId(result.disconnectTerminalCreateResponse),
+          reason: 'session_cleanup',
+        }),
+      },
+    ]);
+
     expect(result.loadInitializeResponse).toMatchObject({
       jsonrpc: '2.0',
       id: 12,
@@ -1213,16 +1368,45 @@ describe('ACP stdio E2E', () => {
         terminalId: expect.any(String),
       },
     });
-    expect(result.loadTerminalFailClosedResponse).toMatchObject({
+    // D-200：终端还在另一个网关进程里，本进程加载时视为已释放并在响应中告知
+    const terminalLoadTerminalId = readTerminalId(
+      result.terminalLoadCreateResponse,
+    );
+    expect(result.loadTerminalReleasedResponse).toEqual({
       jsonrpc: '2.0',
       id: 94,
+      result: {
+        sessionId: expect.any(String),
+        releasedTerminalIds: [terminalLoadTerminalId],
+      },
+    });
+    expect(result.loadReleasedTerminalOutputResponse).toMatchObject({
+      id: 95,
       error: {
-        code: -32603,
-        message: 'Failed to restore ACP terminal continuity',
+        code: -32602,
         data: {
-          reason: 'terminal_continuity_unavailable',
+          reason: 'terminal_not_found',
+          terminalId: terminalLoadTerminalId,
         },
       },
+    });
+    expect(result.continuityDroppedAuditRows).toEqual([
+      {
+        event_type: 'acp.terminal.server_sandbox.continuity_dropped',
+        metadata: expect.objectContaining({
+          terminalId: terminalLoadTerminalId,
+        }),
+      },
+    ]);
+    // 断开时清理已持久化空 continuity，新连接加载后会话与沙箱终端照常可用
+    expect(result.loadAfterDisconnectResponse).toEqual({
+      jsonrpc: '2.0',
+      id: 154,
+      result: { sessionId: expect.any(String) },
+    });
+    expect(result.loadAfterDisconnectTerminalCreateResponse).toMatchObject({
+      id: 155,
+      result: { terminalId: expect.any(String) },
     });
 
     expect(result.loadFsReadNotifications).toEqual([]);

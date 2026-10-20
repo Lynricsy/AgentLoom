@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { InsufficientPermissionsException } from '../../../common/exceptions/auth.exceptions';
 import { DomainException } from '../../../common/exceptions/domain.exception';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
 import { AcpMessageRouter } from '../acp-message-router';
@@ -22,6 +23,7 @@ function createRouter(overrides?: {
     handleReadTextFile: ReturnType<typeof vi.fn>;
     handleWriteTextFile: ReturnType<typeof vi.fn>;
   };
+  accessService?: { assertPermission: ReturnType<typeof vi.fn> };
 }) {
   return new AcpMessageRouter(
     (overrides?.initializeHandler ?? { handle: vi.fn() }) as never,
@@ -41,10 +43,109 @@ function createRouter(overrides?: {
       handleReadTextFile: vi.fn(),
       handleWriteTextFile: vi.fn(),
     }) as never,
+    (overrides?.accessService ?? {
+      assertPermission: vi.fn().mockResolvedValue(undefined),
+    }) as never,
   );
 }
 
 describe('AcpMessageRouter', () => {
+  describe('角色校验（D-199）', () => {
+    const authenticatedState = (): AcpConnectionState => ({
+      initialized: true,
+      authContext: {
+        userId: 'viewer-user',
+        email: 'viewer@example.com',
+        tenantId: '11111111-1111-4111-8111-111111111111',
+        authMethod: 'jwt',
+      },
+    });
+
+    it.each([
+      'session/new',
+      'session/load',
+      'session/prompt',
+      'terminal/create',
+      'terminal/output',
+      'terminal/wait_for_exit',
+      'terminal/kill',
+      'terminal/release',
+      'fs/read_text_file',
+      'fs/write_text_file',
+    ])(
+      '%s 要求 agent:run，viewer 得到 -32000 insufficient-permissions 且不进入处理器',
+      async (method) => {
+        const accessService = {
+          assertPermission: vi
+            .fn()
+            .mockRejectedValue(
+              new InsufficientPermissionsException(
+                ['owner', 'admin', 'creator', 'operator'],
+                'viewer',
+              ),
+            ),
+        };
+        const sessionNewHandler = { handle: vi.fn() };
+        const terminalHandler = {
+          handleCreate: vi.fn(),
+          handleOutput: vi.fn(),
+          handleWaitForExit: vi.fn(),
+          handleKill: vi.fn(),
+          handleRelease: vi.fn(),
+        };
+        const router = createRouter({
+          accessService,
+          sessionNewHandler,
+          terminalHandler,
+        });
+        const state = authenticatedState();
+
+        const response = await router.routeMessage(
+          JSON.stringify({ jsonrpc: '2.0', id: 7, method, params: {} }),
+          state,
+        );
+
+        expect(accessService.assertPermission).toHaveBeenCalledWith(
+          state,
+          'agent:run',
+        );
+        expect(response).toMatchObject({
+          id: 7,
+          error: {
+            code: -32000,
+            data: {
+              status: 403,
+              type: 'https://agentloom.dev/errors/insufficient-permissions',
+            },
+          },
+        });
+        expect(sessionNewHandler.handle).not.toHaveBeenCalled();
+        expect(terminalHandler.handleCreate).not.toHaveBeenCalled();
+      },
+    );
+
+    it('session/cancel 只做清理，不做角色校验（断开连接时也靠它释放终端）', async () => {
+      const accessService = { assertPermission: vi.fn() };
+      const sessionCancelHandler = {
+        handle: vi.fn().mockResolvedValue(undefined),
+      };
+      const router = createRouter({ accessService, sessionCancelHandler });
+
+      await expect(
+        router.routeMessage(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 8,
+            method: 'session/cancel',
+            params: { sessionId: 'session-1' },
+          }),
+          authenticatedState(),
+        ),
+      ).resolves.toEqual({ jsonrpc: '2.0', id: 8, result: null });
+      expect(accessService.assertPermission).not.toHaveBeenCalled();
+    });
+  });
+
   it('应返回 initialize 成功响应', async () => {
     const initializeHandler = {
       handle: vi.fn().mockResolvedValue({

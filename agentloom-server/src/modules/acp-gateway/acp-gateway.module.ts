@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { TokenBlacklistModule } from '../../common/services/token-blacklist.module';
 import { DatabaseModule } from '../../database/database.module';
 import { AgentDefinitionModule } from '../agent-definition/agent-definition.module';
@@ -18,6 +19,7 @@ import { SessionCancelHandler } from './handlers/session-cancel.handler';
 import { SessionLoadHandler } from './handlers/session-load.handler';
 import { SessionNewHandler } from './handlers/session-new.handler';
 import { SessionPromptHandler } from './handlers/session-prompt.handler';
+import { AcpAccessService } from './services/acp-access.service';
 import { AcpFilesystemSandboxService } from './services/acp-filesystem-sandbox.service';
 import { AcpFilesystemProxyService } from './services/acp-filesystem-proxy.service';
 import { AcpSessionMcpRegistryService } from './services/acp-session-mcp-registry.service';
@@ -37,6 +39,8 @@ import { ACP_TEST_SANDBOX_RUNTIME_PROVIDER } from './testing/acp-test-sandbox-ru
   providers: [
     ACP_TEST_SANDBOX_RUNTIME_PROVIDER,
     AcpAuthenticationService,
+    RbacCacheService,
+    AcpAccessService,
     SessionPersistenceService,
     AuditLogService,
     InitializeHandler,

@@ -428,7 +428,8 @@ export class AcpTerminalProxyService {
         trackedSession,
         'acp.terminal.server_sandbox.continuity_dropped',
         {
-          summary: 'Released ACP server_sandbox terminal from a previous connection',
+          summary:
+            'Released ACP server_sandbox terminal from a previous connection',
           metadata: {
             terminalId: continuityEntry.terminalId,
             execId: continuityEntry.execId,
