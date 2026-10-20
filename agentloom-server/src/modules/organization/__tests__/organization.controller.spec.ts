@@ -197,9 +197,11 @@ describe('OrganizationController', () => {
     expect(getMethodRoles('createOrganization')).toBeUndefined();
   });
 
-  it('applies owner/admin roles only to organization management routes', () => {
-    expect(getMethodRoles('getOrganization')).toBeUndefined();
-    expect(getMethodRoles('getCurrentOrganization')).toBeUndefined();
+  it('组织读接口要求租户成员身份，管理接口只允许 owner/admin', () => {
+    // 读接口声明全部角色：TenantGuard 要求 tenant，RolesGuard 实时校验成员身份（被移除成员立即 403）
+    const allMemberRoles = ['owner', 'admin', 'creator', 'operator', 'viewer'];
+    expect(getMethodRoles('getOrganization')).toEqual(allMemberRoles);
+    expect(getMethodRoles('getCurrentOrganization')).toEqual(allMemberRoles);
     expect(getMethodRoles('acceptInvitation')).toBeUndefined();
     expect(getMethodRoles('listMembers')).toEqual(['owner', 'admin']);
     expect(getMethodRoles('inviteMember')).toEqual(['owner', 'admin']);
@@ -328,7 +330,10 @@ describe('OrganizationController', () => {
 
   it('matches GET /organizations/current before the parameterized organization route', async () => {
     const organization = createOrganizationRecord({ memberCount: 1 });
-    const { app, organizationService } = await createTestingApp();
+    const { app, organizationService, rbacCacheService } =
+      await createTestingApp();
+    // current 需要成员身份：RolesGuard 经 RbacCacheService 实时查成员表
+    rbacCacheService.getUserRole.mockResolvedValue('viewer');
     organizationService.getCurrentOrganization.mockResolvedValue(organization);
 
     try {

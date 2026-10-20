@@ -9,7 +9,7 @@ docType: howto
 | 入口 | 地址 | 鉴权 | 适合 |
 | --- | --- | --- | --- |
 | Webhook 触发器 | `POST /api/v1/webhooks/:token` | 路径中的 token；签名模式另加 HMAC 签名；GitHub 模式校验 GitHub 签名 | 只能配置一个回调 URL 的第三方系统、GitHub 仓库 |
-| API 事件 | `POST /api/v1/api-events` | 平台 API Token 或 JWT | 你自己的服务，一个事件可同时启动多个工作流 |
+| API 事件 | `POST /api/v1/api-events` | 平台 API Token 或 JWT；需要 `workflow:run` 权限（owner、admin、creator、operator） | 你自己的服务，一个事件可同时启动多个工作流 |
 
 在 Studio 中创建触发器、复制地址与密钥的界面操作见 [Webhook 触发器](/guide/triggers/webhook) 与 [API 事件触发器](/guide/triggers/api-event)。
 
@@ -240,4 +240,7 @@ API 事件的 `source` 为 `github` 时，服务端同样按 GitHub Webhook 规�
 ### 错误
 
 - 缺少 `source` 或 `type` 时，当前版本返回 500 `internal-server-error`，而不是 422。
+- JWT 没有组织上下文：400 `tenant-required`。
+- 调用者（JWT 用户或 Token 签发者）已不是该组织成员，或角色为 viewer：403 `insufficient-permissions`，按成员表实时判定，不看令牌里的 `tenant_role`。
+- 限定了作用域的平台 API Token 不含 `workflow:run`：403 `insufficient-scope`。
 - 凭证错误与限流见 [API 约定](/api/)。

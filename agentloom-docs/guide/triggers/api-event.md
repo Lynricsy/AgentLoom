@@ -11,7 +11,7 @@ docType: howto
 前提：
 
 - 工作流已发布，你的角色是 owner、admin 或 creator。
-- 发送事件的服务持有一个 [API Token](/guide/integrations/api-keys)。
+- 发送事件的服务持有一个 [API Token](/guide/integrations/api-keys)。Token 的签发者必须仍是组织成员且角色不是 viewer（需要 `workflow:run` 权限）；Token 限定了作用域时须包含 `workflow:run`。
 - 工作流定义了 [输入参数](/guide/workflows/input-parameters) 时，事件 `data` 中只有已声明的字段进入启动参数，其余字段（包括 `_eventSource`、`_eventType`）被丢弃；缺少必填字段时启动失败，触发历史记为「失败」。
 
 ## 创建 API Event 触发器

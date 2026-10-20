@@ -634,4 +634,69 @@ describe('API Event ingestion E2E', () => {
     expect(execution?.inputParams).not.toHaveProperty('after');
     expect(execution?.inputParams).not.toHaveProperty('_eventSource');
   });
+
+  it('被移除成员持旧 JWT 投递事件返回 403 且不启动执行，无组织用户返回 400', async () => {
+    const tenant = await seedTenant('api-event-removed');
+    const workflowId = await seedWorkflow(tenant);
+    await seedApiEventTrigger({
+      tenant,
+      workflowId,
+      config: { eventSource: 'generic', eventType: 'invoice.created' },
+    });
+
+    const memberId = crypto.randomUUID();
+    const memberEmail = `api-event-removed-${crypto.randomUUID().slice(0, 8)}@example.com`;
+    await seedAppUser(ctx.adminSql, memberId, memberEmail);
+    await seedMember(
+      ctx.adminSql,
+      tenant.organizationId,
+      memberId,
+      'operator',
+      tenant.userId,
+    );
+    // 移除前签发的 JWT 仍带该组织的 tenant claim
+    const staleToken = signTenantToken(memberId, memberEmail, tenant.tenantId);
+    await ctx.adminSql`
+      DELETE FROM organization_members
+      WHERE organization_id = ${tenant.organizationId}::uuid
+        AND user_id = ${memberId}::uuid
+    `;
+
+    const payload = { source: 'generic', type: 'invoice.created', data: {} };
+    const removed = await app.inject({
+      method: 'POST',
+      url: '/api/v1/api-events',
+      headers: { authorization: `Bearer ${staleToken}` },
+      payload,
+    });
+
+    expect(removed.statusCode).toBe(403);
+    expect(removed.json()).toMatchObject({
+      type: 'https://agentloom.dev/errors/insufficient-permissions',
+    });
+    expect(executionQueueAdd).not.toHaveBeenCalled();
+
+    const noTenantToken = jwt.sign(
+      {
+        sub: memberId,
+        email: memberEmail,
+        aud: 'authenticated',
+        jti: crypto.randomUUID(),
+      },
+      JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '1h' },
+    );
+    const noTenant = await app.inject({
+      method: 'POST',
+      url: '/api/v1/api-events',
+      headers: { authorization: `Bearer ${noTenantToken}` },
+      payload,
+    });
+
+    expect(noTenant.statusCode).toBe(400);
+    expect(noTenant.json()).toMatchObject({
+      type: 'https://agentloom.dev/errors/tenant-required',
+    });
+    expect(executionQueueAdd).not.toHaveBeenCalled();
+  });
 });

@@ -952,6 +952,50 @@ describe('Marketplace E2E', () => {
     });
   });
 
+  it('被移除成员持旧 JWT 或无组织用户提交评论被拒绝，评论不落库', async () => {
+    const owner = await seedTenant('marketplace-review-removed-owner');
+    const reviewerTenant = await seedTenant('marketplace-review-removed-org');
+    const removed = await seedTenantMember({
+      prefix: 'marketplace-review-removed-member',
+      tenantId: reviewerTenant.tenantId,
+      organizationId: reviewerTenant.organizationId,
+      invitedBy: reviewerTenant.user.id,
+      role: 'creator',
+    });
+    const seeded = await seedListedMarketplaceListing({ owner });
+    await ctx.adminSql`
+      DELETE FROM organization_members
+      WHERE organization_id = ${reviewerTenant.organizationId}::uuid
+        AND user_id = ${removed.user.id}::uuid
+    `;
+
+    const staleResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${seeded.listingId}/reviews`)
+      .set(removed.headers)
+      .send({ rating: 1, content: '移除后仍以原组织身份评价' });
+
+    expect(staleResponse.status).toBe(403);
+    expect(staleResponse.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/insufficient-permissions',
+    });
+
+    const noTenantResponse = await request(app.getHttpServer())
+      .post(`${MARKETPLACE_BASE_PATH}/listings/${seeded.listingId}/reviews`)
+      .set(authHeaders(removed.user))
+      .send({ rating: 1, content: '无组织用户评价' });
+
+    expect(noTenantResponse.status).toBe(400);
+    expect(noTenantResponse.body).toMatchObject({
+      type: 'https://agentloom.dev/errors/tenant-required',
+    });
+
+    const reviews = await drizzleDb
+      .select()
+      .from(marketplaceReviews)
+      .where(eq(marketplaceReviews.listingId, seeded.listingId));
+    expect(reviews).toHaveLength(0);
+  });
+
   it('covers submit → list → get → unlist → relist lifecycle', async () => {
     const owner = await seedTenant('marketplace-lifecycle');
     const workflow = await seedWorkflowForMarketplace(

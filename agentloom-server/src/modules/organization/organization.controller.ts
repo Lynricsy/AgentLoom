@@ -56,9 +56,12 @@ export class OrganizationController {
   }
 
   @Get('organizations/current')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取当前租户的组织详情' })
   @ApiResponse({ status: 200, description: '获取成功' })
+  @ApiResponse({ status: 400, description: '缺少租户上下文' })
+  @ApiResponse({ status: 403, description: '不是该组织成员' })
   @ApiResponse({ status: 404, description: '当前租户未关联组织' })
   async getCurrentOrganization(@Req() request: AuthenticatedRequest) {
     const result = await this.organizationService.getCurrentOrganization(
@@ -69,10 +72,13 @@ export class OrganizationController {
   }
 
   @Get('organizations/:id')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: '获取组织详情' })
+  @ApiOperation({ summary: '获取当前租户的组织详情（按 id）' })
   @ApiResponse({ status: 200, description: '获取成功' })
-  @ApiResponse({ status: 404, description: '组织不存在或无权限' })
+  @ApiResponse({ status: 400, description: '缺少租户上下文' })
+  @ApiResponse({ status: 403, description: '不是当前租户组织的成员' })
+  @ApiResponse({ status: 404, description: '组织不存在或不是当前租户的组织' })
   async getOrganization(
     @Param('id') id: string,
     @Req() request: AuthenticatedRequest,

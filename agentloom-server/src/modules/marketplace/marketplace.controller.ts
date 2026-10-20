@@ -168,13 +168,17 @@ export class MarketplaceController {
     return this.marketplaceService.upgradeListing(tenantId, userId, id);
   }
 
+  // 评价按所属租户判定「是否自评」「插件是否已安装」：必须有租户，且实时校验仍是该组织成员
   @Post('listings/:id/reviews')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: '提交 Marketplace listing 用户评论' })
   @ApiResponse({ status: 201, description: '评论提交成功' })
+  @ApiResponse({ status: 400, description: '缺少租户上下文' })
   @ApiResponse({
     status: 403,
-    description: '插件 listing 未安装，或评价本组织发布的 listing',
+    description:
+      '不是该组织成员、插件 listing 未安装，或评价本组织发布的 listing',
   })
   @ApiResponse({ status: 404, description: 'Listing 不存在' })
   @ApiResponse({ status: 409, description: '用户已评论该 listing' })

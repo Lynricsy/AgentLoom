@@ -471,7 +471,9 @@ describe('Organization E2E (testcontainers)', () => {
       const res = await app.inject({
         method: 'GET',
         url: `/api/v1/organizations/${organization.id}`,
-        headers: authHeaders(member),
+        headers: authHeaders(
+          withTenantContext(member, organization.tenant_id, 'viewer'),
+        ),
       });
 
       expect(res.statusCode).toBe(200);
@@ -481,7 +483,7 @@ describe('Organization E2E (testcontainers)', () => {
       expect(body.data.memberCount).toBe(2);
     });
 
-    it('非成员访问返回 404', async () => {
+    it('其他组织的用户访问返回 404', async () => {
       const owner = createTestUser('org-forbidden-owner');
       const outsider = createTestUser('org-forbidden-outsider');
       await seedAppUser(owner.id, owner.email);
@@ -491,11 +493,14 @@ describe('Organization E2E (testcontainers)', () => {
         name: 'Secret Org',
         slug: 'secret-org',
       });
+      const outsiderOrganization = await seedOrganization(outsider.id);
 
       const res = await app.inject({
         method: 'GET',
         url: `/api/v1/organizations/${organization.id}`,
-        headers: authHeaders(outsider),
+        headers: authHeaders(
+          withTenantContext(outsider, outsiderOrganization.tenant_id, 'owner'),
+        ),
       });
 
       expect(res.statusCode).toBe(404);
@@ -508,11 +513,14 @@ describe('Organization E2E (testcontainers)', () => {
     it('组织不存在返回 404', async () => {
       const user = createTestUser('org-missing');
       await seedAppUser(user.id, user.email);
+      const ownOrganization = await seedOrganization(user.id);
 
       const res = await app.inject({
         method: 'GET',
         url: `/api/v1/organizations/${crypto.randomUUID()}`,
-        headers: authHeaders(user),
+        headers: authHeaders(
+          withTenantContext(user, ownOrganization.tenant_id, 'owner'),
+        ),
       });
 
       expect(res.statusCode).toBe(404);
@@ -520,6 +528,83 @@ describe('Organization E2E (testcontainers)', () => {
       expect(body.type).toBe(
         'https://agentloom.dev/errors/organization-not-found',
       );
+    });
+
+    it('JWT 没有 tenant 的用户访问返回 400 tenant-required，即使是组织成员', async () => {
+      const owner = createTestUser('org-no-tenant-owner');
+      const member = createTestUser('org-no-tenant-member');
+      await seedAppUser(owner.id, owner.email);
+      await seedAppUser(member.id, member.email);
+
+      const organization = await seedOrganization(owner.id, {
+        name: 'No Tenant Claim Org',
+      });
+      await seedOrganizationMember(
+        organization.id,
+        member.id,
+        'viewer',
+        owner.id,
+      );
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/v1/organizations/${organization.id}`,
+        headers: authHeaders(member),
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json().type).toBe(
+        'https://agentloom.dev/errors/tenant-required',
+      );
+      expect(res.body).not.toContain('No Tenant Claim Org');
+    });
+
+    it('被移除成员持旧 JWT 访问 current 与 :id 立即返回 403', async () => {
+      const owner = createTestUser('org-removed-owner');
+      const member = createTestUser('org-removed-member');
+      await seedAppUser(owner.id, owner.email);
+      await seedAppUser(member.id, member.email);
+
+      const organization = await seedOrganization(owner.id, {
+        name: 'Removed Member Org',
+      });
+      await seedOrganizationMember(
+        organization.id,
+        member.id,
+        'creator',
+        owner.id,
+      );
+      const staleHeaders = authHeaders(
+        withTenantContext(member, organization.tenant_id, 'creator'),
+      );
+
+      const removeRes = await app.inject({
+        method: 'DELETE',
+        url: `/api/v1/organizations/${organization.id}/members/${member.id}`,
+        headers: authHeaders(
+          withTenantContext(owner, organization.tenant_id, 'owner'),
+        ),
+      });
+      expect(removeRes.statusCode).toBe(204);
+
+      for (const url of [
+        '/api/v1/organizations/current',
+        `/api/v1/organizations/${organization.id}`,
+      ]) {
+        const res = await app.inject({
+          method: 'GET',
+          url,
+          headers: staleHeaders,
+        });
+
+        expect({ url, statusCode: res.statusCode }).toEqual({
+          url,
+          statusCode: 403,
+        });
+        expect(res.json().type).toBe(
+          'https://agentloom.dev/errors/insufficient-permissions',
+        );
+      }
     });
   });
 
