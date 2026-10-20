@@ -73,6 +73,8 @@ docker run -d --name agentloom-e2e-redis -p 127.0.0.1:46379:6379 redis:7-alpine
 E2E_REDIS_URL=redis://127.0.0.1:46379 pnpm test:e2e -- trigger
 ```
 
+每个 E2E 文件在 `beforeAll` 里各起一个 Postgres 容器和 Nest 应用，`vitest.e2e.config.mts` 因此把并发限制为 6 个 worker；宿主空闲时可以用 `E2E_MAX_WORKERS=12` 加快，宿主繁忙出现 `Hook timed out` 时调低，不要改单个钩子的超时。
+
 需要覆盖 `REDIS_CLIENT` 的 spec 统一用 `agentloom-server/test/support/redis-client.mock.ts` 的 `createMockRedisClient()`，不要在 spec 里另写一份：启动路径会调用 `redis.duplicate()`（`AgentExecutionService.onModuleInit` 的订阅连接），缺少它时 `app.init()` 直接抛 `this.redis.duplicate is not a function`。特定行为（如 `set` 的 NX 语义）在 spec 内对返回对象的 `vi.fn()` 继续打桩。
 
 用 `vi.mock('ioredis')` 完全打桩 Redis 的 spec 还必须覆盖全部队列：遍历 `agentloom-server/test/support/bullmq-queues.ts` 的 `BULLMQ_QUEUE_NAMES` 覆盖 `getQueueToken(name)`。`vi.mock` 管不到 bullmq 内部的 ioredis，漏掉的队列会连真实 Redis。新增 `BullModule.registerQueue` 时同步加进这个列表。
