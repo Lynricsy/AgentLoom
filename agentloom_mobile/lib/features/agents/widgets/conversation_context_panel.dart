@@ -19,32 +19,14 @@ class ConversationContextPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!state.hasSandboxRuntime) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerLowest,
-          border: compact
-              ? null
-              : Border(
-                  left: BorderSide(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
-        ),
+      return _ContextPanelSurface(
+        compact: compact,
         child: const _NoSandboxContextState(),
       );
     }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        border: compact
-            ? null
-            : Border(
-                left: BorderSide(
-                  color: Theme.of(context).colorScheme.outlineVariant,
-                ),
-              ),
-      ),
+    return _ContextPanelSurface(
+      compact: compact,
       child: DefaultTabController(
         length: 3,
         child: Column(
@@ -97,6 +79,27 @@ class ConversationContextPanel extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 面板底色必须由 Material 绘制：文件树里的 ListTile 会把选中底色和点击水波纹
+/// 画在最近的 Material 上，若用带底色的 DecoratedBox 包裹，这些效果会被遮住。
+class _ContextPanelSurface extends StatelessWidget {
+  const _ContextPanelSurface({required this.compact, required this.child});
+
+  final bool compact;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surfaceContainerLowest,
+      shape: compact
+          ? null
+          : Border(left: BorderSide(color: colorScheme.outlineVariant)),
+      child: child,
     );
   }
 }
