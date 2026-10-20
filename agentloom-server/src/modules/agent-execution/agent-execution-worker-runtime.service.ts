@@ -1,13 +1,14 @@
 /**
  * Conversation execution 的上下文加载、运行时准备与单轮事件服务。
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import {
   and,
   asc,
+  DrizzleQueryError,
   eq,
   exists,
   inArray,
@@ -30,6 +31,10 @@ import {
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import {
+  INTERNAL_FAILURE_PUBLIC_MESSAGE,
+  UserFacingError,
+} from '../../common/exceptions/public-failure';
 import { isRecoverableAgentRuntimeErrorMessage } from '../agent/agent-runtime-error.utils';
 import { memorySessions, type MemorySession } from '../../database/schema';
 import { AgentAdapterFactory } from '../agent/agent-adapter.factory';
@@ -204,6 +209,9 @@ const DEFAULT_MEMORY_BOOT_URIS = [
   'system://index',
   'system://glossary',
 ];
+
+/** 非运行时上报、但属于网络层流中断的失败：对外只给分类与重试建议，不带原文 */
+const UPSTREAM_STREAM_ABORTED_PUBLIC_MESSAGE = '上游模型流中断，请稍后重试';
 
 import { ConversationTurnFailedError } from './conversation-turn-failed.error';
 import { AgentExecutionWorkerPersistenceService } from './agent-execution-worker-persistence.service';
@@ -897,6 +905,12 @@ export class AgentExecutionWorkerRuntimeService {
     }
   }
 
+  /**
+   * 对话失败原因的对外形态：errorMessage 写入对话元数据、assistant 消息、Socket 事件与
+   * Agent 对外 API 的 run.error.detail，边界见 common/exceptions/public-failure。
+   * 内部异常（数据库、Redis、编程错误等）只给通用文案，也不写 rawErrorMessage（对话元数据对客户端可见），
+   * 原文与堆栈只进服务端日志。
+   */
   public describeConversationExecutionError(error: unknown): {
     errorMessage: string;
     errorCode?: string;
@@ -918,27 +932,45 @@ export class AgentExecutionWorkerRuntimeService {
       };
     }
 
-    if (!(target instanceof Error)) {
+    if (target instanceof HttpException) {
+      return { errorMessage: target.message };
+    }
+
+    // 模型提供方 / Agent 运行时上报的错误：原文对用户有用，按错误码加上分类前缀
+    if (target instanceof UserFacingError) {
+      const errorCode = this.readErrorCode(target);
+      const rawErrorMessage =
+        readStringValue(isRecord(target) ? target['rawMessage'] : undefined) ??
+        target.message;
+
       return {
-        errorMessage:
-          error instanceof Error
-            ? error.message
-            : 'Agent conversation execution failed',
+        errorMessage: this.formatConversationExecutionErrorMessage(
+          errorCode,
+          rawErrorMessage,
+        ),
+        ...(errorCode ? { errorCode } : {}),
+        ...(rawErrorMessage ? { rawErrorMessage } : {}),
       };
     }
 
-    const errorCode = this.readErrorCode(target);
-    const rawErrorMessage =
-      readStringValue(isRecord(target) ? target['rawMessage'] : undefined) ??
-      target.message;
+    this.logger.error(
+      `Agent 对话执行因内部异常失败（对外只返回通用文案）：${
+        target instanceof Error ? target.message : String(target)
+      }`,
+      target instanceof Error ? target.stack : undefined,
+    );
+
+    // 运行时与沙箱之间的流被网络层掐断（undici terminated / socket hang up 等）仍按上游中断提示，
+    // 但不带原文；数据库查询错误的原文含 SQL，可能碰巧命中关键词，排除在外。
+    const upstreamStreamAborted =
+      target instanceof Error &&
+      !(target instanceof DrizzleQueryError) &&
+      this.isUpstreamModelStreamAbort(target.message);
 
     return {
-      errorMessage: this.formatConversationExecutionErrorMessage(
-        errorCode,
-        rawErrorMessage,
-      ),
-      ...(errorCode ? { errorCode } : {}),
-      ...(rawErrorMessage ? { rawErrorMessage } : {}),
+      errorMessage: upstreamStreamAborted
+        ? UPSTREAM_STREAM_ABORTED_PUBLIC_MESSAGE
+        : INTERNAL_FAILURE_PUBLIC_MESSAGE,
     };
   }
 

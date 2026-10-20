@@ -2,6 +2,7 @@
  * Sandbox 容器事件解码边界：把 SSE/JSON-RPC 帧纯函数式转换为 AgentEvent，
  * 不访问会话状态、网络或数据库；调用方显式提供非确定性的回退值。
  */
+import { UserFacingError } from '../../common/exceptions/public-failure';
 import type {
   AgentEvent,
   PtySessionInfo,
@@ -38,7 +39,8 @@ export const SANDBOX_SESSION_LOST_CODE = 'SANDBOX_SESSION_LOST';
 /** tool_call.error 取自失败工具的结果文本（可能是整段命令输出），只保留开头这么多字符 */
 const TOOL_ERROR_MAX_CHARS = 1000;
 
-export class SandboxPromptError extends Error {
+/** guest 运行时上报的本轮错误（含模型提供方错误、会话丢失原因），message 可原样展示给用户 */
+export class SandboxPromptError extends UserFacingError {
   constructor(
     readonly rawMessage: string,
     readonly code?: string,
@@ -462,7 +464,9 @@ function readToolError(
   if (!readBoolean(data?.isError)) return undefined;
   const message =
     readString(data?.message) ??
-    readString(typeof data?.result === 'string' ? data.result.trim() : undefined);
+    readString(
+      typeof data?.result === 'string' ? data.result.trim() : undefined,
+    );
   if (!message) return 'Sandbox tool execution failed';
   return message.length > TOOL_ERROR_MAX_CHARS
     ? `${message.slice(0, TOOL_ERROR_MAX_CHARS)}…`

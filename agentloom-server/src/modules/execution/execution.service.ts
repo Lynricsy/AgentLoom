@@ -5,6 +5,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../database/schema';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { toPublicFailureMessage } from '../../common/exceptions/public-failure';
 import type { FieldError } from '../../common/types/problem-details.type';
 import {
   hasActiveTenantTransaction,
@@ -716,7 +717,12 @@ export class ExecutionService {
         },
       );
     } catch (error) {
-      const message = this.getErrorMessage(error);
+      // 入队失败来自 Redis / BullMQ，原文（连接地址等）只进日志；errorMessage 会原样返回给客户端
+      this.logger.error(
+        `Execution enqueue failed: ${JSON.stringify({ executionId, error: error instanceof Error ? error.message : String(error) })}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      const message = toPublicFailureMessage(error);
 
       await this.db
         .update(schema.workflowExecutions)
@@ -743,14 +749,6 @@ export class ExecutionService {
 
       throw error;
     }
-  }
-
-  private getErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    return 'Unknown execution enqueue error';
   }
 
   async getExecution(
@@ -1100,6 +1098,8 @@ export class ExecutionService {
       return;
     }
 
+    const publicMessage = toPublicFailureMessage(error);
+
     await runInTenantTransaction(
       this.db,
       execution.tenantId,
@@ -1109,9 +1109,9 @@ export class ExecutionService {
           .set({
             status: 'failed',
             failedAt: new Date(),
-            // 堆栈只写服务端日志，errorMessage 会原样返回给客户端
+            // errorMessage 会原样返回给客户端：内部异常只给通用文案，原文与堆栈只写服务端日志
             errorMessage: {
-              message: error.message,
+              message: publicMessage,
             },
             updatedAt: new Date(),
           })
@@ -1142,7 +1142,7 @@ export class ExecutionService {
         this.eventBridge.emitExecutionStatusChanged(
           execution.tenantId,
           executionId,
-          { executionId, status: 'failed', errorMessage: error.message },
+          { executionId, status: 'failed', errorMessage: publicMessage },
         );
       },
     );

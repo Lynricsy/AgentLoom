@@ -42,6 +42,8 @@ import {
   AGENT_RUNTIME_FACTORY,
   type IAgentAdapterFactory,
 } from '../../agent/agent-adapter.factory';
+import { SandboxPromptError } from '../../agent/sandbox-event-decoder';
+import { INTERNAL_FAILURE_PUBLIC_MESSAGE } from '../../../common/exceptions/public-failure';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { AgentSession } from '../../agent/types/agent-session.types';
 import { MemoryToolsService } from '../../agent-memory/memory-tools.service';
@@ -924,7 +926,7 @@ describe('AgentTaskWorker', () => {
       mockAgentRuntime.prompt.mockReturnValue(
         (async function* () {
           yield { type: 'message_chunk', content: '部分结果' } as AgentEvent;
-          throw new Error('LLM 调用失败');
+          throw new SandboxPromptError('LLM 调用失败');
         })(),
       );
 
@@ -987,7 +989,7 @@ describe('AgentTaskWorker', () => {
             type: 'message_chunk',
             content: '最后一次尝试',
           } as AgentEvent;
-          throw new Error('最终失败');
+          throw new SandboxPromptError('最终失败');
         })(),
       );
 
@@ -1073,7 +1075,7 @@ describe('AgentTaskWorker', () => {
             type: 'message_chunk',
             content: '已产出一部分结果',
           } as AgentEvent;
-          throw new Error('terminated');
+          throw new SandboxPromptError('terminated');
         })(),
       );
 
@@ -1142,7 +1144,7 @@ describe('AgentTaskWorker', () => {
       mockAgentRuntime.prompt.mockReturnValue(
         (async function* () {
           yield { type: 'message_chunk', content: '部分结果' } as AgentEvent;
-          throw new Error('model-1 failed');
+          throw new SandboxPromptError('model-1 failed');
         })(),
       );
 
@@ -1281,7 +1283,7 @@ describe('AgentTaskWorker', () => {
           taskCategory: 'summary',
           actualPerformance: expect.objectContaining({
             success: false,
-            errorType: 'Error',
+            errorType: 'SandboxPromptError',
           }),
         }),
       );
@@ -1536,6 +1538,7 @@ describe('AgentTaskWorker', () => {
             type: 'message_chunk',
             content: '普通策略失败',
           } as AgentEvent;
+          // 非运行时上报的内部异常（如数据库错误）：原文不进步骤 errorMessage
           throw new Error('quality-first failed');
         })(),
       );
@@ -1606,7 +1609,7 @@ describe('AgentTaskWorker', () => {
       expect(lastUpdateStepStatusCall?.[3]).toEqual(
         expect.objectContaining({
           errorMessage: expect.objectContaining({
-            message: 'quality-first failed',
+            message: INTERNAL_FAILURE_PUBLIC_MESSAGE,
           }),
         }),
       );

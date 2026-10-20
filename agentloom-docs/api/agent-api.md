@@ -15,7 +15,7 @@ docType: howto
 ## 前提
 
 - Agent 已发布（Agent 详情页发布过至少一个版本）。未发布的 Agent 创建对话返回 409 `agent-not-published`。
-- Agent 所在组织配置了默认 LLM 模型。否则 run 会以 `failed` 结束，`error.detail` 为「租户 … 未配置默认 LLM 模型」。
+- Agent 所在组织配置了默认 LLM 模型。否则 run 会以 `failed` 结束，`error.type` 为 `…/llm/default-model-not-configured`，`error.detail` 为「租户 … 未配置默认 LLM 模型：…」。
 - 创建 Key 需要组织角色 `owner` 或 `admin`；`creator` 只能查看 Key 列表。
 - 以下命令用到的变量：
 
@@ -390,8 +390,8 @@ curl -s -o /dev/null -w '%{http_code}\n' -X DELETE \
 | `agentVersionId` | 实际执行的 Agent 版本；开始执行前为 `null` |
 | `input` | `{ messageId, content }` |
 | `output` | 结束前为 `null`；完成后为 `{ messageId, content, toolCalls[] }`，`toolCalls` 每项为 `{ id, tool, status }` |
-| `stopReason` | `end_turn`、`max_tokens`、`cancelled` 或 `null` |
-| `error` | `failed` 时为 `{ type, title, detail? }`。失败原因是平台的领域错误时沿用该错误的 `type` 与 `title`，`detail` 为可行动的说明，例如 Agent 引用的 runtime 插件已停用时为 `…/runtime-plugin-inactive`（`detail` 带插件名称、版本与记录 id，见[错误码](/guide/troubleshooting/errors)）；其余失败为 `…/run-failed`；执行进程丢失时为 `…/run-worker-lost` |
+| `stopReason` | `end_turn`、`max_tokens`、`cancelled` 或 `null`；`failed` 的 run 为 `null` |
+| `error` | `failed` 时为 `{ type, title, detail? }`。失败原因是平台的领域错误时沿用该错误的 `type` 与 `title`，`detail` 为可行动的说明，例如 Agent 引用的 runtime 插件已停用时为 `…/runtime-plugin-inactive`（`detail` 带插件名称、版本与记录 id，见[错误码](/guide/troubleshooting/errors)）；其余失败为 `…/run-failed`：模型提供方或 Agent 运行时报告的错误原样放在 `detail`，平台内部异常（数据库、缓存中断等）的 `detail` 只是通用说明「服务内部错误，本次执行未能完成，请稍后重试」，不含内部细节，可直接重试；执行进程丢失时为 `…/run-worker-lost` |
 | `createdAt`、`startedAt`、`completedAt` | ISO 8601 时间 |
 
 ## 错误速查

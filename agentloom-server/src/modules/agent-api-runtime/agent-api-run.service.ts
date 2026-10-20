@@ -254,7 +254,8 @@ export class AgentApiRunService {
       .set({
         status,
         assistantMessageId: params.assistantMessageId,
-        stopReason: params.stopReason,
+        // 失败轮次的 turnResult.stopReason 是运行时默认值（如 end_turn），不代表模型正常结束
+        stopReason: status === 'failed' ? null : params.stopReason,
         error: status === 'failed' ? params.failure : null,
         completedAt: sql`now()`,
       })

@@ -1522,6 +1522,9 @@ export class AgentExecutionWorker
                 ...(errorSummary.rawErrorMessage
                   ? { rawErrorMessage: errorSummary.rawErrorMessage }
                   : {}),
+                ...(errorSummary.problem
+                  ? { problem: errorSummary.problem }
+                  : {}),
                 ...(abort.signal.aborted ? { aborted: true } : {}),
               },
             );

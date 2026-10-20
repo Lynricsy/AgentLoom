@@ -20,6 +20,10 @@ import {
   DefaultApiKeyNotConfiguredException,
 } from '../api-key/api-key.exceptions';
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
+import {
+  LlmDefaultModelNotConfiguredException,
+  LlmModelConfigNotFoundException,
+} from '../llm/llm.exceptions';
 import { ThinkingCapabilityService } from '../llm/thinking-capability.service';
 import {
   PiConfigGeneratorService,
@@ -398,7 +402,7 @@ export class SandboxModelConfigService {
           );
 
         if (!row) {
-          throw new Error(`LLM 模型配置不存在: ${llmModelConfigId}`);
+          throw new LlmModelConfigNotFoundException(llmModelConfigId);
         }
 
         return {
@@ -426,7 +430,7 @@ export class SandboxModelConfigService {
         );
 
       if (!defaultRow) {
-        throw new Error(`租户 ${tenantId} 未配置默认 LLM 模型`);
+        throw new LlmDefaultModelNotConfiguredException(tenantId);
       }
 
       session.llmModelConfigId = defaultRow.config.id;

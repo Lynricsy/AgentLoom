@@ -237,6 +237,8 @@ export class AgentExecutionWorkerPersistenceService {
       errorMessage?: string;
       errorCode?: string;
       rawErrorMessage?: string;
+      /** DomainException 的 type/title，透传到对外 API 的 run error */
+      problem?: { type: string; title: string };
       /** 轮次因取消而中断：保留部分输出，但 API run 记为 cancelled */
       aborted?: boolean;
     },
@@ -346,7 +348,12 @@ export class AgentExecutionWorkerPersistenceService {
             assistantMessageId: lastAssistantMessageId ?? null,
             stopReason: options?.aborted ? 'cancelled' : turnResult.stopReason,
             ...(options?.incomplete
-              ? { failure: buildAgentApiRunFailedError(options.errorMessage) }
+              ? {
+                  failure: buildAgentApiRunFailedError(
+                    options.errorMessage,
+                    options.problem,
+                  ),
+                }
               : {}),
           });
         if (finalizedRunIds.length > 0) {

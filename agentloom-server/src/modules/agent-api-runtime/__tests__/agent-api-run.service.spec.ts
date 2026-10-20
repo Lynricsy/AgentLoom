@@ -211,7 +211,8 @@ describe('AgentApiRunService', () => {
         expect.objectContaining({
           ...expected,
           assistantMessageId: null,
-          stopReason,
+          // 失败轮次不保留运行时默认的 stopReason（如 end_turn）
+          stopReason: expected.status === 'failed' ? null : stopReason,
         }),
       );
     });

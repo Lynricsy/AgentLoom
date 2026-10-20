@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { Logger } from '@nestjs/common';
+import { DrizzleQueryError } from 'drizzle-orm';
+import { INTERNAL_FAILURE_PUBLIC_MESSAGE } from '../../../common/exceptions/public-failure';
+import { SandboxPromptError } from '../../agent/sandbox-event-decoder';
+import { ConversationTurnFailedError } from '../conversation-turn-failed.error';
 
 import { ModelRoutingService } from '../../smart-routing/model-routing.service';
 import { AgentExecutionWorker } from '../agent-execution.worker';
@@ -785,7 +789,7 @@ describe('AgentExecutionWorker', () => {
         'c-1',
         expect.objectContaining({
           runningState: 'failed',
-          errorMessage: 'Runtime init failed',
+          errorMessage: INTERNAL_FAILURE_PUBLIC_MESSAGE,
           failedPhase: 'sandbox_creating',
         }),
       );
@@ -794,7 +798,7 @@ describe('AgentExecutionWorker', () => {
         'c-1',
         expect.objectContaining({
           status: 'failed',
-          errorMessage: 'Runtime init failed',
+          errorMessage: INTERNAL_FAILURE_PUBLIC_MESSAGE,
         }),
       );
     });
@@ -845,7 +849,7 @@ describe('AgentExecutionWorker', () => {
         't-1',
         'c-1',
         expect.objectContaining({
-          errorMessage: 'Agent conversation execution failed',
+          errorMessage: INTERNAL_FAILURE_PUBLIC_MESSAGE,
         }),
       );
     });
@@ -896,10 +900,7 @@ describe('AgentExecutionWorker', () => {
               },
             },
           ],
-          Object.assign(new Error('terminated'), {
-            code: 'MODEL_PROVIDER_ERROR',
-            rawMessage: 'terminated',
-          }),
+          new SandboxPromptError('terminated', 'MODEL_PROVIDER_ERROR'),
         ),
       );
 
@@ -3690,17 +3691,17 @@ describe('AgentExecutionWorker', () => {
   });
 
   describe('branch contracts — observable error metadata', () => {
-    it('describes unknown, provider and upstream failures without losing raw details', () => {
+    it('只透传运行时上报的错误；内部异常与非 Error 值只给通用文案', () => {
       expect(
         workerInternals.describeConversationExecutionError('plain failure'),
       ).toEqual({
-        errorMessage: 'Agent conversation execution failed',
+        errorMessage: INTERNAL_FAILURE_PUBLIC_MESSAGE,
       });
 
-      const providerError = Object.assign(new Error('provider rejected'), {
-        code: 'MODEL_PROVIDER_ERROR',
-        rawMessage: 'provider raw detail',
-      });
+      const providerError = new SandboxPromptError(
+        'provider raw detail',
+        'MODEL_PROVIDER_ERROR',
+      );
       expect(
         workerInternals.describeConversationExecutionError(providerError),
       ).toEqual({
@@ -3712,12 +3713,37 @@ describe('AgentExecutionWorker', () => {
 
       expect(
         workerInternals.describeConversationExecutionError(
-          new Error('stream terminated unexpectedly'),
+          new SandboxPromptError('stream terminated unexpectedly'),
         ),
       ).toEqual({
         errorMessage: '上游模型流中断（stream terminated unexpectedly）',
         rawErrorMessage: 'stream terminated unexpectedly',
       });
+
+      // 网络层流中断（非运行时上报）：保留分类，不带原文
+      expect(
+        workerInternals.describeConversationExecutionError(
+          new TypeError('terminated'),
+        ),
+      ).toEqual({ errorMessage: '上游模型流中断，请稍后重试' });
+    });
+
+    it('PG 中断时的查询错误不把 SQL 与参数透传给对话 / API run（D-222）', () => {
+      const dbError = new DrizzleQueryError(
+        'select "replay_entries", "session_snapshot" from "acp_conversation_sessions" where "session_id" = $1 and "timeout_seconds" > 0',
+        ['e38be8a0-secret'],
+        new Error('write CONNECTION_ENDED localhost:5432'),
+      );
+      const summary = workerInternals.describeConversationExecutionError(
+        new ConversationTurnFailedError(dbError, {} as never),
+      );
+
+      expect(summary).toEqual({
+        errorMessage: INTERNAL_FAILURE_PUBLIC_MESSAGE,
+      });
+      expect(JSON.stringify(summary)).not.toMatch(
+        /Failed query|acp_conversation_sessions|e38be8a0/,
+      );
     });
 
     it('DomainException 取 detail 作为错误信息并保留 type/title（而不是只剩 title）', () => {
@@ -3953,7 +3979,7 @@ describe('AgentExecutionWorker', () => {
         error: {
           type: 'https://agentloom.dev/errors/run-failed',
           title: 'Run failed',
-          detail: 'Runtime init failed',
+          detail: INTERNAL_FAILURE_PUBLIC_MESSAGE,
         },
       });
     });

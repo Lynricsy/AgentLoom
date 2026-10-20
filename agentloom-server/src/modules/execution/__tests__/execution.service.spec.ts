@@ -17,6 +17,7 @@ import {
   WorkflowLaunchSchemaVersionMismatchException,
   WorkflowArchivedException,
 } from '../execution.exceptions';
+import { INTERNAL_FAILURE_PUBLIC_MESSAGE } from '../../../common/exceptions/public-failure';
 import { EXECUTION_QUEUE, AGENT_TASK_QUEUE } from '../execution.constants';
 import { DRIZZLE } from '../../../database/database.module';
 import { workflowInputSchemaSchema } from '../../workflow/dto/workflow-input-schema.dto';
@@ -1857,7 +1858,7 @@ describe('ExecutionService', () => {
       expect(setValues.status).toBe('failed');
       expect(setValues.failedAt).toBeInstanceOf(Date);
       expect(setValues.errorMessage).toEqual({
-        message: 'queue unavailable',
+        message: INTERNAL_FAILURE_PUBLIC_MESSAGE,
       });
       expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
@@ -1865,7 +1866,7 @@ describe('ExecutionService', () => {
         {
           executionId: EXECUTION_ID,
           status: 'failed',
-          errorMessage: 'queue unavailable',
+          errorMessage: INTERNAL_FAILURE_PUBLIC_MESSAGE,
         },
       );
     });
@@ -1887,7 +1888,7 @@ describe('ExecutionService', () => {
       const setValues = db.update.mock.results[0].value.set.mock.calls[0][0];
       expect(setValues).toMatchObject({
         status: 'failed',
-        errorMessage: { message: 'Unknown execution enqueue error' },
+        errorMessage: { message: INTERNAL_FAILURE_PUBLIC_MESSAGE },
       });
       expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         TENANT_ID,
@@ -1895,7 +1896,7 @@ describe('ExecutionService', () => {
         {
           executionId: EXECUTION_ID,
           status: 'failed',
-          errorMessage: 'Unknown execution enqueue error',
+          errorMessage: INTERNAL_FAILURE_PUBLIC_MESSAGE,
         },
       );
     });
@@ -3076,9 +3077,43 @@ describe('ExecutionService', () => {
         {
           executionId: EXECUTION_ID,
           status: 'failed',
-          errorMessage: '执行失败',
+          errorMessage: INTERNAL_FAILURE_PUBLIC_MESSAGE,
         },
       );
+      const setValues = txDb.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(setValues.errorMessage).toEqual({
+        message: INTERNAL_FAILURE_PUBLIC_MESSAGE,
+      });
+    });
+
+    it('数据库异常原文（SQL、参数）不写入 errorMessage；领域错误原样透传', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ tenantId: TENANT_ID }]),
+      );
+      txDb.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: EXECUTION_ID }]),
+      );
+      await service.markFailed(
+        EXECUTION_ID,
+        new Error(
+          'Failed query: select "id" from "workflow_executions" where "id" = $1\nparams: secret-param',
+        ),
+      );
+      const sqlSet = txDb.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(JSON.stringify(sqlSet.errorMessage)).not.toContain('Failed query');
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([{ tenantId: TENANT_ID }]),
+      );
+      txDb.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: EXECUTION_ID }]),
+      );
+      await service.markFailed(
+        EXECUTION_ID,
+        new ExecutionNotFoundException(EXECUTION_ID),
+      );
+      const domainSet = txDb.update.mock.results[1].value.set.mock.calls[0][0];
+      expect(domainSet.errorMessage).toEqual({ message: '执行记录不存在' });
     });
 
     it('应在执行已取消时跳过失败覆盖', async () => {

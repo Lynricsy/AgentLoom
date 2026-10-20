@@ -202,6 +202,7 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `llm/provider-error` | 502 | 模型服务商返回错误 | 检查 API Key、额度与模型名称 |
 | `llm/timeout` | 504 | 模型服务商请求超时 | 稍后重试，或改用其他模型 |
 | `llm/config-not-found` | 404 | 引用的模型配置不存在 | 在 Agent 画布的 LLM 模型节点中重新选择配置 |
+| `llm/default-model-not-configured` | 409 | Agent 没有指定模型，组织也没有默认模型配置；作为对话失败原因和对外 API run 的 `error.type` 出现 | 在模型设置中把一个模型配置设为默认，或在 Agent 中指定模型 |
 | `llm/config-validation` | 400 | 模型配置校验失败 | 按 `detail` 修正配置 |
 | `llm/provider-deletion-forbidden` | 403 | 内置模型服务商不能删除 | 无需处理 |
 | `llm/config-name-conflict` | 409 | 组织内已有同名模型配置 | 换一个名称 |

@@ -13,6 +13,18 @@ export class LlmModelConfigNotFoundException extends DomainException {
   }
 }
 
+/** Agent 未指定模型且组织没有默认模型：对话 run / 工作流步骤以此失败，detail 对外可见 */
+export class LlmDefaultModelNotConfiguredException extends DomainException {
+  constructor(tenantId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/llm/default-model-not-configured',
+      title: '未配置默认 LLM 模型',
+      status: HttpStatus.CONFLICT,
+      detail: `租户 ${tenantId} 未配置默认 LLM 模型：请在模型设置中把一个模型配置设为默认，或为 Agent 指定模型`,
+    });
+  }
+}
+
 export class LlmModelConfigConflictException extends DomainException {
   constructor(name: string) {
     super({

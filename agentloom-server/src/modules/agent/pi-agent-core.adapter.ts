@@ -6,6 +6,7 @@ import * as schema from '../../database/schema';
 import { type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { ToolPermissionResolutionNotAllowedException } from '../../common/exceptions/tool-call.exceptions';
+import { UserFacingError } from '../../common/exceptions/public-failure';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import type {
   AgentCodeToolBinding,
@@ -17,6 +18,10 @@ import type {
   AgentToolBinding,
 } from '../agent-definition/agent-runtime-config.interface';
 import { RagService } from '../knowledge/services/rag.service';
+import {
+  LlmDefaultModelNotConfiguredException,
+  LlmModelConfigNotFoundException,
+} from '../llm/llm.exceptions';
 import { PiAiAdapter, type PiRuntimeResolvedModel } from '../llm/pi-ai-adapter';
 import { McpService } from '../mcp/mcp.service';
 import type {
@@ -190,8 +195,8 @@ const KNOWLEDGE_TOOL_INPUT_SCHEMA = {
   additionalProperties: false,
 } satisfies AiJsonSchemaInput;
 
-/** 模型请求失败（上游报错、鉴权失败、无可用通道等），由 pi 以 stopReason=error 上报。 */
-export class PiAgentModelError extends Error {
+/** 模型请求失败（上游报错、鉴权失败、无可用通道等），由 pi 以 stopReason=error 上报；message 对外可见。 */
+export class PiAgentModelError extends UserFacingError {
   constructor(readonly upstreamMessage?: string) {
     super(`模型调用失败：${upstreamMessage ?? '未知错误'}`);
     this.name = 'PiAgentModelError';
@@ -1519,7 +1524,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
           );
 
         if (rows.length === 0) {
-          throw new Error(`LLM 模型配置不存在: ${llmModelConfigId}`);
+          throw new LlmModelConfigNotFoundException(llmModelConfigId);
         }
 
         return { ...rows[0].config, provider: rows[0].provider };
@@ -1543,7 +1548,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
         );
 
       if (rows.length === 0) {
-        throw new Error(`租户 ${tenantId} 未配置默认 LLM 模型`);
+        throw new LlmDefaultModelNotConfiguredException(tenantId);
       }
 
       const resolved = { ...rows[0].config, provider: rows[0].provider };

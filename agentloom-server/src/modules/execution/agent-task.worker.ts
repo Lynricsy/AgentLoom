@@ -14,6 +14,7 @@ import { runInTenantTransaction } from '../../common/interceptors/tenant-transac
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { and, eq } from 'drizzle-orm';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import { toPublicFailureMessage } from '../../common/exceptions/public-failure';
 import type { OrgRole } from '@agentloom/contracts';
 import {
   ToolCallNotFoundException,
@@ -1181,11 +1182,13 @@ export class AgentTaskWorker extends WorkerHost {
       );
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      // 堆栈只进服务端日志：步骤 errorMessage 会原样返回给客户端（执行详情、Socket）。
+      // 原文与堆栈只进服务端日志：步骤 errorMessage、attempts 与重试事件会原样返回给客户端（执行详情、Socket），
+      // 只透传 DomainException / 运行时上报的错误，内部异常（SQL、连接地址等）换成通用文案。
       this.logger.error(
         `Agent task failed: ${JSON.stringify({ executionId, stepId, error: err.message })}`,
         err.stack,
       );
+      const publicMessage = toPublicFailureMessage(err);
 
       const errorPartial =
         typeof (error as Record<string, unknown>)?.partialContent === 'string'
@@ -1199,7 +1202,7 @@ export class AgentTaskWorker extends WorkerHost {
         : [];
       const attemptRecord = {
         attempt: job.attemptsMade + 1,
-        error: err.message,
+        error: publicMessage,
         timestamp: new Date().toISOString(),
       };
       const allAttempts = [...existingAttempts, attemptRecord];
@@ -1255,7 +1258,7 @@ export class AgentTaskWorker extends WorkerHost {
             'pending',
             {
               errorMessage: {
-                message: err.message,
+                message: publicMessage,
                 ...(err instanceof DomainException
                   ? {
                       type: err.type,
@@ -1277,7 +1280,7 @@ export class AgentTaskWorker extends WorkerHost {
           {
             attempt: job.attemptsMade + 1,
             maxAttempts: failureDecision.maxAttempts,
-            errorMessage: err.message,
+            errorMessage: publicMessage,
           },
         );
         throw err;
@@ -1323,7 +1326,7 @@ export class AgentTaskWorker extends WorkerHost {
             'pending',
             {
               errorMessage: {
-                message: err.message,
+                message: publicMessage,
                 ...(err instanceof DomainException
                   ? {
                       type: err.type,
@@ -1366,7 +1369,7 @@ export class AgentTaskWorker extends WorkerHost {
           {
             attempt: nextAttempt,
             maxAttempts: smartRouting?.candidateModelIds.length ?? nextAttempt,
-            errorMessage: `${err.message}；${fallbackMessage}`,
+            errorMessage: `${publicMessage}；${fallbackMessage}`,
           },
         );
 
@@ -1406,7 +1409,7 @@ export class AgentTaskWorker extends WorkerHost {
             'pending',
             {
               errorMessage: {
-                message: err.message,
+                message: publicMessage,
                 ...(err instanceof DomainException
                   ? {
                       type: err.type,
@@ -1432,7 +1435,7 @@ export class AgentTaskWorker extends WorkerHost {
           {
             attempt: allAttempts.length,
             maxAttempts: MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS,
-            errorMessage: `${err.message}；${recoveryMessage}`,
+            errorMessage: `${publicMessage}；${recoveryMessage}`,
           },
         );
         await this.agentTaskQueue.add(
@@ -1487,7 +1490,7 @@ export class AgentTaskWorker extends WorkerHost {
           'failed',
           {
             errorMessage: {
-              message: finalError.message,
+              message: toPublicFailureMessage(finalError),
               attempts: allAttempts,
               ...(finalError instanceof DomainException
                 ? {

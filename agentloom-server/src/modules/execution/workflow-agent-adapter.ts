@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
+import { UserFacingError } from '../../common/exceptions/public-failure';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import {
   agentVersions,
@@ -161,8 +162,9 @@ export interface WorkflowAgentExecutionResult extends Record<string, unknown> {
 /**
  * 模型调用已完成、节点仍要失败的错误（如回复不符合输出 Schema）。stepResult 携带本次真实的
  * token 用量、成本与原始回复，执行器写入失败步骤的 result，执行记录据此统计用量。
+ * message 由平台撰写、面向用户，步骤 errorMessage 原样透传。
  */
-export class WorkflowAgentStepFailedError extends Error {
+export class WorkflowAgentStepFailedError extends UserFacingError {
   constructor(
     message: string,
     readonly stepResult: Record<string, unknown>,

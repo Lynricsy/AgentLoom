@@ -2561,7 +2561,10 @@ describe('PiAgentCoreAdapter', () => {
             llmModelConfigId: 'missing-model',
           }),
         ),
-      ).rejects.toThrow('LLM 模型配置不存在: missing-model');
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/llm/config-not-found',
+        detail: '未找到 ID 为 missing-model 的 LLM 模型配置',
+      });
 
       mockDb.select.mockReturnValueOnce(createSelectChain([]));
       await expect(
@@ -2571,7 +2574,10 @@ describe('PiAgentCoreAdapter', () => {
             llmModelConfigId: undefined,
           }),
         ),
-      ).rejects.toThrow('租户 tenant-001 未配置默认 LLM 模型');
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/llm/default-model-not-configured',
+        detail: expect.stringContaining('租户 tenant-001 未配置默认 LLM 模型'),
+      });
     });
   });
   describe('remaining runtime branch contracts', () => {

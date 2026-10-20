@@ -4,6 +4,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { ExecutionStep, ReactFlowEdge } from '../../../database/schema';
 import { DomainException } from '../../../common/exceptions/domain.exception';
+import { toPublicFailureMessage } from '../../../common/exceptions/public-failure';
 import { AgentAdapterFactory } from '../adapters/agent-adapter-factory';
 import { WorkspaceIntegrationService } from '../../agent-execution/workspace-integration.service';
 import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
@@ -269,7 +270,7 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
       }
 
       const message = error instanceof Error ? error.message : String(error);
-      // 堆栈只写服务端日志：步骤 errorMessage 会原样返回给客户端
+      // 原文与堆栈只写服务端日志：步骤 errorMessage 会原样返回给客户端，内部异常只给通用文案
       this.logger.warn(
         `Workflow agent node failed: ${JSON.stringify({ executionId, stepId: step.id, error: message })}`,
         error instanceof Error ? error.stack : undefined,
@@ -299,7 +300,7 @@ export class WorkflowAgentNodeExecutor implements NodeExecutor {
             ? { result: error.stepResult }
             : {}),
           errorMessage: {
-            message,
+            message: toPublicFailureMessage(error),
             ...(error instanceof DomainException
               ? {
                   type: error.type,
