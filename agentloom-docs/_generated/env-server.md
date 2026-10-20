@@ -43,14 +43,18 @@
 | `APP_TYPESAFE_MODEL` | 否 | `jev-1.13.0` |  | 钉版的 Jev 模型名 |
 | `APP_TYPESAFE_TIMEOUT_MS` | 否 | `3000` |  | 单次 Jev 影子调用超时（毫秒） |
 | `FIREBASE_SERVICE_ACCOUNT` | 否 |  |  | Firebase Cloud Messaging（推送通知） Firebase 服务账号 JSON 字符串，留空即禁用推送，例如 {"type":"service_account","project_id":"...","private_key":"...","client_email":"..."} |
-| `GENERATED_APP_WORKSPACE_ROOT` | 否 |  |  | 生成应用门禁（可选） 生成工作区根目录，留空使用系统临时目录下的 agentloom-generated-app-workspaces |
-| `GENERATED_APP_GATE3_EXECUTOR_MODE` | 否 |  |  | Gate 3-7 执行模式：real（缺省）\| fixture \| disabled；Gate 5 另支持 real-browser-e2e |
-| `GENERATED_APP_GATE3_COMMAND_TIMEOUT_MS` | 否 | `30000` |  | Gate 3 单条命令超时（毫秒） |
+| `APP_GENERATED_APP_BROWSER_BASE_URL` | 否 |  |  | Gate 5 浏览器验收（browser-runner 进程，见 agentloom-deploy 的 generated-app-browser-runner 服务） runner 打开的 Studio 公开页基址（runner 拼接 /generated-apps/public/<验收令牌>）；只有 runner 读取，本地开发填 Studio 地址 |
+| `APP_GENERATED_APP_BROWSER_CONCURRENCY` | 否 | `1` |  | 每个 runner 进程同时执行的验收任务数（每个任务一个 Chromium） |
+| `APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS` | 否 | `180000` |  | 单个场景 × 视口的时限（毫秒），由 worker 写进验收任务 |
+| `APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS` | 否 | `900000` |  | 一次验收任务的总时限（毫秒）；worker 最多等待它再加 30 秒，验收令牌在它再加 60 秒后过期 |
+| `GENERATED_APP_WORKSPACE_ROOT` | 否 |  |  | 生成工作区根目录，留空使用系统临时目录下的 agentloom-generated-app-workspaces |
+| `GENERATED_APP_GATE3_EXECUTOR_MODE` | 否 |  |  | Gate 3-7 执行模式：real（缺省）\| fixture（仅单测，不能产生发布候选）\| disabled；其他值按 disabled 处理 |
 | `GENERATED_APP_GATE4_EXECUTOR_MODE` | 否 |  |  |  |
 | `GENERATED_APP_GATE5_EXECUTOR_MODE` | 否 |  |  |  |
-| `GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON` | 否 |  |  | 非空时强制把 Gate 5 真实浏览器标记为不可用，值即原因 |
 | `GENERATED_APP_GATE6_EXECUTOR_MODE` | 否 |  |  |  |
 | `GENERATED_APP_GATE7_EXECUTOR_MODE` | 否 |  |  |  |
+| `APP_GENERATED_APP_SPEC_TIMEOUT_MS` | 否 | `120000` |  | 生成应用门禁（可选） Gate 0 生成 AppSpec 的总超时（毫秒，含自我修复重试），到时取消模型调用 |
+| `APP_GENERATED_APP_GENERATION_CONCURRENCY` | 否 | `2` |  |  |
 
 **未经 `envSchema` 校验、由源码直接读取 `process.env` 的变量**（缺省时行为以读取处代码为准）：
 

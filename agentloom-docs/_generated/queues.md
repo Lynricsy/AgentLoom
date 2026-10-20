@@ -13,6 +13,8 @@
 | `earnings-settlement` | `EARNINGS_SETTLEMENT_QUEUE` | `EarningsSettlementWorker` | `agentloom-server/src/modules/plugin/plugin.constants.ts` |
 | `evidence-export` | `EVIDENCE_EXPORT_QUEUE` | `EvidenceExportWorker` | `agentloom-server/src/modules/evidence/evidence-export.constants.ts` |
 | `evidence-export-cleanup` | `EVIDENCE_EXPORT_CLEANUP_QUEUE` | `EvidenceExportCleanupWorker` | `agentloom-server/src/modules/evidence/evidence-export.constants.ts` |
+| `generated-app-browser-acceptance` | `GENERATED_APP_BROWSER_ACCEPTANCE_QUEUE` | `GeneratedAppBrowserAcceptanceProcessor` | `agentloom-server/src/modules/generated-app/types/browser-acceptance-job.schema.ts` |
+| `generated-app-generation` | `GENERATED_APP_GENERATION_QUEUE` | `GeneratedAppGenerationWorker` | `agentloom-server/src/modules/generated-app/generated-app-generation.constants.ts` |
 | `notification` | `NOTIFICATION_QUEUE` | `NotificationProcessor` | `agentloom-server/src/modules/notification/notification.constants.ts` |
 | `optimization-proposal` | `OPTIMIZATION_QUEUE` | `OptimizationProposalWorker` | `agentloom-server/src/modules/optimization-proposal/optimization-proposal.constants.ts` |
 | `plugin-execution` | `PLUGIN_EXECUTION_QUEUE` | `PluginExecutionWorker` | `agentloom-server/src/modules/plugin/plugin.constants.ts` |

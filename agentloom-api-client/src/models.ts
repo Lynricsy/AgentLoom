@@ -2219,7 +2219,83 @@ export interface CreateGeneratedAppDto {
      * @memberof CreateGeneratedAppDto
      */
     prompt: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateGeneratedAppDto
+     */
+    modelConfigId?: string;
+    /**
+     * 
+     * @type {CreateGeneratedAppDtoBindingTarget}
+     * @memberof CreateGeneratedAppDto
+     */
+    bindingTarget?: CreateGeneratedAppDtoBindingTarget;
 }
+/**
+ * @type CreateGeneratedAppDtoBindingTarget
+ * 
+ * @export
+ */
+export type CreateGeneratedAppDtoBindingTarget = CreateGeneratedAppDtoBindingTargetOneOf | CreateGeneratedAppDtoBindingTargetOneOf1;
+/**
+ * 
+ * @export
+ * @interface CreateGeneratedAppDtoBindingTargetOneOf
+ */
+export interface CreateGeneratedAppDtoBindingTargetOneOf {
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateGeneratedAppDtoBindingTargetOneOf
+     */
+    kind: CreateGeneratedAppDtoBindingTargetOneOfKindEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateGeneratedAppDtoBindingTargetOneOf
+     */
+    workflowDefinitionId: string;
+}
+
+
+/**
+ * @export
+ */
+export const CreateGeneratedAppDtoBindingTargetOneOfKindEnum = {
+    Workflow: 'workflow'
+} as const;
+export type CreateGeneratedAppDtoBindingTargetOneOfKindEnum = typeof CreateGeneratedAppDtoBindingTargetOneOfKindEnum[keyof typeof CreateGeneratedAppDtoBindingTargetOneOfKindEnum];
+
+/**
+ * 
+ * @export
+ * @interface CreateGeneratedAppDtoBindingTargetOneOf1
+ */
+export interface CreateGeneratedAppDtoBindingTargetOneOf1 {
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateGeneratedAppDtoBindingTargetOneOf1
+     */
+    kind: CreateGeneratedAppDtoBindingTargetOneOf1KindEnum;
+    /**
+     * 
+     * @type {string}
+     * @memberof CreateGeneratedAppDtoBindingTargetOneOf1
+     */
+    agentDefinitionId: string;
+}
+
+
+/**
+ * @export
+ */
+export const CreateGeneratedAppDtoBindingTargetOneOf1KindEnum = {
+    Agent: 'agent'
+} as const;
+export type CreateGeneratedAppDtoBindingTargetOneOf1KindEnum = typeof CreateGeneratedAppDtoBindingTargetOneOf1KindEnum[keyof typeof CreateGeneratedAppDtoBindingTargetOneOf1KindEnum];
+
 /**
  * 
  * @export
@@ -8456,6 +8532,12 @@ export interface StartGeneratedAppGenerationRunDto {
      * @memberof StartGeneratedAppGenerationRunDto
      */
     maxRuntimeSeconds?: number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof StartGeneratedAppGenerationRunDto
+     */
+    regenerateAppSpec?: boolean;
 }
 
 

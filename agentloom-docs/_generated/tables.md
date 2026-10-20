@@ -26,8 +26,8 @@
 | `generated_app_gate_runs` | 20 | 是 | `generated-apps.schema.ts` |
 | `generated_app_generation_runs` | 15 | 是 | `generated-apps.schema.ts` |
 | `generated_app_repair_attempts` | 17 | 是 | `generated-apps.schema.ts` |
-| `generated_app_submissions` | 14 | 是 | `generated-apps.schema.ts` |
-| `generated_apps` | 23 | 是 | `generated-apps.schema.ts` |
+| `generated_app_submissions` | 16 | 是 | `generated-apps.schema.ts` |
+| `generated_apps` | 28 | 是 | `generated-apps.schema.ts` |
 | `intervention_policies` | 14 | 是 | `intervention-policies.schema.ts` |
 | `documents` | 12 | 是 | `knowledge-bases.schema.ts` |
 | `knowledge_bases` | 14 | 是 | `knowledge-bases.schema.ts` |
@@ -554,13 +554,15 @@
 | `tenant_id` | `uuid` | 是 |  |
 | `generated_app_id` | `uuid` | 是 |  |
 | `app_spec_version` | `integer` | 是 |  |
-| `public_share_token` | `text` | 是 |  |
+| `public_share_token` | `text` |  |  |
 | `anonymous_session_id` | `varchar(128)` | 是 |  |
 | `status` | `generated_app_submission_status` | 是 | `"received"` |
 | `input` | `jsonb` | 是 | `'{}'::jsonb` |
 | `result` | `jsonb` |  |  |
 | `report` | `jsonb` |  |  |
 | `error_message` | `text` |  |  |
+| `origin` | `generated_app_submission_origin` | 是 | `"public"` |
+| `generation_run_id` | `uuid` |  |  |
 | `created_at` | `timestamp with time zone` | 是 | `now()` |
 | `updated_at` | `timestamp with time zone` | 是 | `now()` |
 | `deleted_at` | `timestamp with time zone` |  |  |
@@ -577,7 +579,12 @@
 | `app_name` | `varchar(255)` | 是 |  |
 | `description` | `text` | 是 |  |
 | `status` | `generated_app_status` | 是 | `"app_spec_ready"` |
-| `app_spec` | `jsonb` | 是 |  |
+| `app_spec` | `jsonb` |  |  |
+| `generation_model_config_id` | `uuid` |  |  |
+| `binding_target` | `jsonb` |  |  |
+| `acceptance_token_hash` | `text` |  |  |
+| `acceptance_token_expires_at` | `timestamp with time zone` |  |  |
+| `acceptance_generation_run_id` | `uuid` |  |  |
 | `generation_plan` | `jsonb` |  | `null` |
 | `gate_results` | `jsonb` | 是 | `[]` |
 | `readiness` | `jsonb` | 是 |  |

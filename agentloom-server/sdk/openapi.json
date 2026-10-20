@@ -12012,10 +12012,10 @@
         },
         "responses": {
           "201": {
-            "description": "生成应用任务已创建"
+            "description": "应用已创建（status=app_spec_generating），响应带 generationRunId"
           }
         },
-        "summary": "从一句自然语言需求创建生成应用任务",
+        "summary": "从一句自然语言需求创建生成应用，并排队首次生成运行（AppSpec 由 Gate 0 异步生成）",
         "tags": [
           "Generated Apps"
         ]
@@ -12052,6 +12052,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "app_spec_generating",
                 "app_spec_ready",
                 "preview_ready",
                 "trial_ready",
@@ -12272,14 +12273,17 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "生成门禁运行器已完成同步切片"
+          "202": {
+            "description": "生成运行已排队（status=queued）"
           },
           "404": {
             "description": "生成应用任务不存在"
+          },
+          "409": {
+            "description": "generated-app-generation-run-in-progress：已有进行中的生成运行"
           }
         },
-        "summary": "启动同步轻量生成门禁运行器",
+        "summary": "排队一次生成运行（Gate 0–7 在 worker 中异步执行）",
         "tags": [
           "Generated Apps"
         ]
@@ -12729,6 +12733,19 @@
                 "running",
                 "completed",
                 "failed"
+              ]
+            }
+          },
+          {
+            "name": "origin",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "public",
+              "type": "string",
+              "enum": [
+                "public",
+                "gate-acceptance"
               ]
             }
           }
@@ -13211,36 +13228,6 @@
           }
         },
         "summary": "公开读取生成应用提交结果详情",
-        "tags": [
-          "Generated Apps"
-        ]
-      }
-    },
-    "/api/v1/generated-apps/public/{token}/preview": {
-      "get": {
-        "operationId": "GeneratedAppPublic_getPublicBuildPreview",
-        "parameters": [
-          {
-            "name": "token",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "公开构建预览 HTML"
-          },
-          "404": {
-            "description": "公开链接或构建预览不存在"
-          },
-          "409": {
-            "description": "生成应用不再满足发布门槛"
-          }
-        },
-        "summary": "公开访问生成应用 Gate 3 构建预览 HTML",
         "tags": [
           "Generated Apps"
         ]
@@ -23162,6 +23149,55 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 4000
+          },
+          "modelConfigId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "bindingTarget": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "workflow"
+                    ]
+                  },
+                  "workflowDefinitionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "workflowDefinitionId"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent"
+                    ]
+                  },
+                  "agentDefinitionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "agentDefinitionId"
+                ]
+              }
+            ]
           }
         },
         "required": [
@@ -23262,6 +23298,9 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 86400
+          },
+          "regenerateAppSpec": {
+            "type": "boolean"
           }
         }
       },
@@ -23699,7 +23738,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-10-20T03:10:50.991Z",
+                  "default": "2026-10-20T05:29:50.507Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"

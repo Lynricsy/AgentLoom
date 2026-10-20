@@ -11,6 +11,7 @@
 | `MINIO_CONSOLE_PORT` | `9001` |  |
 | `QDRANT_HTTP_PORT` | `6333` |  |
 | `SERVER_IMAGE` | `agentloom/server:private-local` |  |
+| `BROWSER_RUNNER_IMAGE` | `agentloom/server:private-local-browser-runner` | Gate 5 浏览器验收 runner：server 镜像的 browser-runner 构建目标（多一层 Chromium） |
 | `STUDIO_IMAGE` | `agentloom/studio:private-local` |  |
 | `DOCS_IMAGE` | `agentloom/docs:private-local` |  |
 | `NGINX_IMAGE` | `openresty/openresty:alpine` |  |
@@ -59,6 +60,10 @@
 | `APP_SANDBOX_NODE_ADMIN_TENANT_IDS` |  | 允许管理 /api/v1/sandbox-nodes 的租户 ID（逗号分隔）。 saas 模式留空即全部拒绝；private 模式无条件放行，可不填。 |
 | `APP_MCP_STDIO_ENABLED` | `false` | 允许在 server/worker 宿主容器内启动 stdio MCP 进程（等同任意命令执行）。 多租户（saas）部署必须保持 false；仅单租户自托管且信任全部 owner/admin 时开启。 |
 | `APP_AGENT_CONVERSATION_CONCURRENCY` | `10` | 每个 server/worker 进程同时执行的 Agent 对话数；server 与 worker 各自生效，总并发为两者之和。 同一对话始终串行。提高前按每个对话的内存占用与模型供应商并发配额估算。 |
+| `APP_GENERATED_APP_BROWSER_BASE_URL` | `http://reverse-proxy` | Gate 5 浏览器验收：runner 打开的 Studio 公开页基址。Compose 内网经 reverse-proxy 同源访问 Studio 与 API，一般不改 |
+| `APP_GENERATED_APP_BROWSER_CONCURRENCY` | `1` | 每个 runner 容器同时执行的验收任务数；每个任务一个 Chromium（约 1GB 内存），提高前同步调大容器内存 |
+| `APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS` | `180000` | 单个场景 × 视口的时限与一次验收的总时限（毫秒）；被绑定工作流/Agent 执行慢时调大 |
+| `APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS` | `900000` |  |
 | `APP_JWT_SECRET` | `change-me-jwt-secret` | ⚠ 生产环境必须替换！运行 scripts/generate-secrets.sh 自动生成 |
 | `APP_MASTER_ENCRYPTION_KEY` | `REPLACE_WITH_BASE64_32_BYTES` | 必须是 32 字节 Base64；运行: openssl rand -base64 32 |
 | `APP_OAUTH_REDIRECT_URL` | `http://localhost:8080/api/v1/auth/oauth/callback` | 公网部署请改成实际 HTTPS 域名；保留 localhost 会导致 OAuth / 邮件跳转回本机地址。 |

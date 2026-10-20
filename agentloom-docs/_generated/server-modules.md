@@ -19,7 +19,8 @@
 | `evidence` | `/api/v1/audit-logs`<br>`/api/v1/evidence-exports`<br>`/api/v1/executions/:executionId/evidence` |  | `audit-log-retention`<br>`evidence-export`<br>`evidence-export-cleanup` |
 | `execution` | `/api/v1` | `/execution` | `agent-task`<br>`workflow-execution` |
 | `execution-record` | `/api/v1/execution-records` |  |  |
-| `generated-app` | `/api/v1/generated-apps`<br>`/api/v1/generated-apps/public` |  |  |
+| `generated-app` | `/api/v1/generated-apps`<br>`/api/v1/generated-apps/public` |  | `generated-app-browser-acceptance`<br>`generated-app-generation` |
+| `generated-app-browser-runner` |  |  |  |
 | `health` | `/api/v1/health` |  |  |
 | `intervention-policy` | `/api/v1/workflow-definitions/:workflowId/intervention-policies` |  |  |
 | `knowledge` | `/api/v1/knowledge-bases` | `/knowledge` | `document-indexing`<br>`document-processing` |
