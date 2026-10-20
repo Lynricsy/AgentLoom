@@ -56,6 +56,7 @@ export class InterventionPolicyController {
   @ApiResponse({ status: 200, description: '介入策略列表获取成功' })
   @ApiResponse({ status: 401, description: '未授权' })
   @ApiResponse({ status: 403, description: '权限不足' })
+  @ApiResponse({ status: 404, description: '工作流不存在' })
   @ApiResponse({ status: 422, description: '分页参数无效' })
   async findAll(
     @CurrentTenant() tenantId: string,
@@ -84,6 +85,11 @@ export class InterventionPolicyController {
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Query('nodeId') nodeId?: string,
   ) {
+    // resolvePolicy 也供执行引擎调用（工作流已确定存在），存在性断言只放在 HTTP 入口
+    await this.interventionPolicyService.assertWorkflowExists(
+      tenantId,
+      workflowId,
+    );
     const resolved = await this.interventionPolicyService.resolvePolicy(
       tenantId,
       workflowId,

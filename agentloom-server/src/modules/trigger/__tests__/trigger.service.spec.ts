@@ -152,11 +152,22 @@ describe('TriggerService', () => {
 
   describe('findAll', () => {
     it('应按工作流查询并按创建时间倒序返回', async () => {
-      db.select.mockReturnValue(createSelectOrdered([baseTrigger]));
+      db.select
+        .mockReturnValueOnce(createSelectWhereResolved([publishedWorkflow]))
+        .mockReturnValueOnce(createSelectOrdered([baseTrigger]));
 
       await expect(
         service.findAll(TENANT_ID, WORKFLOW_ID, { type: 'cron' }),
       ).resolves.toEqual([baseTrigger]);
+    });
+
+    it('工作流不存在或属于他租户时 404，不再返回空列表', async () => {
+      db.select.mockReturnValueOnce(createSelectWhereResolved([]));
+
+      await expect(service.findAll(TENANT_ID, WORKFLOW_ID, {})).rejects.toThrow(
+        WorkflowNotFoundException,
+      );
+      expect(db.select).toHaveBeenCalledTimes(1);
     });
   });
 

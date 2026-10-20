@@ -93,7 +93,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `cyclic-graph` | 400 | 工作流图存在环路 | 删除形成环路的连线 |
 | `node-type-mismatch` | 422 | 运行时某条连线两端的端口数据类型不兼容；或 JSON 端口连到「数组」端口而上游实际值不是数组（`detail` 写明实际类型） | 按 `detail` 中的节点与端口修改连线，或让上游输出数组 |
 | `reusable-block-expansion-failed` | 422 | 运行前展开可复用块失败：块缺少内嵌定义、块端口没有映射到块内节点，或连线连到块上不存在的端口 | 从「My Blocks」重新拖入该块，或删除失效连线后重新发布，见 [Reusable Block](/guide/nodes/reusable-block) |
-| `execution-not-found` | 404 | 执行记录不存在 | 确认执行 ID |
+| `execution-not-found` | 404 | 执行记录不存在或不属于当前组织（含证据、PTY 会话等执行子资源列表） | 确认执行 ID 与当前组织 |
 | `execution-not-cancellable` | 409 | 执行已结束，不能取消 | 无需处理 |
 | `execution-not-resumable` | 409 | 只有失败的执行可以恢复（已取消、已完成、运行中的执行都不能恢复），且所选起点及其下游必须有可重跑的步骤；已暂停的执行需先处理人工干预 | 见[调试工作流 · 从失败处恢复](/guide/workflows/debugging#从失败处恢复) |
 | `intervention-not-allowed` | 409 | 该步骤当前不在等待干预状态 | 刷新执行页查看最新状态 |
@@ -234,7 +234,8 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `sandbox-runtime-plugin-unsupported-file` | 422 | runtime 插件包含非文本文件，不能下发到沙箱 | 请插件开发者移除二进制文件后重新打包上传 |
 | `sandbox-node-not-found` | 404 | 沙箱运行时节点不存在 | 刷新节点列表 |
 | `sandbox-node-conflict` | 409 | 节点名称或地址已登记，或节点未停用、仍有 microVM、无法探测时不能删除 | 按 `detail` 处理：先把节点状态改为 disabled、销毁其上的 microVM；节点不可达时带 `force=true` 删除 |
-| `sandbox-stats-unavailable` | 409 | 当前无法获取沙箱统计信息 | 稍后重试 |
+| `sandbox-stats-unavailable` | 409 | 对话存在，但当前没有运行中的沙箱，无法获取统计信息（对话不存在或不属于当前组织时返回 `conversation-not-found`） | 等对话的沙箱启动后重试 |
+| `sandbox-processes-unavailable` | 409 | 对话存在，但当前没有运行中的沙箱，无法获取进程列表（对话不存在或不属于当前组织时返回 `conversation-not-found`） | 等对话的沙箱启动后重试 |
 
 ## API Token
 

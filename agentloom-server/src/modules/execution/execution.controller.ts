@@ -114,6 +114,7 @@ export class ExecutionController {
     description: '执行列表',
     type: ExecutionListResponseSwaggerDto,
   })
+  @ApiResponse({ status: 404, description: '工作流不存在' })
   async listExecutions(
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Query() query: ListExecutionsQueryDto,
@@ -330,11 +331,14 @@ export class ExecutionController {
   @RequirePermission('execution:read')
   @ApiOperation({ summary: '获取执行关联沙箱的 PTY 会话列表' })
   @ApiResponse({ status: 200, description: 'PTY 会话列表' })
+  @ApiResponse({ status: 404, description: '执行不存在' })
   @ApiResponse({ status: 503, description: '沙箱不可用' })
   async listPtySessions(
     @Param('executionId', ParseUUIDPipe) executionId: string,
     @CurrentTenant() tenantId: string,
   ) {
+    // 执行没有关联沙箱时返回空列表；不存在或他租户的执行必须先 404，不能混同为空列表
+    await this.executionService.assertExecutionExists(executionId);
     try {
       const data = await this.sandboxAgentAdapter.listPtySessions(
         { executionId },

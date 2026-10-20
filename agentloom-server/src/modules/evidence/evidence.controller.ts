@@ -47,6 +47,7 @@ export class EvidenceController {
     @Param('executionId', ParseUUIDPipe) executionId: string,
     @Query() query: QueryEvidenceDto,
   ) {
+    await this.evidenceService.assertExecutionExists(tenantId, executionId);
     return this.evidenceService.findByExecution(tenantId, executionId, query);
   }
 
@@ -66,6 +67,7 @@ export class EvidenceController {
     @Param('executionId', ParseUUIDPipe) executionId: string,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
+    await this.evidenceService.assertExecutionExists(tenantId, executionId);
     const { response, cached } = await this.evidenceGraphService.buildGraph(
       tenantId,
       executionId,
@@ -96,6 +98,7 @@ export class EvidenceController {
     @Query() query: QueryEvidenceChainDto,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
+    await this.evidenceService.assertExecutionExists(tenantId, executionId);
     const { response, cached } = await this.evidenceService.buildChain(
       tenantId,
       executionId,

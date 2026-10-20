@@ -14,6 +14,7 @@ import {
   executionSteps,
   knowledgeNodes,
   organizations,
+  workflowExecutions,
   type NewEvidenceRecord,
 } from '../../database/schema';
 import {
@@ -23,6 +24,7 @@ import {
   type StepStatusChangedPayload,
   type ToolCallStatusPayload,
 } from '../execution/types/execution-event.types';
+import { ExecutionNotFoundException } from '../execution/execution.exceptions';
 
 import type {
   CreateEvidenceRecordDto,
@@ -203,6 +205,30 @@ export class EvidenceService {
     this.scheduleBatchFlush();
 
     return Promise.all(promises);
+  }
+
+  /**
+   * 证据表受 RLS 过滤，不存在或他租户的执行会得到空列表 / 空图；
+   * 经 HTTP 访问执行的证据子路由时先在租户内断言执行存在，否则 404。
+   */
+  async assertExecutionExists(
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    const [execution] = await getTenantDb(this.db)
+      .select({ id: workflowExecutions.id })
+      .from(workflowExecutions)
+      .where(
+        and(
+          eq(workflowExecutions.id, executionId),
+          eq(workflowExecutions.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!execution) {
+      throw new ExecutionNotFoundException(executionId);
+    }
   }
 
   async findByExecution(

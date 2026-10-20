@@ -266,9 +266,19 @@ describe('InterventionPolicyService', () => {
   });
 
   describe('findAll', () => {
+    it('工作流不存在或属于他租户时 404，不再返回空列表', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.findAll(TENANT_ID, WORKFLOW_ID, { page: 1, pageSize: 20 }),
+      ).rejects.toBeInstanceOf(WorkflowNotFoundException);
+      expect(db.select).toHaveBeenCalledTimes(1);
+    });
+
     it('按 page/pageSize 计算 offset 与 totalPages', async () => {
       const offset = vi.fn().mockResolvedValue([makePolicy()]);
       db.select
+        .mockReturnValueOnce(createSelectChain([{ id: WORKFLOW_ID }]))
         .mockReturnValueOnce({
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockReturnValue({

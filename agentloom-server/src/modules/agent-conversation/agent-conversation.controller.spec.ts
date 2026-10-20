@@ -22,12 +22,14 @@ import {
   ToolCallNotFoundException,
   ToolPermissionResolutionNotAllowedException,
 } from '../../common/exceptions/tool-call.exceptions';
+import { ConversationNotFoundException } from './agent-conversation.exceptions';
 
 const mockService = {
   create: vi.fn(),
   startConversation: vi.fn(),
   listByAgent: vi.fn(),
   getDetail: vi.fn(),
+  assertConversationExists: vi.fn(),
   getPermissionResolutionTarget: vi.fn(),
   validateConversationToolCallPermissionState: vi.fn(),
   sendMessage: vi.fn(),
@@ -296,6 +298,22 @@ describe('AgentConversationController', () => {
   });
 
   describe('getSandboxStats', () => {
+    it('对话不存在或属于他租户时 404，不再报 409 沙箱不可用', async () => {
+      const notFound = new ConversationNotFoundException(CONVERSATION_ID);
+      mockService.assertConversationExists.mockRejectedValueOnce(notFound);
+
+      await expect(
+        controller.getSandboxStats(CONVERSATION_ID, TENANT_ID),
+      ).rejects.toBe(notFound);
+      expect(mockService.assertConversationExists).toHaveBeenCalledWith(
+        CONVERSATION_ID,
+        TENANT_ID,
+      );
+      expect(
+        mockSandboxService.getConversationSandboxStats,
+      ).not.toHaveBeenCalled();
+    });
+
     it('应调用 sandboxService 并返回对话沙箱资源统计', async () => {
       mockSandboxService.getConversationSandboxStats.mockResolvedValueOnce({
         cpuPercent: 12.5,
@@ -326,6 +344,18 @@ describe('AgentConversationController', () => {
   });
 
   describe('getSandboxProcesses', () => {
+    it('对话不存在或属于他租户时 404，不再报 409 沙箱不可用', async () => {
+      const notFound = new ConversationNotFoundException(CONVERSATION_ID);
+      mockService.assertConversationExists.mockRejectedValueOnce(notFound);
+
+      await expect(
+        controller.getSandboxProcesses(CONVERSATION_ID, TENANT_ID),
+      ).rejects.toBe(notFound);
+      expect(
+        mockSandboxService.getConversationSandboxProcesses,
+      ).not.toHaveBeenCalled();
+    });
+
     it('应调用 sandboxService 并返回对话沙箱进程列表', async () => {
       mockSandboxService.getConversationSandboxProcesses.mockResolvedValueOnce([
         {

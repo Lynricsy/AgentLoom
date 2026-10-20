@@ -7,7 +7,10 @@ import { ExecutionService } from '../execution.service';
 import { NodeSchedulerService } from '../node-scheduler.service';
 import { CheckpointService } from '../checkpoint.service';
 import { EXECUTION_QUEUE } from '../execution.constants';
-import { InterventionPermissionDeniedException } from '../execution.exceptions';
+import {
+  ExecutionNotFoundException,
+  InterventionPermissionDeniedException,
+} from '../execution.exceptions';
 import { SandboxAgentAdapter } from '../../agent/sandbox-agent.adapter';
 import { WorkspaceIntegrationService } from '../../agent-execution/workspace-integration.service';
 
@@ -55,6 +58,7 @@ const mockExecutionWire = {
 const mockService: Record<string, ReturnType<typeof vi.fn>> = {
   runWorkflow: vi.fn(),
   getExecution: vi.fn(),
+  assertExecutionExists: vi.fn(),
   listExecutions: vi.fn(),
   cancelExecution: vi.fn(),
   getDeadLetterJobs: vi.fn(),
@@ -637,6 +641,23 @@ describe('ExecutionController', () => {
   });
 
   describe('listPtySessions', () => {
+    beforeEach(() => {
+      mockService.assertExecutionExists.mockResolvedValue(undefined);
+    });
+
+    it('执行不存在或属于他租户时 404，不再返回空列表', async () => {
+      const notFound = new ExecutionNotFoundException(EXECUTION_ID);
+      mockService.assertExecutionExists.mockRejectedValueOnce(notFound);
+
+      await expect(
+        controller.listPtySessions(EXECUTION_ID, TENANT_ID),
+      ).rejects.toBe(notFound);
+      expect(mockService.assertExecutionExists).toHaveBeenCalledWith(
+        EXECUTION_ID,
+      );
+      expect(mockSandboxAgentAdapter.listPtySessions).not.toHaveBeenCalled();
+    });
+
     it('应代理获取 PTY 会话列表并返回 { data }', async () => {
       const sessions = [{ id: 'pty-1', title: 'bash' }];
       mockSandboxAgentAdapter.listPtySessions.mockResolvedValue(sessions);

@@ -345,10 +345,13 @@ export class AgentConversationController {
   @RequirePermission('agent:read')
   @ApiOperation({ summary: 'Get resource stats for a conversation sandbox' })
   @ApiResponse({ status: 200, description: 'Conversation sandbox stats' })
+  @ApiResponse({ status: 404, description: '对话不存在' })
+  @ApiResponse({ status: 409, description: '对话没有运行中的沙箱' })
   async getSandboxStats(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentTenant() tenantId: string,
   ) {
+    await this.conversationService.assertConversationExists(id, tenantId);
     const data = await this.sandboxService.getConversationSandboxStats(
       id,
       tenantId,
@@ -360,10 +363,13 @@ export class AgentConversationController {
   @RequirePermission('agent:read')
   @ApiOperation({ summary: 'Get process list for a conversation sandbox' })
   @ApiResponse({ status: 200, description: 'Conversation sandbox processes' })
+  @ApiResponse({ status: 404, description: '对话不存在' })
+  @ApiResponse({ status: 409, description: '对话没有运行中的沙箱' })
   async getSandboxProcesses(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentTenant() tenantId: string,
   ) {
+    await this.conversationService.assertConversationExists(id, tenantId);
     const data = await this.sandboxService.getConversationSandboxProcesses(
       id,
       tenantId,

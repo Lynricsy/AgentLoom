@@ -51,6 +51,11 @@ export class TriggerService {
     workflowId: string,
     query: QueryTriggerDto = {},
   ): Promise<WorkflowTrigger[]> {
+    // 触发器列表受 RLS 过滤，不存在或他租户的工作流会得到空列表；先在租户内断言工作流存在
+    if (!(await this.findWorkflowDefinition(tenantId, workflowId))) {
+      throw new WorkflowNotFoundException(workflowId);
+    }
+
     const parsedQuery = QueryTriggerSchema.parse(query);
     const conditions = [
       eq(schema.workflowTriggers.tenantId, tenantId),

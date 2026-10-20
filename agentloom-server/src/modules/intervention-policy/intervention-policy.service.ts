@@ -41,6 +41,7 @@ export class InterventionPolicyService {
     workflowId: string,
     { page, pageSize }: ListInterventionPoliciesQueryDto,
   ) {
+    await this.assertWorkflowExists(tenantId, workflowId);
     const offset = (page - 1) * pageSize;
 
     const [policies, countResult] = await Promise.all([
@@ -107,20 +108,7 @@ export class InterventionPolicyService {
     workflowId: string,
     dto: CreateInterventionPolicyDto,
   ): Promise<InterventionPolicyResponseDto> {
-    const [workflow] = await this.tenantDb
-      .select({ id: schema.workflowDefinitions.id })
-      .from(schema.workflowDefinitions)
-      .where(
-        and(
-          eq(schema.workflowDefinitions.id, workflowId),
-          eq(schema.workflowDefinitions.tenantId, tenantId),
-        ),
-      )
-      .limit(1);
-
-    if (!workflow) {
-      throw new WorkflowNotFoundException(workflowId);
-    }
+    await this.assertWorkflowExists(tenantId, workflowId);
 
     try {
       const [created] = await this.tenantDb
@@ -226,6 +214,30 @@ export class InterventionPolicyService {
     }
 
     this.logger.log(`Deleted intervention policy ${policyId}`);
+  }
+
+  /**
+   * 策略表受 RLS 过滤，不存在或他租户的工作流会得到空列表 / 系统默认策略；
+   * 经 HTTP 访问工作流子路由时先在租户内断言工作流存在，否则 404。
+   */
+  async assertWorkflowExists(
+    tenantId: string,
+    workflowId: string,
+  ): Promise<void> {
+    const [workflow] = await this.tenantDb
+      .select({ id: schema.workflowDefinitions.id })
+      .from(schema.workflowDefinitions)
+      .where(
+        and(
+          eq(schema.workflowDefinitions.id, workflowId),
+          eq(schema.workflowDefinitions.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!workflow) {
+      throw new WorkflowNotFoundException(workflowId);
+    }
   }
 
   // node-level (active) → workflow-level (active) → SYSTEM_DEFAULT_POLICY

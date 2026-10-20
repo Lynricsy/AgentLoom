@@ -174,6 +174,7 @@ export class GeneratedAppService {
       totalPages: number;
     };
   }> {
+    await this.assertAppExists(tenantId, appId);
     return this.repository.listGenerationRuns(tenantId, appId, query);
   }
 
@@ -237,6 +238,9 @@ export class GeneratedAppService {
       totalPages: number;
     };
   }> {
+    await this.assertAppExists(tenantId, appId);
+    // 运行不存在或不属于路由中的应用时同样 404，而不是空列表
+    await this.repository.findGenerationRunRecord(tenantId, appId, runId);
     return this.repository.listRepairAttempts(tenantId, appId, runId, query);
   }
 
@@ -313,6 +317,7 @@ export class GeneratedAppService {
       totalPages: number;
     };
   }> {
+    await this.assertAppExists(tenantId, appId);
     return this.repository.listGateRuns(tenantId, appId, query);
   }
 
@@ -388,6 +393,7 @@ export class GeneratedAppService {
       totalPages: number;
     };
   }> {
+    await this.assertAppExists(tenantId, appId);
     return this.publicRuntimeService.listSubmissions(tenantId, appId, query);
   }
 
@@ -420,7 +426,16 @@ export class GeneratedAppService {
     appId: string,
     dto: DeleteGeneratedAppSubmissionsDtoType,
   ): Promise<DeleteGeneratedAppSubmissionsResponseDto> {
+    await this.assertAppExists(tenantId, appId);
     return this.publicRuntimeService.deleteSubmissions(tenantId, appId, dto);
+  }
+
+  /**
+   * 子集合表受 RLS 过滤，不存在或他租户的应用会得到空列表（批量删除得到 deletedCount 0）；
+   * 列表与批量操作先在租户内断言应用存在，否则 404。
+   */
+  private async assertAppExists(tenantId: string, appId: string) {
+    await this.repository.findGeneratedAppRecord(tenantId, appId);
   }
 
   assertCanEnablePublicShare(app: Pick<GeneratedApp, 'id' | 'readiness'>) {

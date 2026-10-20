@@ -575,46 +575,56 @@ export class ExecutionService {
           tenantId,
         )));
 
-    const admissionDecision =
-      await this.resourceGovernanceService.resolveExecutionAdmissionDecision({
-        tenantId,
-        workflowId,
-        dbClient: this.tenantDb,
-      });
+    // 准入判定（含租户 advisory 锁）与插入必须在同一事务：锁持有到提交，并发启动按顺序计数（D-212）。
+    // HTTP 请求里复用拦截器建立的租户事务，触发器等无事务调用方在这里开一个。
+    const execution = await runInTenantTransaction(
+      this.db,
+      tenantId,
+      async (tenantDb) => {
+        const admissionDecision =
+          await this.resourceGovernanceService.resolveExecutionAdmissionDecision(
+            {
+              tenantId,
+              workflowId,
+              dbClient: tenantDb,
+            },
+          );
 
-    if (admissionDecision) {
-      await this.resourceGovernanceService.recordBlockedDecision({
-        tenantId,
-        actorId: userId,
-        actorType: 'user',
-        block: admissionDecision,
-      });
-      throw new ResourceGovernanceDecisionBlockedException(admissionDecision);
-    }
+        if (admissionDecision) {
+          await this.resourceGovernanceService.recordBlockedDecision({
+            tenantId,
+            actorId: userId,
+            actorType: 'user',
+            block: admissionDecision,
+          });
+          throw new ResourceGovernanceDecisionBlockedException(
+            admissionDecision,
+          );
+        }
 
-    const [execution] = await this.tenantDb
-      .insert(schema.workflowExecutions)
-      .values({
-        workflowDefinitionId: workflowId,
-        workflowVersionId: versionId,
-        definitionSource: useDraftDefinition ? 'draft' : 'version',
-        tenantId,
-        status: 'pending',
-        triggerType: runRequest?.triggerType ?? 'manual',
-        inputParams,
-        definitionSnapshot,
-        createdBy:
-          userId === SYSTEM_TRIGGER_USER_ID ? workflow.createdBy : userId,
-      })
-      .returning();
+        const [created] = await tenantDb
+          .insert(schema.workflowExecutions)
+          .values({
+            workflowDefinitionId: workflowId,
+            workflowVersionId: versionId,
+            definitionSource: useDraftDefinition ? 'draft' : 'version',
+            tenantId,
+            status: 'pending',
+            triggerType: runRequest?.triggerType ?? 'manual',
+            inputParams,
+            definitionSnapshot,
+            createdBy:
+              userId === SYSTEM_TRIGGER_USER_ID ? workflow.createdBy : userId,
+          })
+          .returning();
 
-    if (hasActiveTenantTransaction()) {
-      registerAfterCommitHook(async () => {
-        await this.enqueueExecutionJob(execution.id, tenantId);
-      });
-    } else {
-      await this.enqueueExecutionJob(execution.id, tenantId);
-    }
+        registerAfterCommitHook(async () => {
+          await this.enqueueExecutionJob(created.id, tenantId);
+        });
+
+        return created;
+      },
+    );
 
     this.logger.log(
       `Workflow execution created: ${JSON.stringify({ executionId: execution.id, workflowId })}`,
@@ -766,12 +776,39 @@ export class ExecutionService {
     return { ...execution, steps: hydratedSteps };
   }
 
+  /**
+   * 执行的子资源（PTY 会话等）只按 executionId 查询，RLS 过滤后不存在或他租户的执行
+   * 会得到空结果；先在租户内断言执行存在，否则 404。
+   */
+  async assertExecutionExists(executionId: string): Promise<void> {
+    const [execution] = await this.tenantDb
+      .select({ id: schema.workflowExecutions.id })
+      .from(schema.workflowExecutions)
+      .where(eq(schema.workflowExecutions.id, executionId))
+      .limit(1);
+
+    if (!execution) {
+      throw new ExecutionNotFoundException(executionId);
+    }
+  }
+
   async listExecutions(
     workflowId: string,
     page: number,
     limit: number,
     filters: ListExecutionsFilters = {},
   ) {
+    // 执行列表受 RLS 过滤，不存在或他租户的工作流会得到空列表；先在租户内断言工作流存在
+    const [workflow] = await this.tenantDb
+      .select({ id: schema.workflowDefinitions.id })
+      .from(schema.workflowDefinitions)
+      .where(eq(schema.workflowDefinitions.id, workflowId))
+      .limit(1);
+
+    if (!workflow) {
+      throw new WorkflowNotFoundException(workflowId);
+    }
+
     const conditions = [
       eq(schema.workflowExecutions.workflowDefinitionId, workflowId),
     ];

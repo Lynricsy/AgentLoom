@@ -280,12 +280,12 @@ describe('GeneratedAppRepository 台账', () => {
       .mockReturnValueOnce(repairListChain)
       .mockReturnValueOnce(repairCountChain);
 
-    const runs = await service.listGenerationRuns(TENANT_ID, APP_ID, {
+    const runs = await repository.listGenerationRuns(TENANT_ID, APP_ID, {
       page: 1,
       pageSize: 20,
       status: 'running',
     });
-    const repairs = await service.listRepairAttempts(
+    const repairs = await repository.listRepairAttempts(
       TENANT_ID,
       APP_ID,
       GENERATION_RUN_ID,
@@ -500,7 +500,7 @@ describe('GeneratedAppRepository 台账', () => {
       .mockReturnValueOnce(listChain)
       .mockReturnValueOnce(countChain);
 
-    const response = await service.listGateRuns(TENANT_ID, APP_ID, {
+    const response = await repository.listGateRuns(TENANT_ID, APP_ID, {
       page: 1,
       pageSize: 20,
       gateId: 'gate-2',
@@ -543,15 +543,15 @@ describe('GeneratedAppRepository 台账', () => {
       .mockReturnValueOnce(emptyCountChain());
 
     const [runs, repairs, gates] = await Promise.all([
-      service.listGenerationRuns(TENANT_ID, APP_ID, {
+      repository.listGenerationRuns(TENANT_ID, APP_ID, {
         page: 2,
         pageSize: 10,
       }),
-      service.listRepairAttempts(TENANT_ID, APP_ID, GENERATION_RUN_ID, {
+      repository.listRepairAttempts(TENANT_ID, APP_ID, GENERATION_RUN_ID, {
         page: 3,
         pageSize: 5,
       }),
-      service.listGateRuns(TENANT_ID, APP_ID, {
+      repository.listGateRuns(TENANT_ID, APP_ID, {
         page: 4,
         pageSize: 25,
       }),

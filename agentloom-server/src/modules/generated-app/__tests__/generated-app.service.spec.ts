@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import type { DrizzleDB } from '../../../database/database.module';
+import type { GeneratedApp } from '../../../database/schema';
 import { WorkflowArchivedException } from '../../workflow-definition/workflow-version.exceptions';
 import type { WorkflowVersionService } from '../../workflow-definition/workflow-version.service';
 import type { GeneratedAppResponseDto } from '../dto';
 import type { GeneratedAppGenerationPipelineService } from '../generated-app-generation-pipeline.service';
 import { GeneratedAppArtifactService } from '../generated-app-artifact.service';
-import { GeneratedAppGenerationRunInProgressException } from '../generated-app.exceptions';
+import {
+  GeneratedAppGenerationRunInProgressException,
+  GeneratedAppGenerationRunNotFoundException,
+  GeneratedAppNotFoundException,
+} from '../generated-app.exceptions';
 import { GeneratedAppPublicRuntimeService } from '../generated-app-public-runtime.service';
 import { GeneratedAppRepository } from '../generated-app.repository';
 import { GeneratedAppRuntimeBindingService } from '../generated-app-runtime-binding.service';
@@ -139,6 +144,64 @@ describe('GeneratedAppService facade', () => {
 
     await expect(service.findOne(TENANT_ID, APP_ID)).resolves.toBe(expected);
     expect(delegate).toHaveBeenCalledWith(TENANT_ID, APP_ID);
+  });
+
+  it('子集合列表与批量删除在应用不存在或属于他租户时 404，不再返回空集合', async () => {
+    const notFound = new GeneratedAppNotFoundException(APP_ID);
+    vi.spyOn(repository, 'findGeneratedAppRecord').mockRejectedValue(notFound);
+    const listRuns = vi.spyOn(repository, 'listGenerationRuns');
+    const listRepairs = vi.spyOn(repository, 'listRepairAttempts');
+    const listGates = vi.spyOn(repository, 'listGateRuns');
+    const listSubmissions = vi.spyOn(publicRuntimeService, 'listSubmissions');
+    const deleteSubmissions = vi.spyOn(
+      publicRuntimeService,
+      'deleteSubmissions',
+    );
+    const page = { page: 1, pageSize: 20 };
+
+    await expect(
+      service.listGenerationRuns(TENANT_ID, APP_ID, page),
+    ).rejects.toBe(notFound);
+    await expect(
+      service.listRepairAttempts(TENANT_ID, APP_ID, GENERATION_RUN_ID, page),
+    ).rejects.toBe(notFound);
+    await expect(service.listGateRuns(TENANT_ID, APP_ID, page)).rejects.toBe(
+      notFound,
+    );
+    await expect(
+      service.listSubmissions(TENANT_ID, APP_ID, { ...page, origin: 'public' }),
+    ).rejects.toBe(notFound);
+    await expect(
+      service.deleteSubmissions(TENANT_ID, APP_ID, { ids: [USER_ID] }),
+    ).rejects.toBe(notFound);
+
+    expect(listRuns).not.toHaveBeenCalled();
+    expect(listRepairs).not.toHaveBeenCalled();
+    expect(listGates).not.toHaveBeenCalled();
+    expect(listSubmissions).not.toHaveBeenCalled();
+    expect(deleteSubmissions).not.toHaveBeenCalled();
+  });
+
+  it('修复尝试列表在运行不属于该应用时 404', async () => {
+    const notFound = new GeneratedAppGenerationRunNotFoundException(
+      GENERATION_RUN_ID,
+    );
+    vi.spyOn(repository, 'findGeneratedAppRecord').mockResolvedValue(
+      {} as GeneratedApp,
+    );
+    const findRun = vi
+      .spyOn(repository, 'findGenerationRunRecord')
+      .mockRejectedValue(notFound);
+    const listRepairs = vi.spyOn(repository, 'listRepairAttempts');
+
+    await expect(
+      service.listRepairAttempts(TENANT_ID, APP_ID, GENERATION_RUN_ID, {
+        page: 1,
+        pageSize: 20,
+      }),
+    ).rejects.toBe(notFound);
+    expect(findRun).toHaveBeenCalledWith(TENANT_ID, APP_ID, GENERATION_RUN_ID);
+    expect(listRepairs).not.toHaveBeenCalled();
   });
 
   it('artifact API 应原样委派参数和异常', async () => {

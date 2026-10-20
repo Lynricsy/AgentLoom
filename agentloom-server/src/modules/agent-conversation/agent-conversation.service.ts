@@ -357,6 +357,30 @@ export class AgentConversationService {
     };
   }
 
+  /**
+   * 对话子资源（沙箱统计 / 进程等）按 conversationId 查询，不存在或他租户的对话会被误报为
+   * 「沙箱不可用」；先在租户内断言对话存在，否则 404。
+   */
+  async assertConversationExists(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const [conversation] = await this.tenantDb
+      .select({ id: agentConversations.id })
+      .from(agentConversations)
+      .where(
+        and(
+          eq(agentConversations.id, conversationId),
+          eq(agentConversations.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!conversation) {
+      throw new ConversationNotFoundException(conversationId);
+    }
+  }
+
   async listMessages(conversationId: string, page = 1, limit = 50) {
     const [conversation] = await this.tenantDb
       .select({ id: agentConversations.id })

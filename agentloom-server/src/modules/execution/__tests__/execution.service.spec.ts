@@ -271,6 +271,16 @@ function createSelectChain(result: unknown) {
   };
 }
 
+function createSelectChainWithLimit(result: unknown) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue(result),
+      }),
+    }),
+  };
+}
+
 function createSelectChainWithOrderBy(result: unknown) {
   return {
     from: vi.fn().mockReturnValue({
@@ -460,6 +470,14 @@ describe('ExecutionService', () => {
   });
 
   describe('runWorkflow', () => {
+    beforeEach(() => {
+      // 准入判定与插入在 runInTenantTransaction 里执行；测试直接复用 db 作为事务对象
+      db.execute.mockResolvedValue(undefined);
+      db.transaction.mockImplementation(
+        async (callback: (tx: typeof db) => Promise<unknown>) => callback(db),
+      );
+    });
+
     it('maintenance 模式应在数据库读取前拒绝 workflow run', async () => {
       process.env.APP_SANDBOX_MAINTENANCE_MODE = 'true';
 
@@ -1644,6 +1662,10 @@ describe('ExecutionService', () => {
     });
 
     it('应在租户事务中延后到提交后再入队 execution job', async () => {
+      db.transaction.mockImplementation(
+        async (callback: (tx: typeof txDb) => Promise<unknown>) =>
+          callback(txDb),
+      );
       txDb.select
         .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
         .mockReturnValueOnce(createSelectChain([mockVersion]));
@@ -1714,6 +1736,10 @@ describe('ExecutionService', () => {
     });
 
     it('应在工作流治理暂停时于租户事务内阻止新执行且不入队', async () => {
+      db.transaction.mockImplementation(
+        async (callback: (tx: typeof txDb) => Promise<unknown>) =>
+          callback(txDb),
+      );
       txDb.select
         .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
         .mockReturnValueOnce(createSelectChain([mockVersion]));
@@ -2353,10 +2379,40 @@ describe('ExecutionService', () => {
     });
   });
 
+  describe('assertExecutionExists', () => {
+    it('执行在租户内可见时通过', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([{ id: EXECUTION_ID }]),
+      );
+
+      await expect(
+        service.assertExecutionExists(EXECUTION_ID),
+      ).resolves.toBeUndefined();
+    });
+
+    it('不存在或他租户的执行抛出 ExecutionNotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await expect(service.assertExecutionExists(EXECUTION_ID)).rejects.toThrow(
+        ExecutionNotFoundException,
+      );
+    });
+  });
+
   describe('listExecutions', () => {
+    it('工作流不存在或属于他租户时抛出 WorkflowNotFoundException，不再返回空列表', async () => {
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await expect(service.listExecutions(WORKFLOW_ID, 1, 20)).rejects.toThrow(
+        WorkflowNotFoundException,
+      );
+      expect(db.select).toHaveBeenCalledTimes(1);
+    });
+
     it('应返回分页的执行列表', async () => {
       const executions = [mockExecution];
       db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: WORKFLOW_ID }]))
         .mockReturnValueOnce(createSelectChainPaginated(executions))
         .mockReturnValueOnce(createSelectChain([{ count: 1 }]));
 
@@ -2370,6 +2426,7 @@ describe('ExecutionService', () => {
 
     it('应在没有结果时返回空列表', async () => {
       db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: WORKFLOW_ID }]))
         .mockReturnValueOnce(createSelectChainPaginated([]))
         .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
 
@@ -2382,6 +2439,7 @@ describe('ExecutionService', () => {
 
     it('应支持通过状态过滤', async () => {
       db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: WORKFLOW_ID }]))
         .mockReturnValueOnce(createSelectChainPaginated([]))
         .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
 
@@ -2390,12 +2448,13 @@ describe('ExecutionService', () => {
       });
 
       expect(result.data).toEqual([]);
-      expect(db.select).toHaveBeenCalledTimes(2);
+      expect(db.select).toHaveBeenCalledTimes(3);
     });
 
     it('按版本筛选只匹配记录了该版本的执行（草稿运行版本为 NULL，不会命中）', async () => {
       const pageChain = createSelectChainPaginated([]);
       db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: WORKFLOW_ID }]))
         .mockReturnValueOnce(pageChain)
         .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
 
@@ -2415,6 +2474,7 @@ describe('ExecutionService', () => {
     it('应支持按定义来源筛选草稿运行', async () => {
       const pageChain = createSelectChainPaginated([]);
       db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([{ id: WORKFLOW_ID }]))
         .mockReturnValueOnce(pageChain)
         .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
 

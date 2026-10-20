@@ -100,6 +100,7 @@ export class GeneratedAppController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '分页查询生成应用自动开发运行台账' })
   @ApiResponse({ status: 200, description: '生成应用运行台账列表' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
   async listGenerationRuns(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Query(new ZodValidationPipe(QueryGeneratedAppGenerationRunsSchema))
@@ -210,6 +211,7 @@ export class GeneratedAppController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '分页查询生成应用修复尝试台账' })
   @ApiResponse({ status: 200, description: '生成应用修复尝试列表' })
+  @ApiResponse({ status: 404, description: '生成应用任务或运行台账不存在' })
   async listRepairAttempts(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Param('runId', ParseUUIDPipe) runId: string,
@@ -322,6 +324,7 @@ export class GeneratedAppController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '分页查询生成应用门禁运行证据记录' })
   @ApiResponse({ status: 200, description: '生成应用门禁运行记录列表' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
   async listGateRuns(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Query(new ZodValidationPipe(QueryGeneratedAppGateRunsSchema))
@@ -359,6 +362,7 @@ export class GeneratedAppController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '分页查询生成应用公开提交记录' })
   @ApiResponse({ status: 200, description: '生成应用提交记录列表' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
   async listSubmissions(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Query(new ZodValidationPipe(QueryGeneratedAppSubmissionsSchema))
@@ -413,6 +417,7 @@ export class GeneratedAppController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '批量软删除生成应用公开提交记录' })
   @ApiResponse({ status: 200, description: '提交记录批量删除结果' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
   async deleteSubmissions(
     @Param('appId', ParseUUIDPipe) appId: string,
     @Body(new ZodValidationPipe(DeleteGeneratedAppSubmissionsSchema))

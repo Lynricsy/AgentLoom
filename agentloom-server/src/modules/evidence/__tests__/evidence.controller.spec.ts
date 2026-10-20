@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../../common/decorators/roles.decorator';
+import { ExecutionNotFoundException } from '../../execution/execution.exceptions';
 import { EvidenceController } from '../evidence.controller';
 
 const TENANT_ID = '00000000-0000-4000-8000-000000000001';
@@ -30,6 +31,7 @@ function getHandler(name: EvidenceControllerHandlerName): object {
 
 function createMockEvidenceService() {
   return {
+    assertExecutionExists: vi.fn().mockResolvedValue(undefined),
     findByExecution: vi.fn(),
     findById: vi.fn(),
     verifyContentHash: vi.fn(),
@@ -89,6 +91,38 @@ describe('EvidenceController', () => {
       mockService as never,
       mockGraphService as never,
     );
+  });
+
+  it('执行不存在或属于他租户时，列表 / 关系图 / 溯源链均 404 且不查询证据', async () => {
+    const notFound = new ExecutionNotFoundException(EXECUTION_ID);
+    mockService.assertExecutionExists.mockRejectedValue(notFound);
+    const mockRes = { header: vi.fn() };
+
+    await expect(
+      controller.findByExecution(TENANT_ID, EXECUTION_ID, {
+        page: 1,
+        limit: 20,
+      } as never),
+    ).rejects.toBe(notFound);
+    await expect(
+      controller.getEvidenceGraph(TENANT_ID, EXECUTION_ID, mockRes as never),
+    ).rejects.toBe(notFound);
+    await expect(
+      controller.getEvidenceChain(
+        TENANT_ID,
+        EXECUTION_ID,
+        {} as never,
+        mockRes as never,
+      ),
+    ).rejects.toBe(notFound);
+
+    expect(mockService.assertExecutionExists).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+    );
+    expect(mockService.findByExecution).not.toHaveBeenCalled();
+    expect(mockGraphService.buildGraph).not.toHaveBeenCalled();
+    expect(mockService.buildChain).not.toHaveBeenCalled();
   });
 
   it('should delegate graph query to graph service and return graph data', async () => {

@@ -94,6 +94,7 @@ export class TriggerController {
   @RequirePermission('trigger:read')
   @ApiOperation({ summary: '查询工作流触发器列表' })
   @ApiResponse({ status: 200, description: '触发器列表' })
+  @ApiResponse({ status: 404, description: '工作流不存在' })
   async findAll(
     @Param('workflowId', ParseUUIDPipe) workflowId: string,
     @Query() query: QueryTriggerDto,

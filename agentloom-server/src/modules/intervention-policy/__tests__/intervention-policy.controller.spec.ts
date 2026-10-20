@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Test } from '@nestjs/testing';
 
+import { WorkflowNotFoundException } from '../../workflow-definition/workflow-version.exceptions';
 import { InterventionPolicyController } from '../intervention-policy.controller';
 import { InterventionPolicyService } from '../intervention-policy.service';
 
@@ -11,6 +12,7 @@ const NODE_ID = 'agent-node-1';
 const mockInterventionPolicyService = {
   findAll: vi.fn(),
   resolvePolicy: vi.fn(),
+  assertWorkflowExists: vi.fn(),
   findById: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
@@ -60,5 +62,20 @@ describe('InterventionPolicyController', () => {
       WORKFLOW_ID,
       NODE_ID,
     );
+  });
+
+  it('resolve 在工作流不存在或属于他租户时 404，不返回系统默认策略', async () => {
+    const notFound = new WorkflowNotFoundException(WORKFLOW_ID);
+    mockInterventionPolicyService.assertWorkflowExists.mockRejectedValueOnce(
+      notFound,
+    );
+
+    await expect(
+      controller.resolvePolicy(TENANT_ID, WORKFLOW_ID, NODE_ID),
+    ).rejects.toBe(notFound);
+    expect(
+      mockInterventionPolicyService.assertWorkflowExists,
+    ).toHaveBeenCalledWith(TENANT_ID, WORKFLOW_ID);
+    expect(mockInterventionPolicyService.resolvePolicy).not.toHaveBeenCalled();
   });
 });
