@@ -111,6 +111,7 @@ const mocks = vi.hoisted(() => {
 
   const createMockPluginEarningsService = () => ({
     getDashboardSummary: vi.fn(),
+    getAccruedEarnings: vi.fn(),
     getDashboardTrends: vi.fn(),
     getDashboardRanking: vi.fn(),
     getDashboardHistory: vi.fn(),
@@ -547,7 +548,7 @@ describe('PluginMarketplaceController', () => {
   });
 
   describe('earnings dashboard', () => {
-    it('应返回收益总览', async () => {
+    it('收益总览：月结字段来自 earnings，本月收入与应计字段来自计费流水', async () => {
       const summary = {
         totalRevenue: '100.00000000',
         totalDeveloperShare: '59.50000000',
@@ -558,14 +559,19 @@ describe('PluginMarketplaceController', () => {
         totalExecutions: 12,
         pluginCount: 3,
       };
-      const currentMonthSummary = {
-        ...summary,
-        totalRevenue: '12.50000000',
-      };
       pluginService.resolveOrganizationId.mockResolvedValue(ORG_ID);
-      pluginEarningsService.getDashboardSummary
-        .mockResolvedValueOnce(summary)
-        .mockResolvedValueOnce(currentMonthSummary);
+      pluginEarningsService.getDashboardSummary.mockResolvedValueOnce(summary);
+      pluginEarningsService.getAccruedEarnings
+        .mockResolvedValueOnce({
+          totalRevenue: '0.15000000',
+          developerShare: '0.08925000',
+          totalExecutions: 15,
+        })
+        .mockResolvedValueOnce({
+          totalRevenue: '0.10000000',
+          developerShare: '0.05950000',
+          totalExecutions: 10,
+        });
 
       const result = await controller.getEarningsSummary(
         QueryPluginEarningsSummarySchema.parse({
@@ -582,26 +588,33 @@ describe('PluginMarketplaceController', () => {
       expect(pluginService.resolveOrganizationId).toHaveBeenCalledWith(
         TENANT_ID,
       );
-      expect(pluginEarningsService.getDashboardSummary).toHaveBeenNthCalledWith(
-        1,
+      expect(pluginEarningsService.getDashboardSummary).toHaveBeenCalledTimes(1);
+      expect(pluginEarningsService.getDashboardSummary).toHaveBeenCalledWith(
         expect.objectContaining({
           orgId: ORG_ID,
           periodStart: '2025-01-01T00:00:00.000Z',
           periodEnd: '2025-01-31T23:59:59.999Z',
         }),
       );
-      expect(pluginEarningsService.getDashboardSummary).toHaveBeenNthCalledWith(
-        2,
-        expect.objectContaining({ orgId: ORG_ID }),
+      expect(pluginEarningsService.getAccruedEarnings).toHaveBeenNthCalledWith(
+        1,
+        ORG_ID,
       );
+      const monthStart = pluginEarningsService.getAccruedEarnings.mock
+        .calls[1]?.[1] as Date;
+      expect(monthStart.getUTCDate()).toBe(1);
+      expect(monthStart.getUTCHours()).toBe(0);
       expect(result).toEqual({
         totalRevenue: '100.00000000',
-        currentMonthRevenue: '12.50000000',
+        currentMonthRevenue: '0.10000000',
         totalExecutions: 12,
         activePlugins: 3,
         totalDeveloperShare: '59.50000000',
         pendingPayout: '20.00000000',
         completedPayout: '39.50000000',
+        accruedRevenue: '0.15000000',
+        accruedDeveloperShare: '0.08925000',
+        accruedExecutions: 15,
       });
     });
 

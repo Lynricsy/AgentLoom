@@ -17,6 +17,7 @@ const {
   createMockSettlementProducer,
   createMockDb,
   runInTenantTransaction,
+  transactionStorage,
 } = vi.hoisted(() => ({
   createMockPluginUsageService: () => ({
     getUsageByPluginForPeriod: vi.fn(),
@@ -29,14 +30,26 @@ const {
   createMockSettlementProducer: () => ({
     addSettlementJob: vi.fn().mockResolvedValue({ id: 'settlement-job' }),
   }),
-  createMockDb: () => ({
-    select: vi.fn(),
-  }),
+  createMockDb: () => {
+    const db = {
+      select: vi.fn(),
+      // 嵌套事务即 savepoint：单测里直接复用同一个 mock
+      transaction: vi.fn(async (callback: (tx: unknown) => unknown) =>
+        callback(db),
+      ),
+    };
+    return db;
+  },
   runInTenantTransaction: vi.fn(),
+  transactionStorage: {
+    getStore: vi.fn(),
+    run: vi.fn((_context: unknown, operation: () => unknown) => operation()),
+  },
 }));
 
 vi.mock('../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction,
+  transactionStorage,
 }));
 
 import {
@@ -51,7 +64,7 @@ const PERIOD_START = '2026-02-01T00:00:00.000Z';
 const PERIOD_END = '2026-02-28T23:59:59.999Z';
 const SOURCE_LISTING_ID = '44444444-4444-4444-8444-444444444444';
 
-type MockDb = { select: Mock };
+type MockDb = { select: Mock; transaction: Mock };
 type MockPluginUsageService = { getUsageByPluginForPeriod: Mock };
 type MockSettlementProducer = { addSettlementJob: Mock };
 type MockPluginEarningsService = {
@@ -148,6 +161,10 @@ describe('EarningsSettlementWorker', () => {
         operation: (tenantDb: unknown) => Promise<unknown>,
       ) => operation(db),
     );
+    transactionStorage.getStore.mockReturnValue({
+      db: mockDb,
+      afterCommitHooks: [],
+    });
 
     mockEarningsService.calculateSettlementShares.mockImplementation(
       (value) => ({
@@ -317,6 +334,34 @@ describe('EarningsSettlementWorker', () => {
       expect(mockEarningsService.createEarningsRecord).not.toHaveBeenCalled();
       expect(logSpy).toHaveBeenCalledWith(
         `Settled earnings for 0 plugins in ${ORG_ID}`,
+      );
+    });
+
+    it('单个插件结算失败只回滚自己的 savepoint，其余插件照常提交，最后抛错触发重试', async () => {
+      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+      const failingPluginDbId = '99999999-9999-4999-8999-999999999999';
+      mockUsageService.getUsageByPluginForPeriod.mockResolvedValue([
+        createUsageRecord({
+          pluginDbId: failingPluginDbId,
+          sourceListingId: null,
+        }),
+        createUsageRecord({ sourceListingId: null }),
+      ]);
+      mockEarningsService.findExistingEarning.mockResolvedValue(null);
+      mockEarningsService.createEarningsRecord
+        .mockRejectedValueOnce(new Error('insert failed'))
+        .mockResolvedValueOnce({ id: 'earning-ok' });
+
+      await expect(worker.process(createJob())).rejects.toThrow(
+        failingPluginDbId,
+      );
+
+      expect(mockDb.transaction).toHaveBeenCalledTimes(2);
+      expect(mockEarningsService.createEarningsRecord).toHaveBeenCalledTimes(2);
+      expect(mockEarningsService.createEarningsRecord).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          pluginDbId: '33333333-3333-4333-8333-333333333333',
+        }),
       );
     });
   });

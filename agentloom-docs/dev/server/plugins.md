@@ -27,10 +27,14 @@ flowchart TD
     G -->|不符| X4
     G --> H[按 wasmEntry 取出 WASM，校验魔数 \0asm]
     H --> I{同组织已有同 pluginId?}
-    I -->|是| X5[409 已存在]
     I -->|否| J[上传 archive.alp 与 plugin.wasm 到对象存储]
     J --> K[校验 manifest 并写 plugins 表]
+    I -->|是| V{非市场副本且版本严格更高?}
+    V -->|否| X5[409 plugin-already-exists]
+    V -->|是| J2[上传新版本对象]
+    J2 --> K2[OCC 就地更新同一行，删除旧版本对象]
     K -->|失败| L[尽力删除已上传对象]
+    K2 -->|失败| L
 ```
 
 各步要点：
@@ -40,7 +44,10 @@ flowchart TD
 - **开发者公钥**：通过 `/api/v1/plugins/developer-keys` 登记（`agentloom-server/src/modules/plugin/plugin-developer-key.controller.ts`）。`PluginSignatureService.validatePublicKey` 拒绝私钥 PEM、非 RSA 密钥和短于 2048 位的密钥；指纹为 SPKI DER 的 SHA-256 hex。
 - **签名口径**：服务端不自己实现签名算法，而是复用 `@agentloom/plugin-sdk` 的 `verifyArchiveSignature` 与 `computeContentHash`（`agentloom-plugin-sdk/src/signing/verify.ts`、`agentloom-plugin-sdk/src/signing/archive.ts`），保证 CLI 签名与服务端验签是同一份代码。被签名的不是 zip 字节，而是规范化载荷：去掉 `signature`、`contentHash`、`developerKeyFingerprint` 三个字段并按键排序后的 manifest，加上除 `manifest.json` 外每个文件的 `{ path, sha256 }`（按路径排序），序列化为 JSON。验签使用 RSA-PSS、SHA-256、`saltLength = RSA_PSS_SALTLEN_DIGEST`；`contentHash` 是该载荷的 SHA-256。因此重新压缩、调整文件顺序不会使签名失效，改动任一文件内容会。
 - **WASM 必需**：`wasmEntry` 必须是包内安全相对路径（不以 `/` 开头、不含 `\` 与 `..`），指向的文件以 WASM 魔数开头。WASM 是唯一运行时。
+- **签名失败的状态码**：`plugin-signature-invalid` 是 422（内容校验失败），不是 401——401 只表示认证失败，客户端会据此刷新 token 并重传整包。
 - **对象存储键**：`tenants/<tenantId>/plugins/<pluginId>/<version>/archive.alp` 与同目录的 `plugin.wasm`。
+- **新版本**：同组织已有同 `pluginId` 时走 `PluginService.publishNewVersion`：`assertCanPublishNewVersion` 在上传前拒绝市场副本与不高于当前版本的包（semver 比较，`agentloom-server/src/modules/plugin/plugin-version.util.ts`）；通过后上传到新版本前缀，按 `occVersion` 就地更新同一行，成功后删除旧版本在本租户前缀下的对象。行 `id` 不变，因此 listing 与各安装副本 metadata 里的 `sourcePluginDbId` 保持有效，安装方的 upgrade-check 立即得到 `upgrade_available`。未带 `status` 表单字段时沿用当前状态。
+- **删除**：`PluginService.remove` 在插件仍有 `listed` / `pending_review` 的 listing 时抛 `PluginListedException`（409 `plugin-listed`）。`marketplace_listings.plugin_db_id` 仍是 `ON DELETE CASCADE`（已下架的 listing 与评价随插件删除）；`plugin_usage_records` 与 `plugin_earnings` 的 `plugin_db_id` 不设外键，按值记录，不随插件删除，见 [ADR 0009](/dev/decisions/0009-plugin-billing-ledger-by-value)。
 - **manifest 校验**：`PluginService.register` 用 plugin-sdk 的 `validateManifest` 与 `PluginManifestSchema` 校验（`agentloom-server/src/modules/plugin/plugin.service.ts`）。
 - **状态**：`plugin_status` 枚举为 `registered`、`active`、`disabled`、`error`，默认 `registered`；上传时可通过表单字段 `status` 直接切换。只有 `active` 插件能被执行（`findActiveByPluginId` 对其他状态抛 `PluginInactiveException`）。
 
@@ -61,7 +68,7 @@ sequenceDiagram
     S->>E: 执行 plugin 节点
     E->>E: 读取 nodeData.pluginId / pluginNodeType / pluginConfig
     E->>E: findActiveByPluginId（校验 active）
-    E->>Q: add('execute-plugin-node', {tenantId, executionId, stepId, pluginId, nodeType, inputs, config})
+    E->>Q: add('execute-plugin-node', {tenantId, executionId, stepId, nodeId, pluginId, nodeType, requestedPluginVersion, inputs, config})
     E->>S: step 置为 queued
     Q->>W: 消费任务（租户事务内）
     W->>W: step 置为 running，下载 plugin.wasm
@@ -75,7 +82,9 @@ sequenceDiagram
 - 消费代码：`PluginExecutionWorker`（`agentloom-server/src/modules/plugin/plugin-execution.worker.ts`），整个处理过程包在 `runInTenantTransaction` 中。
 - 调用的 WASM 导出函数默认为 `execute`，节点配置的 `functionName` 可覆盖；输入为 `{ nodeType, inputs, config }` 的 JSON 字符串。
 - 成功结果写入 step 的 `result`（额外带 `exec-out: { triggered: true }`），`checkpointData.runtime` 记为 `wasm-extism`。
-- **用量落账**：成功执行后在同一租户事务内写 `plugin_usage_records`。落账失败抛 `PluginUsageLedgerException`，事务（含 step 状态）整体回滚，任务交给 BullMQ 重试，避免开发者收入漏记。其他错误收敛为 step `failed`，不重试。
+- **版本记录**：插件节点按 `pluginId` 解析组织内当前记录，总是执行当前版本。`checkpointData` 记录实际执行的 `pluginVersion`、`pluginContentHash` 与画布节点 data 里的 `requestedPluginVersion`；两者不一致时加 `pluginVersionMismatch: true` 并打 `plugin_version_mismatch` 告警日志。
+- **错误定位**：失败 step 的 `errorMessage.nodeId` 是画布节点 id（任务数据里的 `nodeId`），插件节点类型写在 `detail`（`pluginId=…, pluginNodeType=…`）。
+- **用量落账**：成功执行后在同一租户事务内写 `plugin_usage_records`。落账失败抛 `PluginUsageLedgerException`，事务（含 step 状态）整体回滚，任务交给 BullMQ 重试，避免开发者收入漏记。其他错误收敛为 step `failed`，不重试。该表只追加：RLS 只有 SELECT / INSERT 策略，没有外键级联。
 - 队列重试参数见 [异步任务队列](/dev/server/queues)。
 - 生成应用产生的租户私有插件（`metadata.source = 'generated-app-private-plugin'`）在没有 WASM 时走一条受控的确定性回退，`checkpointData.runtime` 记为 `generated-private-deterministic`。
 
@@ -109,6 +118,7 @@ Extism 错误被分类为领域异常：超时 → `PluginExecutionTimeoutExcept
 `earnings-settlement` 队列由 `EarningsSettlementWorker`（`agentloom-server/src/modules/plugin/earnings-settlement.worker.ts`）处理两类任务：
 
 - **派发任务** `dispatch-plugin-earnings-settlement`：由调度器按 `EARNINGS_SETTLEMENT_DISPATCH_SCHEDULE`（`0 3 1 * *`，UTC）触发，计算上一个自然月的 UTC 起止时间，按 `plugin_usage_records` 中有计费金额的来源租户/组织分组，为每组投递一个结算任务。
-- **结算任务**：在来源租户的事务内汇总该周期各插件用量并写入收益记录。
+- **结算任务**：在来源租户的事务内汇总该周期各插件用量并写入收益记录。每个源插件在独立 savepoint 中写入，单个插件失败只回滚自己；事务提交后若有失败插件则抛错，BullMQ 重试时已结算的插件按 `(plugin_db_id, period_start, period_end)` 幂等跳过。
+- **应计收入**：`PluginEarningsService.getAccruedEarnings` 实时汇总尚未被任何月结记录覆盖的计费流水（按 `source_org_id`，用原始连接跨租户读取，口径与结算查询一致），供 `GET /plugins/marketplace/earnings/summary` 的 `currentMonthRevenue`、`accrued*` 字段使用。
 
 分成比例常量为 `REVENUE_SPLIT`（`agentloom-server/src/modules/plugin/plugin-earnings.service.ts`）：开发者 `0.70`、平台 `0.30`、上架佣金 `0.15`。金额使用定点小数工具 `agentloom-server/src/modules/plugin/fixed-scale-decimal.ts` 计算。对外的收益查询端点见 [插件市场与收益](/api/plugins/marketplace)。

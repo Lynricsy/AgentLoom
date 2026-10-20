@@ -15,12 +15,47 @@ export class PluginNotFoundException extends DomainException {
 }
 
 export class PluginAlreadyExistsException extends DomainException {
-  constructor(pluginId: string) {
+  constructor(pluginId: string, detail?: string) {
     super({
       type: problemType('plugin-already-exists'),
       title: '插件已存在',
       status: HttpStatus.CONFLICT,
-      detail: `插件 ${pluginId} 已在当前组织中注册`,
+      detail: detail ?? `插件 ${pluginId} 已在当前组织中注册`,
+    });
+  }
+}
+
+/**
+ * 上传的版本不高于组织内已注册版本：同一插件 ID 只保留一条记录，
+ * 新版本必须严格大于当前版本才会就地替换。
+ */
+export class PluginVersionNotNewerException extends DomainException {
+  constructor(pluginId: string, currentVersion: string, uploadedVersion: string) {
+    super({
+      type: problemType('plugin-already-exists'),
+      title: '插件已存在',
+      status: HttpStatus.CONFLICT,
+      detail: `插件 ${pluginId} 已注册版本 ${currentVersion}，上传的版本 ${uploadedVersion} 不高于当前版本；提升 manifest.json 的 version 后重新构建`,
+      extensions: {
+        currentVersion,
+        uploadedVersion,
+      },
+    });
+  }
+}
+
+/** 插件仍在市场上架或审核中：删除会连带删掉 listing 与评价，必须先下架。 */
+export class PluginListedException extends DomainException {
+  constructor(id: string, listingId: string, listingStatus: string) {
+    super({
+      type: problemType('plugin-listed'),
+      title: '插件仍在市场上架',
+      status: HttpStatus.CONFLICT,
+      detail: `插件 ${id} 的市场 listing ${listingId} 当前为 ${listingStatus}，请先下架再删除`,
+      extensions: {
+        listingId,
+        listingStatus,
+      },
     });
   }
 }
@@ -102,7 +137,7 @@ export class PluginSignatureInvalidException extends DomainException {
     super({
       type: problemType('plugin-signature-invalid'),
       title: 'Plugin Signature Invalid',
-      status: HttpStatus.UNAUTHORIZED,
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
       detail: `插件 "${pluginId}" 的签名验证失败。归档可能已被篡改或使用了错误的签名密钥。`,
     });
   }
@@ -219,6 +254,17 @@ export class PluginUsageLedgerException extends DomainException {
       title: 'Plugin Usage Ledger Error',
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       detail: detail ?? `插件 "${pluginId}" 的用量落账失败，执行结果已回滚。`,
+    });
+  }
+}
+
+export class PluginEarningNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: problemType('plugin-earning-not-found'),
+      title: '插件收益记录不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `插件收益记录 ${id} 不存在`,
     });
   }
 }

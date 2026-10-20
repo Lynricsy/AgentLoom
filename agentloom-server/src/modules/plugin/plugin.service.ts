@@ -6,7 +6,7 @@ import {
   validateManifest as validatePluginManifest,
   type PluginPermission,
 } from '@agentloom/plugin-sdk';
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -24,10 +24,13 @@ import {
 import {
   PluginAlreadyExistsException,
   PluginInactiveException,
+  PluginListedException,
   PluginNotFoundException,
   PluginValidationException,
   PluginVersionConflictException,
+  PluginVersionNotNewerException,
 } from './plugin.exceptions';
+import { comparePluginVersions } from './plugin-version.util';
 
 const PluginNodeDefinitionSchema = z.record(z.string(), z.unknown());
 
@@ -310,21 +313,59 @@ export class PluginService {
     return updated;
   }
 
-  async updateRegistrationArtifacts(
-    id: string,
-    tenantId: string,
-    occVersion: number,
+  /**
+   * 同一插件 ID 上传新版本前的准入判断，在任何对象上传之前调用。
+   *
+   * - 市场安装的副本只能经 listing 升级接口更新，自行上传同 ID 的包会覆盖
+   *   副本的来源与计费快照，按「已存在」拒绝；
+   * - 版本必须严格高于当前版本，同版本或回退版本返回 409。
+   */
+  assertCanPublishNewVersion(existing: PluginRecord, uploadedVersion: string) {
+    if (this.readMarketplaceCloneMetadata(existing.metadata)) {
+      throw new PluginAlreadyExistsException(
+        existing.pluginId,
+        `插件 ${existing.pluginId} 是从插件市场安装的副本，只能通过市场升级接口更新`,
+      );
+    }
+
+    if (comparePluginVersions(uploadedVersion, existing.version) <= 0) {
+      throw new PluginVersionNotNewerException(
+        existing.pluginId,
+        existing.version,
+        uploadedVersion,
+      );
+    }
+  }
+
+  /**
+   * 就地发布新版本：记录 id 不变，因此 listing、已安装副本的
+   * `sourcePluginDbId` 与用量流水的来源引用都保持有效，市场安装方随即可以
+   * 通过 upgrade-check / upgrade 拿到新版本。
+   *
+   * 状态不随新版本重置（正在使用的工作流不受影响）；写入成功后
+   * best-effort 删除旧版本在本租户前缀下的产物。
+   */
+  async publishNewVersion(
+    existing: PluginRecord,
     manifestData: Record<string, unknown>,
     nodeDefinitions: Array<Record<string, unknown>>,
     storageKey: string,
-    options?: {
-      signature?: string;
-      contentHash?: string;
-      wasmBundleUrl?: string;
+    options: {
+      signature: string;
+      contentHash: string;
+      wasmBundleUrl: string;
     },
   ): Promise<PluginRecord> {
     const manifest = this.parseManifest(manifestData);
     const parsedNodeDefinitions = this.parseNodeDefinitions(nodeDefinitions);
+
+    if (manifest.pluginId !== existing.pluginId) {
+      throw new PluginValidationException(
+        `manifest.id ${manifest.pluginId} 与已注册插件 ${existing.pluginId} 不一致`,
+      );
+    }
+
+    this.assertCanPublishNewVersion(existing, manifest.version);
 
     const [updated] = await this.tenantDb
       .update(schema.plugins)
@@ -339,37 +380,52 @@ export class PluginService {
         storageKey: this.normalizeNullableText(storageKey),
         permissions: manifest.permissions,
         metadata: manifest.metadata,
-        signature: this.normalizeNullableText(options?.signature),
-        contentHash: this.normalizeNullableText(options?.contentHash),
-        wasmBundleUrl: this.normalizeNullableText(options?.wasmBundleUrl),
+        signature: this.normalizeNullableText(options.signature),
+        contentHash: this.normalizeNullableText(options.contentHash),
+        wasmBundleUrl: this.normalizeNullableText(options.wasmBundleUrl),
         occVersion: sql`${schema.plugins.occVersion} + 1`,
         updatedAt: new Date(),
       })
       .where(
         and(
-          eq(schema.plugins.id, id),
-          eq(schema.plugins.tenantId, tenantId),
-          eq(schema.plugins.occVersion, occVersion),
+          eq(schema.plugins.id, existing.id),
+          eq(schema.plugins.tenantId, existing.tenantId),
+          eq(schema.plugins.occVersion, existing.occVersion),
         ),
       )
       .returning();
 
     if (!updated) {
-      const currentPlugin = await this.findPlugin(tenantId, id);
+      const currentPlugin = await this.findPlugin(
+        existing.tenantId,
+        existing.id,
+      );
 
       if (!currentPlugin) {
-        throw new PluginNotFoundException(id);
+        throw new PluginNotFoundException(existing.id);
       }
 
-      throw new PluginVersionConflictException(id, currentPlugin.occVersion);
+      throw new PluginVersionConflictException(
+        existing.id,
+        currentPlugin.occVersion,
+      );
     }
+
+    await this.deleteOwnedStorageObjects(
+      existing.tenantId,
+      [existing.storageKey, existing.wasmBundleUrl].filter(
+        (key) => key !== updated.storageKey && key !== updated.wasmBundleUrl,
+      ),
+    );
 
     this.logger.log(
       JSON.stringify({
-        action: 'plugin_registration_artifacts_updated',
+        action: 'plugin_version_published',
         pluginId: updated.pluginId,
         recordId: updated.id,
-        tenantId,
+        tenantId: updated.tenantId,
+        fromVersion: existing.version,
+        toVersion: updated.version,
         occVersion: updated.occVersion,
       }),
     );
@@ -377,11 +433,44 @@ export class PluginService {
     return updated;
   }
 
+  /**
+   * 删除插件。
+   *
+   * 仍处于 listed / pending_review 的市场 listing 会随插件级联删除（连同评价），
+   * 安装方从此看不到来源，因此必须先下架。用量流水与收益记录按值引用插件，
+   * 不随删除变化：已安装副本的后续计费与月结照常进行。
+   */
   async remove(id: string, tenantId: string): Promise<void> {
     const plugin = await this.findPlugin(tenantId, id);
 
     if (!plugin) {
       throw new PluginNotFoundException(id);
+    }
+
+    const [activeListing] = await this.tenantDb
+      .select({
+        id: schema.marketplaceListings.id,
+        status: schema.marketplaceListings.status,
+      })
+      .from(schema.marketplaceListings)
+      .where(
+        and(
+          eq(schema.marketplaceListings.tenantId, tenantId),
+          eq(schema.marketplaceListings.pluginDbId, id),
+          inArray(schema.marketplaceListings.status, [
+            'listed',
+            'pending_review',
+          ]),
+        ),
+      )
+      .limit(1);
+
+    if (activeListing) {
+      throw new PluginListedException(
+        id,
+        activeListing.id,
+        activeListing.status,
+      );
     }
 
     const [deleted] = await this.tenantDb

@@ -1,4 +1,3 @@
-import { NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DrizzleDB } from '../../database/database.module';
@@ -11,7 +10,10 @@ import {
 } from './dto/plugin-earnings.dto';
 import { FixedScaleDecimal } from './fixed-scale-decimal';
 import { PluginEarningsService } from './plugin-earnings.service';
-import { PluginEarningsPayoutTransitionException } from './plugin.exceptions';
+import {
+  PluginEarningNotFoundException,
+  PluginEarningsPayoutTransitionException,
+} from './plugin.exceptions';
 
 const { createMockDb } = vi.hoisted(() => ({
   createMockDb: () => ({
@@ -292,12 +294,15 @@ describe('PluginEarningsService', () => {
       expect(selectQuery.limit).toHaveBeenCalledWith(1);
     });
 
-    it('不存在时应抛出 NotFoundException', async () => {
+    it('不存在时应抛出领域异常 plugin-earning-not-found（404）', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
-      await expect(service.findEarningById(EARNING_ID)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.findEarningById(EARNING_ID),
+      ).rejects.toMatchObject({
+        constructor: PluginEarningNotFoundException,
+        type: 'https://agentloom.dev/errors/plugin-earning-not-found',
+      });
     });
   });
 

@@ -9,10 +9,15 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { plugins } from './plugins.schema';
-import { createDirectTenantPolicies } from './rls-policies';
+import { createAppendOnlyTenantPolicies } from './rls-policies';
 import { users } from './users.schema';
 
+/**
+ * 插件计费流水，只追加：RLS 不开放 UPDATE/DELETE。
+ *
+ * `plugin_db_id` 按值记录执行时的插件记录，不设外键——插件（含市场副本）
+ * 被删除时流水必须原样保留，月结依赖 `source_*` 列把收入归给开发者。
+ */
 export const pluginUsageRecords = pgTable(
   'plugin_usage_records',
   {
@@ -20,9 +25,7 @@ export const pluginUsageRecords = pgTable(
       .primaryKey()
       .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
-    pluginDbId: uuid('plugin_db_id')
-      .notNull()
-      .references(() => plugins.id, { onDelete: 'cascade' }),
+    pluginDbId: uuid('plugin_db_id').notNull(),
     pluginId: varchar('plugin_id', { length: 255 }).notNull(),
     sourceTenantId: uuid('source_tenant_id'),
     sourceOrgId: uuid('source_org_id'),
@@ -61,7 +64,7 @@ export const pluginUsageRecords = pgTable(
     index('plugin_usage_records_execution_idx').on(table.executionId),
     index('plugin_usage_records_created_at_idx').on(table.createdAt),
     index('plugin_usage_records_plugin_id_idx').on(table.pluginId),
-    ...createDirectTenantPolicies('plugin_usage_records'),
+    ...createAppendOnlyTenantPolicies('plugin_usage_records'),
   ],
 );
 

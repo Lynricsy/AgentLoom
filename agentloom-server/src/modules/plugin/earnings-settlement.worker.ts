@@ -3,7 +3,10 @@ import { Inject, Logger } from '@nestjs/common';
 import { and, eq, gte, inArray, isNotNull, lte } from 'drizzle-orm';
 import { Job } from 'bullmq';
 
-import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import {
+  runInTenantTransaction,
+  transactionStorage,
+} from '../../common/interceptors/tenant-transaction.context';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import { FixedScaleDecimal } from './fixed-scale-decimal';
@@ -59,8 +62,9 @@ export class EarningsSettlementWorker extends WorkerHost {
     const { tenantId, orgId, periodStart, periodEnd } = job.data;
     const periodStartDate = new Date(periodStart);
     const periodEndDate = new Date(periodEnd);
+    const failures: Array<{ pluginDbId: string; error: string }> = [];
 
-    await runInTenantTransaction(this.db, tenantId, async () => {
+    await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
       const usageByPlugin =
         await this.pluginUsageService.getUsageByPluginForPeriod(
           orgId,
@@ -76,64 +80,109 @@ export class EarningsSettlementWorker extends WorkerHost {
           continue;
         }
 
-        const existingRecord =
-          await this.pluginEarningsService.findExistingEarning(
-            usage.pluginDbId,
-            periodStartDate,
-            periodEndDate,
+        // 每个插件一个 savepoint：单个插件写入失败只回滚自己，
+        // 不让同组织其他插件的结算随整个事务一起失败。
+        try {
+          const settled = await this.runInSavepoint(tenantDb, () =>
+            this.settlePlugin(usage, periodStart, periodEnd),
           );
-
-        if (existingRecord) {
-          continue;
+          settledCount += settled ? 1 : 0;
+        } catch (error) {
+          failures.push({
+            pluginDbId: usage.pluginDbId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
-
-        const listingIds = Array.from(usage.sourceListingIds);
-        const validSourceListingIds = await this.filterPluginListingIds(
-          listingIds,
-          usage.pluginDbId,
-        );
-        const sourceListingId =
-          validSourceListingIds.length === 1
-            ? validSourceListingIds[0]
-            : undefined;
-
-        const amounts = this.pluginEarningsService.calculateSettlementShares(
-          usage.totalBillingAmount,
-        );
-
-        await this.pluginEarningsService.createEarningsRecord({
-          pluginDbId: usage.pluginDbId,
-          pluginId: usage.pluginId,
-          orgId: usage.orgId,
-          sourceTenantId: usage.tenantId,
-          sourceOrgId: usage.orgId,
-          sourcePluginDbId: usage.pluginDbId,
-          sourcePluginId: usage.pluginId,
-          ...(sourceListingId ? { sourceListingId } : {}),
-          periodStart,
-          periodEnd,
-          totalExecutions: usage.totalExecutions,
-          totalRevenue: amounts.totalRevenue,
-          developerShare: amounts.developerShare,
-          platformShare: amounts.platformShare,
-          listingCommission: amounts.listingCommission,
-          currency: usage.currency,
-          payoutStatus: 'pending',
-          metadata: {
-            settlementSource: 'usage_ledger',
-            totalBillingAmount: usage.totalBillingAmount.toString(),
-            requestedSourceListingIds: listingIds,
-            filteredSourceListingIds: validSourceListingIds,
-          },
-        });
-
-        settledCount += 1;
       }
 
       this.logger.log(
         `Settled earnings for ${settledCount} plugins in ${orgId}`,
       );
     });
+
+    // 成功的插件已随事务提交；抛错让 BullMQ 重试，重试时已结算的插件按幂等跳过。
+    if (failures.length > 0) {
+      throw new Error(
+        `插件收益结算部分失败: ${JSON.stringify({ orgId, failures })}`,
+      );
+    }
+  }
+
+  private async runInSavepoint<T>(
+    tenantDb: DrizzleDB,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const context = transactionStorage.getStore();
+
+    if (!context) {
+      throw new Error('结算必须在租户事务内执行');
+    }
+
+    return tenantDb.transaction((savepoint) =>
+      transactionStorage.run(
+        { ...context, db: savepoint as unknown as DrizzleDB },
+        operation,
+      ),
+    );
+  }
+
+  /** 写入单个源插件的周期收益；已存在时返回 false。 */
+  private async settlePlugin(
+    usage: SettlementAggregate,
+    periodStart: string,
+    periodEnd: string,
+  ): Promise<boolean> {
+    const periodStartDate = new Date(periodStart);
+    const periodEndDate = new Date(periodEnd);
+    const existingRecord = await this.pluginEarningsService.findExistingEarning(
+      usage.pluginDbId,
+      periodStartDate,
+      periodEndDate,
+    );
+
+    if (existingRecord) {
+      return false;
+    }
+
+    const listingIds = Array.from(usage.sourceListingIds);
+    const validSourceListingIds = await this.filterPluginListingIds(
+      listingIds,
+      usage.pluginDbId,
+    );
+    const sourceListingId =
+      validSourceListingIds.length === 1 ? validSourceListingIds[0] : undefined;
+
+    const amounts = this.pluginEarningsService.calculateSettlementShares(
+      usage.totalBillingAmount,
+    );
+
+    await this.pluginEarningsService.createEarningsRecord({
+      pluginDbId: usage.pluginDbId,
+      pluginId: usage.pluginId,
+      orgId: usage.orgId,
+      sourceTenantId: usage.tenantId,
+      sourceOrgId: usage.orgId,
+      sourcePluginDbId: usage.pluginDbId,
+      sourcePluginId: usage.pluginId,
+      ...(sourceListingId ? { sourceListingId } : {}),
+      periodStart,
+      periodEnd,
+      totalExecutions: usage.totalExecutions,
+      totalRevenue: amounts.totalRevenue,
+      developerShare: amounts.developerShare,
+      platformShare: amounts.platformShare,
+      listingCommission: amounts.listingCommission,
+      currency: usage.currency,
+      payoutStatus: 'pending',
+      metadata: {
+        settlementSource: 'usage_ledger',
+        totalBillingAmount: usage.totalBillingAmount.toString(),
+        requestedSourceListingIds: listingIds,
+        filteredSourceListingIds: validSourceListingIds,
+      },
+    });
+
+    return true;
   }
 
   @OnWorkerEvent('failed')

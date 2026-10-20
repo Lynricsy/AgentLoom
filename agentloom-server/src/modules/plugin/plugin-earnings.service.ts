@@ -1,10 +1,11 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   and,
   desc,
   eq,
   getTableColumns,
   gte,
+  isNotNull,
   lte,
   sql,
   type SQL,
@@ -14,6 +15,7 @@ import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
   pluginEarnings,
+  pluginUsageRecords,
   plugins,
   type NewPluginEarning,
   type PluginEarning,
@@ -38,7 +40,10 @@ import {
   FixedScaleDecimal,
   normalizeFixedScaleDecimal,
 } from './fixed-scale-decimal';
-import { PluginEarningsPayoutTransitionException } from './plugin.exceptions';
+import {
+  PluginEarningNotFoundException,
+  PluginEarningsPayoutTransitionException,
+} from './plugin.exceptions';
 
 export const REVENUE_SPLIT = {
   DEVELOPER_SHARE: '0.70000000',
@@ -83,6 +88,16 @@ export type EarningsSummary = {
   completedPayout: string;
   totalExecutions: number;
   pluginCount: number;
+};
+
+/**
+ * 尚未被任何月结记录覆盖的计费流水（应计收入），按开发者组织实时聚合。
+ * 分成口径与月结一致，金额为 8 位定点小数字符串。
+ */
+export type AccruedEarnings = {
+  totalRevenue: string;
+  developerShare: string;
+  totalExecutions: number;
 };
 
 export type EarningsTrendPoint = {
@@ -177,7 +192,7 @@ export class PluginEarningsService {
     );
 
     if (!existing) {
-      throw new NotFoundException('插件收益记录创建失败');
+      throw new Error('插件收益记录创建失败：冲突后未找到既有记录');
     }
 
     return existing;
@@ -211,7 +226,7 @@ export class PluginEarningsService {
       .limit(1);
 
     if (!earning) {
-      throw new NotFoundException(`插件收益记录 ${id} 不存在`);
+      throw new PluginEarningNotFoundException(id);
     }
 
     return earning;
@@ -426,6 +441,49 @@ export class PluginEarningsService {
       developerShare: developerShare.toString(),
       platformShare: platformShare.toString(),
       listingCommission: listingCommission.toString(),
+    };
+  }
+
+  /**
+   * 应计收入：`plugin_usage_records` 中计费、且所在周期尚无该源插件月结记录的流水。
+   *
+   * 流水属于安装方租户，开发者租户的 RLS 读不到，因此用原始连接按
+   * `source_org_id` 显式过滤（口径与 `getUsageByPluginForPeriod` 的月结查询相同）。
+   * `since` 用于只看某个时间点之后（如本月）的应计部分。
+   */
+  async getAccruedEarnings(
+    orgId: string,
+    since?: Date,
+  ): Promise<AccruedEarnings> {
+    const conditions: SQL[] = [
+      eq(pluginUsageRecords.sourceOrgId, orgId),
+      isNotNull(pluginUsageRecords.billingAmount),
+      sql`not exists (
+        select 1 from ${pluginEarnings}
+        where ${pluginEarnings.sourcePluginDbId} = ${pluginUsageRecords.sourcePluginDbId}
+          and ${pluginUsageRecords.createdAt} between ${pluginEarnings.periodStart} and ${pluginEarnings.periodEnd}
+      )`,
+    ];
+
+    if (since) {
+      conditions.push(gte(pluginUsageRecords.createdAt, since));
+    }
+
+    const [row] = await this.db
+      .select({
+        totalRevenue: sql<string>`coalesce(sum(${pluginUsageRecords.billingAmount}), 0)::text`,
+        totalExecutions: sql<number>`count(*)::int`,
+      })
+      .from(pluginUsageRecords)
+      .where(and(...conditions));
+
+    const totalRevenue = FixedScaleDecimal.from(row?.totalRevenue ?? '0');
+
+    return {
+      totalRevenue: totalRevenue.toString(),
+      developerShare: this.calculateSettlementShares(totalRevenue)
+        .developerShare,
+      totalExecutions: Number(row?.totalExecutions ?? 0),
     };
   }
 

@@ -88,19 +88,11 @@ export class PluginMarketplaceController {
     return this.pluginService.resolveOrganizationId(tenantId);
   }
 
-  private resolveCurrentMonthRange(): {
-    periodStart: string;
-    periodEnd: string;
-  } {
+  private resolveCurrentMonthStart(): Date {
     const now = new Date();
-    const periodStart = new Date(
+    return new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0),
     );
-
-    return {
-      periodStart: periodStart.toISOString(),
-      periodEnd: now.toISOString(),
-    };
   }
 
   private formatTrendBucket(bucket: string): string {
@@ -230,6 +222,11 @@ export class PluginMarketplaceController {
     };
   }
 
+  /**
+   * 收益总览。`total*`、`pendingPayout`、`completedPayout` 只含月结记录；
+   * `currentMonthRevenue` 与 `accrued*` 来自计费流水实时聚合——月结在次月 1 日
+   * 才生成，本月收入只能从流水得出。
+   */
   @Get('earnings/summary')
   @Roles('owner', 'admin')
   @ApiOperation({ summary: '查询插件 Marketplace 收益总览' })
@@ -240,24 +237,29 @@ export class PluginMarketplaceController {
   ) {
     const parsedQuery = QueryPluginEarningsSummarySchema.parse(query);
     const orgId = await this.resolveOrgId(tenantId);
-    const summary = await this.pluginEarningsService.getDashboardSummary({
-      ...parsedQuery,
-      orgId,
-    });
-    const currentMonthSummary =
-      await this.pluginEarningsService.getDashboardSummary({
+    const [summary, accrued, currentMonthAccrued] = await Promise.all([
+      this.pluginEarningsService.getDashboardSummary({
+        ...parsedQuery,
         orgId,
-        ...this.resolveCurrentMonthRange(),
-      });
+      }),
+      this.pluginEarningsService.getAccruedEarnings(orgId),
+      this.pluginEarningsService.getAccruedEarnings(
+        orgId,
+        this.resolveCurrentMonthStart(),
+      ),
+    ]);
 
     return {
       totalRevenue: summary.totalRevenue,
-      currentMonthRevenue: currentMonthSummary.totalRevenue,
+      currentMonthRevenue: currentMonthAccrued.totalRevenue,
       totalExecutions: summary.totalExecutions,
       activePlugins: summary.pluginCount,
       totalDeveloperShare: summary.totalDeveloperShare,
       pendingPayout: summary.pendingPayout,
       completedPayout: summary.completedPayout,
+      accruedRevenue: accrued.totalRevenue,
+      accruedDeveloperShare: accrued.developerShare,
+      accruedExecutions: accrued.totalExecutions,
     };
   }
 

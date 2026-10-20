@@ -14,7 +14,6 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { organizations } from './organizations.schema';
-import { plugins } from './plugins.schema';
 import { createDirectTenantPolicies } from './rls-policies';
 
 export const payoutStatusEnum = pgEnum('payout_status', [
@@ -24,6 +23,10 @@ export const payoutStatusEnum = pgEnum('payout_status', [
   'failed',
 ]);
 
+/**
+ * 插件月结收益。`plugin_db_id` 按值记录结算时的源插件，不设外键：
+ * 财务记录不随插件删除而消失，源插件删除后已安装副本产生的收入照常结算。
+ */
 export const pluginEarnings = pgTable(
   'plugin_earnings',
   {
@@ -31,9 +34,7 @@ export const pluginEarnings = pgTable(
       .primaryKey()
       .default(sql`uuid_generate_v7()`),
     tenantId: uuid('tenant_id').notNull(),
-    pluginDbId: uuid('plugin_db_id')
-      .notNull()
-      .references(() => plugins.id, { onDelete: 'cascade' }),
+    pluginDbId: uuid('plugin_db_id').notNull(),
     pluginId: varchar('plugin_id', { length: 255 }).notNull(),
     orgId: uuid('org_id')
       .notNull()

@@ -277,24 +277,26 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | type | HTTP 状态 | 含义 | 处理建议 |
 | --- | --- | --- | --- |
 | `plugin-not-found` | 404 | 插件不存在或不属于当前组织 | 确认插件未被删除 |
-| `plugin-already-exists` | 409 | 该插件 ID 与版本已在当前组织注册 | 提升 `version` 后重新构建上传；从市场重装已卸载的插件会直接重新启用原副本 |
+| `plugin-already-exists` | 409 | 上传的版本不高于该插件 ID 已注册的版本（响应带 `currentVersion`、`uploadedVersion`），或同 ID 插件是从市场安装的副本 | 提升 `version` 后重新构建上传；市场副本用市场的「升级」更新；从市场重装已卸载的插件会直接重新启用原副本 |
+| `plugin-listed` | 409 | 删除插件时它仍有上架中或审核中的市场条目（响应带 `listingId`、`listingStatus`） | 先下架该条目（`POST /api/v1/plugins/marketplace/listings/<listingId>/unlist`），再删除；已安装方的副本不受影响 |
 | `plugin-version-conflict` | 409 | 插件已被其他用户修改 | 刷新后重试 |
 | `plugin-validation-failed` | 422 | 插件包校验失败，`detail` 为原因 | 按 `detail` 修正插件包 |
 | `plugin-inactive` | 422 | 插件未启用 | 在「插件」列表中启用后重试 |
 | `plugin-signature-missing` | 400 | 插件包没有签名 | 用 `agentloom-plugin publish -k` 签名后上传 |
-| `plugin-signature-invalid` | 401 | 签名校验失败：归档被改动，或签名公钥未在本组织登记 / 已撤销 | 重新签名，确认公钥已登记且未撤销 |
+| `plugin-signature-invalid` | 422 | 签名校验失败：归档被改动，或签名公钥未在本组织登记 / 已撤销 | 重新签名，确认公钥已登记且未撤销 |
 | `plugin-developer-key-invalid` | 400 | 开发者公钥格式无效：需要 RSA-2048 位或更长的 PEM 公钥 | 重新导出公钥 |
 | `plugin-developer-key-not-found` | 404 | 开发者公钥不存在或不属于当前组织 | 刷新公钥列表 |
 | `plugin-developer-key-conflict` | 409 | 相同指纹的公钥已登记；已撤销的公钥不能重新登记 | 使用已登记的公钥，或生成新的密钥对 |
 | `plugin-developer-key-already-revoked` | 409 | 公钥已被撤销 | 无需再次撤销 |
+| `plugin-earning-not-found` | 404 | 收益结算记录不存在或不属于当前组织 | 刷新结算列表后重试 |
 | `runtime-plugin-not-found` | 404 | runtime 插件不存在或不属于当前组织 | 确认插件未被删除 |
 | `runtime-plugin-already-exists` | 409 | 该 runtime 插件 ID 与版本已注册 | 提升版本后重新上传 |
 | `runtime-plugin-version-conflict` | 409 | runtime 插件已被其他用户修改 | 刷新后重试 |
 | `runtime-plugin-validation-failed` | 422 | runtime 插件包校验失败 | 按 `detail` 修正插件包 |
 | `runtime-plugin-unsupported-dsh-version` | 422 | runtime 插件声明的 dsh 版本不受支持 | 按[开发 runtime 插件](/api/plugins/runtime)改用支持的 `dshVersion` |
+| `runtime-plugin-inactive` | 422 | Agent 引用的 runtime 插件未处于启用状态（`detail` 带插件名称、版本与记录 id）。对话运行前（含已在运行的会话的下一轮）检查，作为对话失败原因和对外 API run 的 `error.type` 出现 | 在「Runtime 插件」页启用该插件后重新发送；或从 Agent 画布移除该插件节点并重新发布 |
 | `marketplace-listing-not-found` | 404 | 市场条目不存在、未上架或无权访问 | 确认条目仍在市场中 |
 | `marketplace-listing-conflict` | 409 | 市场条目当前状态不允许该操作，响应带 `currentStatus` | 刷新后按当前状态操作 |
-| `runtime-plugin-inactive` | 422 | Agent 引用的 runtime 插件未处于启用状态（`detail` 带插件名称、版本与记录 id）。对话运行前（含已在运行的会话的下一轮）检查，作为对话失败原因和对外 API run 的 `error.type` 出现 | 在「Runtime 插件」页启用该插件后重新发送；或从 Agent 画布移除该插件节点并重新发布 |
 | `marketplace-workflow-version-not-found` | 404 | 提交到市场的工作流版本不存在 | 选择已发布的工作流版本 |
 | `marketplace-review-failed` | 422 | 上架审查未通过，响应带 `reviewResult` | 按未通过的检查项修正后重新提交 |
 | `marketplace-review-conflict` | 409 | 你已评价过该条目 | 每个账号对同一条目只能评价一次 |

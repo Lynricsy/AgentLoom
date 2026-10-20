@@ -240,7 +240,7 @@ curl -s "$AGENTLOOM_API/plugins" \
 
 ## 接下来
 
-- 修改 `src/lib.rs` 与 `node-definitions.json` 后发布新版本：先改 `manifest.json` 的 `version`，再执行第 5、7 步（`build --wasm` 每次都重新编译，不会复用旧的 `dist/plugin.wasm`）。同一组织里同一插件 ID 与版本只能注册一次，重复上传返回 409 `plugin-already-exists`。
+- 修改 `src/lib.rs` 与 `node-definitions.json` 后发布新版本：先改 `manifest.json` 的 `version`，再执行第 5、7 步（`build --wasm` 每次都重新编译，不会复用旧的 `dist/plugin.wasm`）。插件 ID 已注册时，上传更高的版本会就地替换：插件记录 `id` 不变，状态沿用当前状态（表单带 `status` 时切到该状态），市场安装方随即可以升级。版本不高于当前版本时返回 409 `plugin-already-exists`。
 - 清单字段、节点定义与签名函数：[Plugin SDK](/api/plugins/sdk)。
 - 各命令的参数与本地预览服务器：[Plugin CLI](/api/plugins/cli)。
 - 上架到插件市场：[市场与收益](/api/plugins/marketplace)。
@@ -252,14 +252,14 @@ curl -s "$AGENTLOOM_API/plugins" \
 | `build --wasm` 失败，`✖ WASM 编译失败` 后的 cargo 输出报告缺少 `wasm32-unknown-unknown` 目标 | 没有执行 `rustup target add wasm32-unknown-unknown` |
 | `build` 报错 `检测到 WASM 插件项目` | WASM 项目漏了 `--wasm` |
 | `publish` 报错 `<path> 是公钥` | `-k` 传了 `public.pem`；签名要用 `private.pem` |
-| 上传返回 401 `plugin-signature-invalid` | 签名后归档被改动过，或签名用的私钥对应的公钥未在本组织注册 / 已撤销；重新执行 `publish` 后上传 |
+| 上传返回 422 `plugin-signature-invalid` | 签名后归档被改动过，或签名用的私钥对应的公钥未在本组织注册 / 已撤销；重新执行 `publish` 后上传 |
 | 上传返回 403 `plugin-signer-mismatch` | 签名用的公钥由组织内其他成员登记；用你自己在「开发者密钥」中登记的密钥签名 |
 | 上传返回 400 `plugin-signature-missing` | 没有执行 `publish` |
 | 上传返回 422 `plugin-validation-failed`，`插件缺少 wasmEntry` | 上传的是 TypeScript 预览项目的归档；只有 `create --wasm` 项目能注册 |
-| 上传返回 409 `plugin-already-exists` | 该版本已注册，提升 `version` 后重新构建 |
+| 上传返回 409 `plugin-already-exists` | 上传的版本不高于已注册版本（响应的 `currentVersion` 为当前版本）；提升 `version` 后重新构建 |
 
 签名后改动归档的实际响应：
 
 ```text
-{"type":"https://agentloom.dev/errors/plugin-signature-invalid","title":"Plugin Signature Invalid","status":401,"detail":"插件 \"com.agentloom.text-prefix\" 的签名验证失败。归档可能已被篡改或使用了错误的签名密钥。","instance":"/api/v1/plugins"}
+{"type":"https://agentloom.dev/errors/plugin-signature-invalid","title":"Plugin Signature Invalid","status":422,"detail":"插件 \"com.agentloom.text-prefix\" 的签名验证失败。归档可能已被篡改或使用了错误的签名密钥。","instance":"/api/v1/plugins"}
 ```

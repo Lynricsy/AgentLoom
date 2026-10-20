@@ -50,10 +50,7 @@ import {
   readSignedAlpArchive,
 } from './plugin-archive-intake.util';
 import { MAX_PLUGIN_FILE_SIZE } from './plugin.constants';
-import {
-  PluginAlreadyExistsException,
-  PluginValidationException,
-} from './plugin.exceptions';
+import { PluginValidationException } from './plugin.exceptions';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
 import { PluginSignatureService } from './plugin-signature.service';
 import { PluginUsageService } from './plugin-usage.service';
@@ -83,7 +80,10 @@ export class PluginController {
   @Roles('owner', 'admin', 'creator')
   @HttpCode(HttpStatus.CREATED)
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: '上传 .alp 插件包并注册插件' })
+  @ApiOperation({
+    summary:
+      '上传 .alp 插件包：首次注册，或为同一插件 ID 就地发布更高版本（记录 id 不变）',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -97,18 +97,22 @@ export class PluginController {
         status: {
           type: 'string',
           enum: ['registered', 'active', 'disabled', 'error'],
-          description: '注册后要切换到的状态，默认 registered',
+          description:
+            '注册后要切换到的状态；首次注册默认 registered，发布新版本时省略则沿用当前状态',
         },
       },
     },
   })
-  @ApiResponse({ status: 201, description: '插件注册成功' })
+  @ApiResponse({ status: 201, description: '插件注册成功或新版本已发布' })
   @ApiResponse({ status: 400, description: '缺少插件签名' })
-  @ApiResponse({ status: 401, description: '认证失败或签名验证失败' })
+  @ApiResponse({ status: 401, description: '认证失败' })
   @ApiResponse({ status: 403, description: '权限不足' })
-  @ApiResponse({ status: 409, description: '插件已存在' })
+  @ApiResponse({
+    status: 409,
+    description: '版本不高于已注册版本，或同 ID 插件是市场安装副本',
+  })
   @ApiResponse({ status: 413, description: '插件文件过大' })
-  @ApiResponse({ status: 422, description: '插件包校验失败' })
+  @ApiResponse({ status: 422, description: '插件包或签名校验失败' })
   async register(@Req() req: AuthenticatedRequest) {
     const tenantId = this.getTenantId(req);
     const orgId =
@@ -122,8 +126,12 @@ export class PluginController {
       signatureService: this.signatureService,
       developerKeyService: this.developerKeyService,
     });
+    const requestedStatus = extractMultipartFieldValue(
+      archive.fields,
+      'status',
+    );
     const registerOptions = RegisterPluginSchema.parse({
-      status: extractMultipartFieldValue(archive.fields, 'status'),
+      status: requestedStatus,
     });
     const { manifest, pluginId, version, signature, contentHash } = archive;
     const nodeDefinitions = await this.parseNodeDefinitions(
@@ -138,15 +146,14 @@ export class PluginController {
       wasmEntry,
     );
 
-    // 重复注册预检：避免为已存在的插件留下孤儿对象。
     const existing = await this.pluginService.findByPluginId(
       pluginId,
       orgId,
       tenantId,
     );
-
+    // 版本准入在上传之前判定，避免为被拒绝的包留下孤儿对象。
     if (existing) {
-      throw new PluginAlreadyExistsException(pluginId);
+      this.pluginService.assertCanPublishNewVersion(existing, version);
     }
 
     const storageKey = `tenants/${tenantId}/plugins/${pluginId}/${version}/archive.alp`;
@@ -154,10 +161,11 @@ export class PluginController {
 
     // 补偿范围只覆盖“上传 + 落库”：一旦插件行已写入，
     // 后续状态切换失败不得删除该行仍在引用的产物。
-    const created = await this.uploadAndRegisterPlugin({
+    const saved = await this.uploadAndSavePlugin({
       tenantId,
       orgId,
       userId: req.user.sub,
+      existing,
       manifest,
       nodeDefinitions,
       archiveBuffer: archive.buffer,
@@ -168,23 +176,29 @@ export class PluginController {
       contentHash,
     });
 
+    // 新版本未显式指定 status 时沿用当前状态，正在使用该插件的工作流不受影响。
+    const targetStatus =
+      existing && requestedStatus === undefined
+        ? saved.status
+        : registerOptions.status;
     const data =
-      registerOptions.status === 'registered'
-        ? created
+      targetStatus === saved.status
+        ? saved
         : await this.pluginService.updateStatus(
-            created.id,
+            saved.id,
             tenantId,
-            registerOptions.status,
-            created.occVersion,
+            targetStatus,
+            saved.occVersion,
           );
 
     return { data };
   }
 
-  private async uploadAndRegisterPlugin(params: {
+  private async uploadAndSavePlugin(params: {
     tenantId: string;
     orgId: string;
     userId: string;
+    existing: PluginRecord | null;
     manifest: Record<string, unknown>;
     nodeDefinitions: Array<Record<string, unknown>>;
     archiveBuffer: Buffer;
@@ -194,6 +208,12 @@ export class PluginController {
     signature: string;
     contentHash: string;
   }): Promise<PluginRecord> {
+    const artifacts = {
+      signature: params.signature,
+      contentHash: params.contentHash,
+      wasmBundleUrl: params.wasmBundleUrl,
+    };
+
     try {
       await this.storageService.upload(
         params.storageKey,
@@ -208,6 +228,16 @@ export class PluginController {
         'application/wasm',
       );
 
+      if (params.existing) {
+        return await this.pluginService.publishNewVersion(
+          params.existing,
+          params.manifest,
+          params.nodeDefinitions,
+          params.storageKey,
+          artifacts,
+        );
+      }
+
       return await this.pluginService.register(
         params.tenantId,
         params.orgId,
@@ -215,11 +245,7 @@ export class PluginController {
         params.manifest,
         params.nodeDefinitions,
         params.storageKey,
-        {
-          signature: params.signature,
-          contentHash: params.contentHash,
-          wasmBundleUrl: params.wasmBundleUrl,
-        },
+        artifacts,
       );
     } catch (error) {
       await this.deleteStorageObjectsBestEffort([
@@ -342,6 +368,10 @@ export class PluginController {
   @ApiOperation({ summary: '删除插件' })
   @ApiResponse({ status: 204, description: '插件已删除' })
   @ApiResponse({ status: 404, description: '插件不存在' })
+  @ApiResponse({
+    status: 409,
+    description: '插件仍有 listed / pending_review 的市场 listing，需先下架',
+  })
   async remove(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: AuthenticatedRequest,

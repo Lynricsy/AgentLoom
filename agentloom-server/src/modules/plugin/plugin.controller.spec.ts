@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => ({
     findById: vi.fn(),
     findByPluginId: vi.fn().mockResolvedValue(null),
     updateStatus: vi.fn(),
+    assertCanPublishNewVersion: vi.fn(),
+    publishNewVersion: vi.fn(),
     remove: vi.fn(),
     resolveOrganizationId: vi.fn().mockResolvedValue(ORG_ID),
   }),
@@ -407,9 +409,9 @@ describe('PluginController', () => {
       expect(service.register).not.toHaveBeenCalled();
     });
 
-    it('找不到活跃开发者密钥时应抛出 PluginSignatureInvalidException', async () => {
-      await expect(
-        controller.register(
+    it('找不到活跃开发者密钥时应抛出 422 PluginSignatureInvalidException（不是 401，避免客户端刷新 token 重传）', async () => {
+      const error = await controller
+        .register(
           await createRegisterRequest({
             manifestOverrides: {
               signature: SIGNATURE,
@@ -417,8 +419,13 @@ describe('PluginController', () => {
               developerKeyFingerprint: KEY_FINGERPRINT,
             },
           }),
-        ),
-      ).rejects.toThrow(PluginSignatureInvalidException);
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(PluginSignatureInvalidException);
+      expect((error as PluginSignatureInvalidException).getStatus()).toBe(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
 
       expect(storageService.upload).not.toHaveBeenCalled();
       expect(service.register).not.toHaveBeenCalled();
@@ -994,7 +1001,7 @@ describe('PluginController', () => {
       expect(storageService.upload).not.toHaveBeenCalled();
     });
 
-    it('插件已存在时应在上传前拒绝，避免孤儿对象', async () => {
+    it('同 ID 版本不高于已注册版本时在上传前拒绝，避免孤儿对象', async () => {
       const request = await createRegisterRequest({
         status: 'registered',
         manifestOverrides: {
@@ -1011,13 +1018,101 @@ describe('PluginController', () => {
         valid: true,
         contentHash: CONTENT_HASH,
       });
-      service.findByPluginId.mockResolvedValue(createPluginResponse());
+      const existing = createPluginResponse();
+      service.findByPluginId.mockResolvedValue(existing);
+      service.assertCanPublishNewVersion.mockImplementation(() => {
+        throw new PluginAlreadyExistsException('com.example.review');
+      });
 
       await expect(controller.register(request)).rejects.toBeInstanceOf(
         PluginAlreadyExistsException,
       );
+      expect(service.assertCanPublishNewVersion).toHaveBeenCalledWith(
+        existing,
+        '1.0.0',
+      );
       expect(storageService.upload).not.toHaveBeenCalled();
       expect(service.register).not.toHaveBeenCalled();
+      expect(service.publishNewVersion).not.toHaveBeenCalled();
+    });
+
+    it('同 ID 更高版本走就地发布：上传到新版本前缀、沿用当前状态', async () => {
+      const request = await createRegisterRequest({
+        manifestOverrides: {
+          version: '1.0.1',
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      // 不带 status 字段：新版本沿用当前状态（mock 每次返回同一对象，直接改字段即可）
+      const file = (await request.file()) as { fields: object };
+      file.fields = {};
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+        userId: USER_ID,
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      const existing = createPluginResponse({ status: 'active', occVersion: 3 });
+      const published = createPluginResponse({
+        status: 'active',
+        version: '1.0.1',
+        occVersion: 4,
+      });
+      service.findByPluginId.mockResolvedValue(existing);
+      service.publishNewVersion.mockResolvedValue(published);
+
+      const result = await controller.register(request);
+
+      expect(service.publishNewVersion).toHaveBeenCalledWith(
+        existing,
+        expect.objectContaining({ version: '1.0.1' }),
+        expect.any(Array),
+        `tenants/${TENANT_ID}/plugins/com.example.review/1.0.1/archive.alp`,
+        expect.objectContaining({
+          wasmBundleUrl: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.1/plugin.wasm`,
+        }),
+      );
+      expect(service.register).not.toHaveBeenCalled();
+      expect(service.updateStatus).not.toHaveBeenCalled();
+      expect(result).toEqual({ data: published });
+    });
+
+    it('新版本落库失败时只清理本次上传的新版本对象', async () => {
+      const request = await createRegisterRequest({
+        manifestOverrides: {
+          version: '1.0.1',
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+        userId: USER_ID,
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      service.findByPluginId.mockResolvedValue(
+        createPluginResponse({ status: 'active' }),
+      );
+      service.publishNewVersion.mockRejectedValue(new Error('occ conflict'));
+
+      await expect(controller.register(request)).rejects.toThrow(
+        'occ conflict',
+      );
+      expect(storageService.delete).toHaveBeenCalledTimes(2);
+      expect(storageService.delete).toHaveBeenCalledWith(
+        `tenants/${TENANT_ID}/plugins/com.example.review/1.0.1/archive.alp`,
+      );
+      expect(storageService.delete).toHaveBeenCalledWith(
+        `tenants/${TENANT_ID}/plugins/com.example.review/1.0.1/plugin.wasm`,
+      );
     });
 
     it('注册落库失败时应清理已上传的 archive 与 wasm 对象', async () => {

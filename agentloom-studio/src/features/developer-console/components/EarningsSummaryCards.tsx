@@ -53,13 +53,15 @@ export function EarningsSummaryCards({
   const count = (value: number | undefined) =>
     fallback ?? numberFormatter.format(value ?? 0)
 
+  // 月结在次月 1 日生成：「已结算」系列只含月结记录，「本月收入」「待结算分成」来自计费流水实时汇总
   const cards = [
-    { label: '总收入', value: money(summary?.totalRevenue), icon: DollarSign },
+    { label: '已结算收入', value: money(summary?.totalRevenue), icon: DollarSign },
     { label: '本月收入', value: money(summary?.currentMonthRevenue), icon: TrendingUp },
+    { label: '待结算分成', value: money(summary?.accruedDeveloperShare), icon: TrendingUp },
     { label: '开发者分成', value: money(summary?.totalDeveloperShare), icon: DollarSign },
     { label: '待打款', value: money(summary?.pendingPayout), icon: TrendingUp },
     { label: '已打款', value: money(summary?.completedPayout), icon: DollarSign },
-    { label: '总使用次数', value: count(summary?.totalExecutions), icon: BarChart3 },
+    { label: '已结算次数', value: count(summary?.totalExecutions), icon: BarChart3 },
     { label: '活跃插件数', value: count(summary?.activePlugins), icon: Package },
   ]
 

@@ -187,8 +187,8 @@ erDiagram
 erDiagram
     organizations ||--o{ plugins : "org_id"
     organizations ||--o{ plugin_developer_keys : "org_id"
-    plugins ||--o{ plugin_usage_records : "plugin_db_id"
-    plugins ||--o{ plugin_earnings : "plugin_db_id"
+    plugins ||..o{ plugin_usage_records : "plugin_db_id（按值，无外键）"
+    plugins ||..o{ plugin_earnings : "plugin_db_id（按值，无外键）"
     organizations ||--o{ plugin_earnings : "org_id"
     workflow_versions |o--o| marketplace_listings : "workflow_version_id"
     plugins |o--o| marketplace_listings : "plugin_db_id"
@@ -198,6 +198,8 @@ erDiagram
 ```
 
 `marketplace_listings` 的两个外键列各有一个 `IS NOT NULL` 条件的部分唯一索引，因此一个工作流版本或一个插件最多对应一条上架记录（`agentloom-server/src/database/schema/marketplace-listings.schema.ts:173`）。
+
+`plugin_usage_records` 与 `plugin_earnings` 是财务账本，`plugin_db_id` 只按值记录插件记录 id、不设外键，插件删除后账本原样保留；`plugin_usage_records` 只追加（RLS 只有 SELECT / INSERT 策略）。决策见 [ADR 0009](/dev/decisions/0009-plugin-billing-ledger-by-value)。
 
 `runtime_plugins` 与 `plugins` 是两张独立的表：前者存 sandbox 运行态的 runtime 插件包，唯一键为 `(org_id, plugin_id, version)`，同一插件的多个版本可以并存（`agentloom-server/src/database/schema/runtime-plugins.schema.ts`）。机制见 [Runtime 插件](/dev/server/runtime-plugins)。
 

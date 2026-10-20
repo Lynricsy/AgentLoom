@@ -7,7 +7,9 @@ import { apiClient } from '@/shared/api/client'
 import type { PaginatedResponse } from '@/shared/types/api'
 
 export interface EarningsSummary {
+  /** 月结记录合计（不含本月） */
   totalRevenue: string
+  /** 本月计费流水实时合计（月结次月 1 日才生成） */
   currentMonthRevenue: string
   totalExecutions: number
   activePlugins: number
@@ -17,6 +19,12 @@ export interface EarningsSummary {
   pendingPayout: string
   /** 已打款金额（payoutStatus = completed 的开发者分成） */
   completedPayout: string
+  /** 尚未月结的计费收入 */
+  accruedRevenue: string
+  /** 尚未月结部分按分成比例计算的开发者净收入 */
+  accruedDeveloperShare: string
+  /** 尚未月结的计费执行次数 */
+  accruedExecutions: number
 }
 
 export interface MonthlyTrend {

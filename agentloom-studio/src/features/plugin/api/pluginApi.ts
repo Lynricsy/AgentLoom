@@ -89,7 +89,7 @@ export async function uploadAlpPackage<T>(
     useAuthStore.getState().accessToken,
   )
 
-  if (attempt.httpStatus !== 401 || isSignatureRejection(attempt.body)) {
+  if (attempt.httpStatus !== 401) {
     return unwrapRegisteredPlugin<T>(attempt, payload.onProgress)
   }
 
@@ -108,12 +108,6 @@ export async function uploadAlpPackage<T>(
 
   const retried = await sendPluginArchive(endpoint, payload, refreshedToken)
   return unwrapRegisteredPlugin<T>(retried, payload.onProgress)
-}
-
-/** 签名校验失败与鉴权失败都是 401，只有前者不该重试 */
-function isSignatureRejection(body: unknown): boolean {
-  const type = (body as { type?: unknown } | null)?.type
-  return typeof type === 'string' && type.includes('plugin-signature-invalid')
 }
 
 function unwrapRegisteredPlugin<T>(

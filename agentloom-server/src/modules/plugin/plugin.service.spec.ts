@@ -10,9 +10,11 @@ import { QueryPluginsDto } from './dto/plugin.dto';
 import {
   PluginAlreadyExistsException,
   PluginInactiveException,
+  PluginListedException,
   PluginNotFoundException,
   PluginValidationException,
   PluginVersionConflictException,
+  PluginVersionNotNewerException,
 } from './plugin.exceptions';
 import { PluginService } from './plugin.service';
 import { TenantOrganizationResolver } from '../../common/providers/tenant-organization.resolver';
@@ -414,104 +416,148 @@ describe('PluginService', () => {
     });
   });
 
-  describe('updateRegistrationArtifacts', () => {
-    it('应当用 OCC 回写插件归档、签名、WASM URL 和 metadata', async () => {
+  describe('publishNewVersion', () => {
+    const NEW_KEYS = {
+      storageKey: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.1/archive.alp`,
+      wasmBundleUrl: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.1/plugin.wasm`,
+    };
+
+    function createExisting(overrides: Partial<PluginRecord> = {}) {
+      return createPlugin({
+        status: 'active',
+        storageKey: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/archive.alp`,
+        wasmBundleUrl: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/plugin.wasm`,
+        occVersion: 3,
+        ...overrides,
+      });
+    }
+
+    it('更高版本就地更新同一记录（id 不变、状态不变），并清理旧版本产物', async () => {
+      const existing = createExisting();
       const updatedPlugin = createPlugin({
-        name: 'Updated Review Analyzer',
+        ...existing,
         version: '1.0.1',
-        manifest: {
-          ...VALID_MANIFEST,
-          id: 'com.example.review',
-          pluginId: undefined,
-          name: 'Updated Review Analyzer',
-          version: '1.0.1',
-          metadata: {
-            source: 'generated-app-private-plugin',
-            wasmBundleUrl: 'plugins/review/plugin.wasm',
-          },
-        },
-        storageKey: 'plugins/review/archive.alp',
-        signature: 'signature',
-        contentHash: 'a'.repeat(64),
-        wasmBundleUrl: 'plugins/review/plugin.wasm',
-        metadata: {
-          source: 'generated-app-private-plugin',
-          wasmBundleUrl: 'plugins/review/plugin.wasm',
-        },
-        occVersion: 2,
+        storageKey: NEW_KEYS.storageKey,
+        wasmBundleUrl: NEW_KEYS.wasmBundleUrl,
+        contentHash: 'b'.repeat(64),
+        occVersion: 4,
       });
       const updatePlugin = createUpdateChain([updatedPlugin]);
       db.update.mockReturnValue(updatePlugin);
 
-      const result = await service.updateRegistrationArtifacts(
-        PLUGIN_ID,
-        TENANT_ID,
-        1,
-        {
-          ...VALID_MANIFEST,
-          name: 'Updated Review Analyzer',
-          version: '1.0.1',
-          metadata: {
-            source: 'generated-app-private-plugin',
-            wasmBundleUrl: 'plugins/review/plugin.wasm',
-          },
-        },
+      const result = await service.publishNewVersion(
+        existing,
+        { ...VALID_MANIFEST, version: '1.0.1' },
         VALID_NODE_DEFINITIONS,
-        'plugins/review/archive.alp',
+        NEW_KEYS.storageKey,
         {
           signature: 'signature',
-          contentHash: 'a'.repeat(64),
-          wasmBundleUrl: 'plugins/review/plugin.wasm',
+          contentHash: 'b'.repeat(64),
+          wasmBundleUrl: NEW_KEYS.wasmBundleUrl,
         },
       );
 
       expect(updatePlugin.set).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: 'Updated Review Analyzer',
           version: '1.0.1',
-          storageKey: 'plugins/review/archive.alp',
-          signature: 'signature',
-          contentHash: 'a'.repeat(64),
-          wasmBundleUrl: 'plugins/review/plugin.wasm',
-          metadata: {
-            source: 'generated-app-private-plugin',
-            wasmBundleUrl: 'plugins/review/plugin.wasm',
-          },
+          storageKey: NEW_KEYS.storageKey,
+          wasmBundleUrl: NEW_KEYS.wasmBundleUrl,
+          contentHash: 'b'.repeat(64),
           updatedAt: NOW,
         }),
       );
+      expect(updatePlugin.set.mock.calls[0]?.[0]).not.toHaveProperty('status');
       expect(result).toEqual(updatedPlugin);
+      expect(storageService.delete).toHaveBeenCalledTimes(2);
+      expect(storageService.delete).toHaveBeenCalledWith(existing.storageKey);
+      expect(storageService.delete).toHaveBeenCalledWith(
+        existing.wasmBundleUrl,
+      );
     });
 
-    it('更新归档时版本冲突应抛出 409 并携带 currentVersion', async () => {
-      const updatePlugin = createUpdateChain([]);
-      const selectPlugin = createSelectChain([createPlugin({ occVersion: 4 })]);
-      db.update.mockReturnValue(updatePlugin);
-      db.select.mockReturnValue(selectPlugin);
+    it.each(['1.0.0', '0.9.9', '1.0.0-rc.1'])(
+      '版本 %s 不高于已注册的 1.0.0 时返回 409 且不写库',
+      async (version) => {
+        await expect(
+          service.publishNewVersion(
+            createExisting(),
+            { ...VALID_MANIFEST, version },
+            VALID_NODE_DEFINITIONS,
+            NEW_KEYS.storageKey,
+            {
+              signature: 'signature',
+              contentHash: 'b'.repeat(64),
+              wasmBundleUrl: NEW_KEYS.wasmBundleUrl,
+            },
+          ),
+        ).rejects.toMatchObject({
+          constructor: PluginVersionNotNewerException,
+          extensions: { currentVersion: '1.0.0', uploadedVersion: version },
+        });
+        expect(db.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('市场安装的副本不能通过上传发布新版本', () => {
+      const clone = createExisting({
+        metadata: {
+          cloned_from_marketplace: {
+            listingId: 'listing-1',
+            sourceTenantId: SOURCE_TENANT_ID,
+            sourceOrgId: ORG_ID,
+            sourcePluginDbId: PLUGIN_ID,
+            sourcePluginId: 'com.example.review',
+          },
+        },
+      });
+
+      expect(() => service.assertCanPublishNewVersion(clone, '2.0.0')).toThrow(
+        PluginAlreadyExistsException,
+      );
+    });
+
+    it('OCC 冲突时抛 409 并保留旧版本产物', async () => {
+      db.update.mockReturnValue(createUpdateChain([]));
+      db.select.mockReturnValue(
+        createSelectChain([createExisting({ occVersion: 5 })]),
+      );
 
       await expect(
-        service.updateRegistrationArtifacts(
-          PLUGIN_ID,
-          TENANT_ID,
-          1,
-          VALID_MANIFEST,
+        service.publishNewVersion(
+          createExisting(),
+          { ...VALID_MANIFEST, version: '1.0.1' },
           VALID_NODE_DEFINITIONS,
-          'plugins/review/archive.alp',
+          NEW_KEYS.storageKey,
+          {
+            signature: 'signature',
+            contentHash: 'b'.repeat(64),
+            wasmBundleUrl: NEW_KEYS.wasmBundleUrl,
+          },
         ),
       ).rejects.toMatchObject({
         constructor: PluginVersionConflictException,
-        extensions: { currentVersion: 4 },
+        extensions: { currentVersion: 5 },
       });
+      expect(storageService.delete).not.toHaveBeenCalled();
     });
   });
 
   describe('remove', () => {
+    function mockPluginAndListings(
+      plugin: PluginRecord,
+      listings: Array<{ id: string; status: string }> = [],
+    ) {
+      db.select
+        .mockReturnValueOnce(createSelectChain([plugin]))
+        .mockReturnValueOnce(createSelectChainWithLimit(listings));
+    }
+
     it('应删除插件并清理本租户前缀的对象', async () => {
       const plugin = createPlugin({
         storageKey: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/archive.alp`,
         wasmBundleUrl: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/plugin.wasm`,
       });
-      db.select.mockReturnValue(createSelectChain([plugin]));
+      mockPluginAndListings(plugin);
       db.delete.mockReturnValue(createDeleteChain([{ id: PLUGIN_ID }]));
 
       await expect(
@@ -529,7 +575,7 @@ describe('PluginService', () => {
           'tenants/99999999-9999-4999-8999-999999999999/plugins/com.example.review/1.0.0/archive.alp',
         wasmBundleUrl: null,
       });
-      db.select.mockReturnValue(createSelectChain([plugin]));
+      mockPluginAndListings(plugin);
       db.delete.mockReturnValue(createDeleteChain([{ id: PLUGIN_ID }]));
 
       await service.remove(PLUGIN_ID, TENANT_ID);
@@ -543,7 +589,7 @@ describe('PluginService', () => {
         storageKey: `tenants/${TENANT_ID}/plugins/com.example.review/1.0.0/archive.alp`,
         wasmBundleUrl: null,
       });
-      db.select.mockReturnValue(createSelectChain([plugin]));
+      mockPluginAndListings(plugin);
       db.delete.mockReturnValue(createDeleteChain([{ id: PLUGIN_ID }]));
       storageService.delete.mockRejectedValueOnce(new Error('minio down'));
 
@@ -561,6 +607,22 @@ describe('PluginService', () => {
       expect(db.delete).not.toHaveBeenCalled();
       expect(storageService.delete).not.toHaveBeenCalled();
     });
+
+    it.each(['listed', 'pending_review'])(
+      '仍有 %s 的市场 listing 时返回 409 plugin-listed，不删行也不动对象',
+      async (status) => {
+        mockPluginAndListings(createPlugin(), [{ id: 'listing-1', status }]);
+
+        await expect(
+          service.remove(PLUGIN_ID, TENANT_ID),
+        ).rejects.toMatchObject({
+          constructor: PluginListedException,
+          extensions: { listingId: 'listing-1', listingStatus: status },
+        });
+        expect(db.delete).not.toHaveBeenCalled();
+        expect(storageService.delete).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('findActiveByPluginId', () => {

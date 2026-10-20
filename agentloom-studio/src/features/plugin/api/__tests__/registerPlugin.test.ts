@@ -137,9 +137,9 @@ describe('registerPlugin', () => {
     })
   })
 
-  it('签名校验失败虽然也是 401，但不刷新 token、不重传', async () => {
+  it('签名校验失败返回 422：直接展示 detail，不刷新 token、不重传', async () => {
     responses.push({
-      status: 401,
+      status: 422,
       body: {
         type: 'https://agentloom.dev/errors/plugin-signature-invalid',
         title: 'Plugin Signature Invalid',
