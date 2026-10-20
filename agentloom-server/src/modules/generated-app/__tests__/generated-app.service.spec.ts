@@ -1,21 +1,23 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+
 import type { DrizzleDB } from '../../../database/database.module';
 import { WorkflowArchivedException } from '../../workflow-definition/workflow-version.exceptions';
 import type { WorkflowVersionService } from '../../workflow-definition/workflow-version.service';
-import { GeneratedAppService } from '../generated-app.service';
-import { GeneratedAppRepository } from '../generated-app.repository';
+import type { GeneratedAppResponseDto } from '../dto';
+import type { GeneratedAppGenerationPipelineService } from '../generated-app-generation-pipeline.service';
 import { GeneratedAppArtifactService } from '../generated-app-artifact.service';
-import { GeneratedAppRuntimeBindingService } from '../generated-app-runtime-binding.service';
-import { GeneratedAppGenerationRepairService } from '../generated-app-generation-repair.service';
-import { GeneratedAppGenerationOrchestratorService } from '../generated-app-generation-orchestrator.service';
+import { GeneratedAppGenerationRunInProgressException } from '../generated-app.exceptions';
 import { GeneratedAppPublicRuntimeService } from '../generated-app-public-runtime.service';
+import { GeneratedAppRepository } from '../generated-app.repository';
+import { GeneratedAppRuntimeBindingService } from '../generated-app-runtime-binding.service';
+import { GeneratedAppService } from '../generated-app.service';
 import {
   APP_ID,
   DEFAULT_START_GENERATION_RUN_DTO,
+  GENERATION_RUN_ID,
   TENANT_ID,
   USER_ID,
   createConfigService,
-  createGeneratedPrivatePluginServiceMock,
   createStorageServiceMock,
   mockTenantDb,
 } from './generated-app-test-support';
@@ -25,17 +27,14 @@ describe('GeneratedAppService facade', () => {
   let repository: GeneratedAppRepository;
   let artifactService: GeneratedAppArtifactService;
   let runtimeBindingService: GeneratedAppRuntimeBindingService;
-  let repairService: GeneratedAppGenerationRepairService;
-  let orchestrator: GeneratedAppGenerationOrchestratorService;
   let publicRuntimeService: GeneratedAppPublicRuntimeService;
+  let pipeline: { enqueueRun: Mock };
   let workflowVersionService: { archive: Mock };
 
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     const configService = createConfigService();
-    const pluginService = createGeneratedPrivatePluginServiceMock();
-    const storageService = createStorageServiceMock();
     repository = new GeneratedAppRepository(
       mockTenantDb as unknown as DrizzleDB,
       configService,
@@ -43,54 +42,101 @@ describe('GeneratedAppService facade', () => {
     artifactService = new GeneratedAppArtifactService(
       repository,
       configService,
-      storageService,
+      createStorageServiceMock(),
     );
-    runtimeBindingService = new GeneratedAppRuntimeBindingService(
-      repository,
-      artifactService,
-      pluginService,
-    );
-    repairService = new GeneratedAppGenerationRepairService(repository);
-    orchestrator = new GeneratedAppGenerationOrchestratorService(
-      repository,
-      repairService,
-      runtimeBindingService,
-      configService,
-    );
+    runtimeBindingService = new GeneratedAppRuntimeBindingService(repository);
     publicRuntimeService = new GeneratedAppPublicRuntimeService(
       repository,
-      artifactService,
       runtimeBindingService,
     );
+    pipeline = {
+      enqueueRun: vi
+        .fn()
+        .mockResolvedValue({ id: GENERATION_RUN_ID, status: 'queued' }),
+    };
     workflowVersionService = { archive: vi.fn().mockResolvedValue(undefined) };
     service = new GeneratedAppService(
-      mockTenantDb as unknown as DrizzleDB,
-      configService,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      pluginService,
-      undefined,
-      storageService,
       repository,
       artifactService,
       runtimeBindingService,
-      repairService,
-      orchestrator,
+      pipeline as unknown as GeneratedAppGenerationPipelineService,
       publicRuntimeService,
       workflowVersionService as unknown as WorkflowVersionService,
     );
+  });
+
+  it('创建应用后排队 initial 生成运行，响应带 generationRunId', async () => {
+    const created = { id: APP_ID, status: 'app_spec_generating' };
+    const create = vi
+      .spyOn(repository, 'create')
+      .mockResolvedValue(created as unknown as GeneratedAppResponseDto);
+    const dto = { prompt: '问答页面' };
+
+    await expect(service.create(TENANT_ID, USER_ID, dto)).resolves.toEqual({
+      ...created,
+      generationRunId: GENERATION_RUN_ID,
+    });
+    expect(create).toHaveBeenCalledWith(TENANT_ID, USER_ID, dto);
+    expect(pipeline.enqueueRun).toHaveBeenCalledWith(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {
+        triggerSource: 'initial',
+        maxRepairAttempts: 3,
+        maxRuntimeSeconds: 1800,
+      },
+    );
+  });
+
+  it('start 只排队并立即返回 queued 运行，不同步执行门禁', async () => {
+    const app = { id: APP_ID };
+    vi.spyOn(repository, 'findOne').mockResolvedValue(
+      app as unknown as GeneratedAppResponseDto,
+    );
+
+    await expect(
+      service.startGenerationRun(
+        TENANT_ID,
+        USER_ID,
+        APP_ID,
+        DEFAULT_START_GENERATION_RUN_DTO,
+      ),
+    ).resolves.toEqual({
+      generationRun: { id: GENERATION_RUN_ID, status: 'queued' },
+      gateRuns: [],
+      app,
+    });
+    expect(pipeline.enqueueRun).toHaveBeenCalledWith(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      DEFAULT_START_GENERATION_RUN_DTO,
+    );
+  });
+
+  it('已有进行中的运行时 start 原样抛出 409 异常', async () => {
+    const error = new GeneratedAppGenerationRunInProgressException(
+      APP_ID,
+      GENERATION_RUN_ID,
+    );
+    pipeline.enqueueRun.mockRejectedValueOnce(error);
+
+    await expect(
+      service.startGenerationRun(
+        TENANT_ID,
+        USER_ID,
+        APP_ID,
+        DEFAULT_START_GENERATION_RUN_DTO,
+      ),
+    ).rejects.toBe(error);
   });
 
   it('repository API 应原样委派参数和结果', async () => {
     const expected = { id: APP_ID };
     const delegate = vi
       .spyOn(repository, 'findOne')
-      .mockResolvedValue(
-        expected as Awaited<ReturnType<GeneratedAppRepository['findOne']>>,
-      );
+      .mockResolvedValue(expected as unknown as GeneratedAppResponseDto);
 
     await expect(service.findOne(TENANT_ID, APP_ID)).resolves.toBe(expected);
     expect(delegate).toHaveBeenCalledWith(TENANT_ID, APP_ID);
@@ -120,7 +166,7 @@ describe('GeneratedAppService facade', () => {
     expect(delegate).toHaveBeenCalledWith(TENANT_ID, APP_ID);
   });
 
-  it('generation-repair API 应原样委派参数和异常', async () => {
+  it('repair-attempt API 应原样委派参数和异常', async () => {
     const error = new Error('repair ledger unavailable');
     const delegate = vi
       .spyOn(repository, 'createRepairAttempt')
@@ -129,7 +175,7 @@ describe('GeneratedAppService facade', () => {
       attemptNumber: 1,
       targetGateId: 'gate-3' as const,
       status: 'running' as const,
-      failureSummary: 'build failed',
+      failureSummary: 'contract case failed',
     };
 
     await expect(
@@ -141,28 +187,6 @@ describe('GeneratedAppService facade', () => {
       APP_ID,
       'run-1',
       dto,
-    );
-  });
-
-  it('orchestrator API 应原样委派参数和异常', async () => {
-    const error = new Error('gate runner failed');
-    const delegate = vi
-      .spyOn(orchestrator, 'startGenerationRun')
-      .mockRejectedValue(error);
-
-    await expect(
-      service.startGenerationRun(
-        TENANT_ID,
-        USER_ID,
-        APP_ID,
-        DEFAULT_START_GENERATION_RUN_DTO,
-      ),
-    ).rejects.toBe(error);
-    expect(delegate).toHaveBeenCalledWith(
-      TENANT_ID,
-      USER_ID,
-      APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
     );
   });
 

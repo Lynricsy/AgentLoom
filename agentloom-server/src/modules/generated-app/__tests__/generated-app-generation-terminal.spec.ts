@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { runGenerationToTerminal } from '../generated-app-generation-orchestrator.service';
+import { runGenerationToTerminal } from '../generated-app-generation-terminal.util';
 
 describe('runGenerationToTerminal', () => {
   it('中途 runner 抛错时应持久化 failed 而不是遗留 running', async () => {

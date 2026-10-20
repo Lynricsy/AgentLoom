@@ -1,85 +1,17 @@
-import { ConfigService } from '@nestjs/config';
-import { HEADERS_METADATA } from '@nestjs/common/constants';
-import * as crypto from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  computeContentHash as computePluginArchiveContentHash,
-  readArchiveManifest,
-  verifyArchiveSignature as verifyPluginArchiveSignature,
-} from '@agentloom/plugin-sdk';
-import JSZip from 'jszip';
 
 import type { DrizzleDB } from '../../../database/database.module';
-import type {
-  GeneratedApp,
-  GeneratedAppBrowserAcceptancePlan,
-  GeneratedAppBuildUnitPlan,
-  GeneratedAppGenerationPlan,
-  GeneratedAppGenerationRun,
-  GeneratedAppGateRun,
-  GeneratedAppIndependentVerificationPlan,
-  GeneratedAppIntegrationPlan,
-  GeneratedAppPublishCandidatePlan,
-  GeneratedAppReadiness,
-  GeneratedAppRepairPlan,
-  GeneratedAppRepairAttempt,
-  GeneratedAppReverificationPlan,
-  GeneratedAppStaticContracts,
-  GeneratedAppSubmission,
-  WorkflowDefinition,
-} from '../../../database/schema';
-import {
-  GeneratedAppArtifactNotFoundException,
-  GeneratedAppArtifactTooLargeException,
-  GeneratedAppGenerationRunNotFoundException,
-  GeneratedAppNotFoundException,
-  GeneratedAppPublicShareNotReadyException,
-  GeneratedAppRepairAttemptNotFoundException,
-  GeneratedAppSubmissionNotFoundException,
-} from '../generated-app.exceptions';
-import * as generationPlanBuilder from '../plan-builders/generation-plan.builder';
-import * as integrationPlanBuilder from '../plan-builders/integration-plan.builder';
-import * as browserAcceptancePlanBuilder from '../plan-builders/browser-acceptance-plan.builder';
-import * as independentVerificationPlanBuilder from '../plan-builders/independent-verification-plan.builder';
-import * as publishCandidatePlanBuilder from '../plan-builders/publish-candidate-plan.builder';
-import {
-  buildBuildUnitPlan,
-  buildGenerationPlan,
-  buildStaticContracts,
-} from '../plan-builders/generation-plan.builder';
-import { buildIntegrationPlan } from '../plan-builders/integration-plan.builder';
-import { buildBrowserAcceptancePlan } from '../plan-builders/browser-acceptance-plan.builder';
-import { buildIndependentVerificationPlan } from '../plan-builders/independent-verification-plan.builder';
-import { buildPublishCandidatePlan } from '../plan-builders/publish-candidate-plan.builder';
-import { GeneratedAppGate7PublishCandidateRunner } from '../generated-app.publish-candidate-runner';
-import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
-import { GeneratedAppService } from '../generated-app.service';
-import { GeneratedAppRepository } from '../generated-app.repository';
+import type { WorkflowVersionService } from '../../workflow-definition/workflow-version.service';
 import { GeneratedAppArtifactService } from '../generated-app-artifact.service';
-import { GeneratedAppRuntimeBindingService } from '../generated-app-runtime-binding.service';
-import { GeneratedAppGenerationRepairService } from '../generated-app-generation-repair.service';
-import { GeneratedAppGenerationOrchestratorService } from '../generated-app-generation-orchestrator.service';
+import {
+  GeneratedAppGenerationRunNotFoundException,
+  GeneratedAppRepairAttemptNotFoundException,
+} from '../generated-app.exceptions';
+import type { GeneratedAppGenerationPipelineService } from '../generated-app-generation-pipeline.service';
 import { GeneratedAppPublicRuntimeService } from '../generated-app-public-runtime.service';
-import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
-import type { ExecutionService } from '../../execution/execution.service';
-import type { StorageService } from '../../../infrastructure/storage/storage.service';
-import type { PluginService } from '../../plugin/plugin.service';
-import { PluginSandboxService } from '../../plugin/plugin-sandbox.service';
-import {
-  GeneratedAppGate4IntegrationRunner,
-  type GeneratedAppGate4RunnerResult,
-} from '../generated-app.integration-runner';
-import type { GeneratedAppResponseDto } from '../dto';
-import { GeneratedAppPublicController } from '../generated-app.controller';
-import {
-  GeneratedAppGate3WorkspaceRunner,
-  type GeneratedAppGate3RepairResult,
-  type GeneratedAppGate3RunnerResult,
-} from '../generated-app.workspace';
-
+import { GeneratedAppRepository } from '../generated-app.repository';
+import { GeneratedAppRuntimeBindingService } from '../generated-app-runtime-binding.service';
+import { GeneratedAppService } from '../generated-app.service';
 import {
   TENANT_ID,
   USER_ID,
@@ -95,7 +27,6 @@ import {
   createInsertReturningChain,
   createUpdateReturningChain,
   createPublishCandidateReadiness,
-  createGeneratedPrivatePluginServiceMock,
   createStorageServiceMock,
   createGeneratedAppGateRun,
   createGeneratedAppGenerationRun,
@@ -104,64 +35,34 @@ import {
   mockTenantDb,
 } from './generated-app-test-support';
 
-describe('repository migrated scenarios', () => {
+describe('GeneratedAppRepository 台账', () => {
   let service: GeneratedAppService;
   let repository: GeneratedAppRepository;
-  let artifactService: GeneratedAppArtifactService;
-  let runtimeBindingService: GeneratedAppRuntimeBindingService;
-  let repairService: GeneratedAppGenerationRepairService;
-  let orchestrator: GeneratedAppGenerationOrchestratorService;
-  let publicRuntimeService: GeneratedAppPublicRuntimeService;
 
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     const configService = createConfigService();
-    const pluginService = createGeneratedPrivatePluginServiceMock();
-    const storageService = createStorageServiceMock();
     repository = new GeneratedAppRepository(
       mockTenantDb as unknown as DrizzleDB,
       configService,
     );
-    artifactService = new GeneratedAppArtifactService(
+    const runtimeBindingService = new GeneratedAppRuntimeBindingService(
       repository,
-      configService,
-      storageService,
-    );
-    runtimeBindingService = new GeneratedAppRuntimeBindingService(
-      repository,
-      artifactService,
-      pluginService,
-    );
-    repairService = new GeneratedAppGenerationRepairService(repository);
-    orchestrator = new GeneratedAppGenerationOrchestratorService(
-      repository,
-      repairService,
-      runtimeBindingService,
-      configService,
-    );
-    publicRuntimeService = new GeneratedAppPublicRuntimeService(
-      repository,
-      artifactService,
-      runtimeBindingService,
     );
     service = new GeneratedAppService(
-      mockTenantDb as unknown as DrizzleDB,
-      configService,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      pluginService,
-      undefined,
-      storageService,
       repository,
-      artifactService,
+      new GeneratedAppArtifactService(
+        repository,
+        configService,
+        createStorageServiceMock(),
+      ),
       runtimeBindingService,
-      repairService,
-      orchestrator,
-      publicRuntimeService,
+      {
+        enqueueRun: vi.fn(),
+      } as unknown as GeneratedAppGenerationPipelineService,
+      new GeneratedAppPublicRuntimeService(repository, runtimeBindingService),
+      { archive: vi.fn() } as unknown as WorkflowVersionService,
     );
   });
 

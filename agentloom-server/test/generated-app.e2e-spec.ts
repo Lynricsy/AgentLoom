@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   afterAll,
   beforeAll,
@@ -13,6 +17,7 @@ vi.mock('@anatine/zod-nestjs', async () => {
   return { createZodDto };
 });
 
+import { getQueueToken } from '@nestjs/bullmq';
 import { Test } from '@nestjs/testing';
 import {
   FastifyAdapter,
@@ -30,10 +35,22 @@ import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { DRIZZLE } from '../src/database/database.module';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
-import { GeneratedAppArtifactService } from '../src/modules/generated-app/generated-app-artifact.service';
-import { GeneratedAppGenerationOrchestratorService } from '../src/modules/generated-app/generated-app-generation-orchestrator.service';
-import { GeneratedAppRepository } from '../src/modules/generated-app/generated-app.repository';
+import {
+  GENERATED_APP_GENERATION_QUEUE,
+  type GeneratedAppGenerationJobData,
+} from '../src/modules/generated-app/generated-app-generation.constants';
+import { GeneratedAppGenerationPipelineService } from '../src/modules/generated-app/generated-app-generation-pipeline.service';
+import { GeneratedAppGenerationWorker } from '../src/modules/generated-app/generated-app-generation.worker';
+import { GeneratedAppSpecGeneratorService } from '../src/modules/generated-app/generated-app-spec-generator.service';
 import { GENERATED_APP_GATE_DEFINITIONS } from '../src/modules/generated-app/generated-app.gates';
+import {
+  GeneratedAppSpecV2Schema,
+  type GeneratedAppSpecV2,
+} from '../src/modules/generated-app/types/app-spec-v2.schema';
+import type {
+  AppSpecGenerationInput,
+  AppSpecGenerationResult,
+} from '../src/modules/generated-app/types/generation-v2.ports';
 import {
   createRlsTestContext,
   seedAppUser,
@@ -44,7 +61,8 @@ import {
 } from './rls/rls-test-utils';
 
 const JWT_SECRET = 'test-e2e-jwt-secret';
-const PREVIEW_HTML = '<!doctype html><html><body>offline preview</body></html>';
+const PROMPT = '一个问答页面：输入问题，调用上述工作流返回答案与引用';
+const TERMINAL_RUN_STATUSES = ['passed', 'failed', 'cancelled'];
 
 type TestUser = {
   id: string;
@@ -53,6 +71,7 @@ type TestUser = {
   organizationId: string;
   role: OrganizationRole;
   headers: Record<string, string>;
+  modelConfigId: string;
 };
 
 type CreatedApp = {
@@ -60,6 +79,7 @@ type CreatedApp = {
   status: string;
   readiness: { state: string; canCreatePublicShare: boolean };
   publicShareToken: string | null;
+  generationRunId: string;
 };
 
 function signToken(payload: Record<string, unknown>) {
@@ -119,71 +139,177 @@ function parseJson(response: { body: string }) {
   return JSON.parse(response.body) as Record<string, any>;
 }
 
-describe('Generated App (E2E)', () => {
+/** 模型生成结果的替身：S2 场景的 AppSpec v2，绑定一个文档问答工作流的固定版本 */
+function buildAppSpec(modelConfigId: string): GeneratedAppSpecV2 {
+  const workflowDefinitionId = crypto.randomUUID();
+  const workflowVersionId = crypto.randomUUID();
+  return GeneratedAppSpecV2Schema.parse({
+    version: 2,
+    appName: '文档问答',
+    summary: '输入问题，调用文档问答工作流返回答案与引用。',
+    userGoal: '终端用户提问并得到带引用的答案',
+    actors: ['终端用户'],
+    coreRequirements: [
+      { id: 'req-ask', text: '输入问题并返回答案与引用', source: 'prompt' },
+    ],
+    pages: [
+      {
+        id: 'public-runtime',
+        name: '公开运行页',
+        purpose: '填写表单并查看结果',
+      },
+    ],
+    inputForm: {
+      title: '提问',
+      submitLabel: '提问',
+      fields: [
+        {
+          id: 'question',
+          label: '问题',
+          type: 'textarea',
+          required: true,
+          maxLength: 2000,
+        },
+      ],
+    },
+    resultView: {
+      title: '回答',
+      sections: [
+        { id: 'answer', label: '答案', format: 'markdown' },
+        { id: 'citations', label: '引用', format: 'citations' },
+      ],
+    },
+    binding: {
+      kind: 'workflow',
+      workflowDefinitionId,
+      workflowVersionId,
+      inputMapping: [{ fieldId: 'question', workflowInputFieldId: 'question' }],
+      outputMapping: [
+        { sectionId: 'answer', nodeId: 'out-answer' },
+        { sectionId: 'citations', nodeId: 'out-structured', path: 'citations' },
+      ],
+    },
+    dataPolicy: {
+      publicSubmissionsPersisted: true,
+      creatorCanDeleteSubmissions: true,
+      endUserLoginRequired: false,
+    },
+    nonGoals: ['不生成自定义后端或新工作流。'],
+    acceptanceScenarios: [
+      {
+        id: 'scenario-ask',
+        title: '提问后看到答案与引用',
+        scope: 'requirement',
+        requirementIds: ['req-ask'],
+        given: ['公开页已打开'],
+        when: ['输入问题并提交'],
+        then: ['展示答案', '展示引用'],
+        browserSteps: [
+          { action: 'fill', fieldId: 'question', value: '最多几个子 Agent？' },
+          { action: 'submit' },
+          {
+            action: 'expectResult',
+            sectionId: 'answer',
+            assertion: 'nonEmpty',
+          },
+          {
+            action: 'expectResult',
+            sectionId: 'citations',
+            assertion: 'nonEmpty',
+          },
+        ],
+      },
+    ],
+    traceability: [
+      {
+        requirementId: 'req-ask',
+        scenarioIds: ['scenario-ask'],
+        fieldIds: ['question'],
+        sectionIds: ['answer', 'citations'],
+      },
+    ],
+    generation: {
+      modelConfigId,
+      generatedAt: new Date().toISOString(),
+      attempt: 1,
+      promptSha256: crypto.createHash('sha256').update(PROMPT).digest('hex'),
+    },
+  });
+}
+
+describe('Generated App v2 (E2E)', () => {
   let ctx: RlsTestContext;
   let app: NestFastifyApplication;
-  let repository: GeneratedAppRepository;
+  let pipeline: GeneratedAppGenerationPipelineService;
+  let workspaceRoot: string;
+  const modelConfigByTenant = new Map<string, string>();
+  const pendingRuns: Array<Promise<void>> = [];
 
-  const startGenerationRun = vi.fn(
+  /** Gate 0 的模型替身：不调用 LLM，返回 S2 规格与已解析的工作流绑定 */
+  const generate = vi.fn(
     async (
-      tenantId: string,
-      userId: string,
-      appId: string,
-      dto: {
-        triggerSource?: 'initial' | 'manual' | 'retry' | 'system';
-        maxRepairAttempts?: number;
-        maxRuntimeSeconds?: number;
-      },
-    ) => {
-      const generationRun = await repository.createGenerationRun(
-        tenantId,
-        userId,
-        appId,
-        {
-          runNumber: 1,
-          status: 'passed',
-          triggerSource: dto.triggerSource ?? 'manual',
-          maxRepairAttempts: dto.maxRepairAttempts ?? 3,
-          maxRuntimeSeconds: dto.maxRuntimeSeconds ?? 1800,
-          summary: '离线 fake runner 已完成，不调用 LLM',
-          completedAt: new Date().toISOString(),
-        },
-      );
-
+      request: AppSpecGenerationInput,
+    ): Promise<AppSpecGenerationResult> => {
+      const modelConfigId = modelConfigByTenant.get(request.tenantId);
+      if (!modelConfigId) throw new Error('测试租户没有种子模型');
+      const appSpec = buildAppSpec(modelConfigId);
+      if (appSpec.binding.kind !== 'workflow')
+        throw new Error('绑定应为工作流');
       return {
-        generationRun,
-        gateRuns: [],
-        app: await repository.findOne(tenantId, appId),
+        status: 'generated',
+        appSpec,
+        resolvedBinding: {
+          kind: 'workflow',
+          binding: appSpec.binding,
+          candidate: {
+            kind: 'workflow',
+            workflowDefinitionId: appSpec.binding.workflowDefinitionId,
+            workflowVersionId: appSpec.binding.workflowVersionId,
+            name: 'e2e 文档问答',
+            description: null,
+            inputSchema: {
+              version: 2,
+              collectionMode: 'form',
+              fields: [
+                { id: 'question', type: 'text', label: '问题', required: true },
+              ],
+            },
+            outputNodes: [
+              { nodeId: 'out-answer', nodeType: 'text-output', label: '答案' },
+              {
+                nodeId: 'out-structured',
+                nodeType: 'json-output',
+                label: '结构化答案',
+              },
+            ],
+          },
+        },
+        modelConfigId,
+        attempts: 1,
+        usage: { promptTokens: 10, completionTokens: 20 },
       };
     },
   );
 
-  const artifactServiceFake = {
-    resolvePublicRuntimePreviewUrl: vi.fn(
-      async (_app: unknown, token: string) =>
-        `/api/v1/generated-apps/public/${token}/preview`,
-    ),
-    resolveArtifactContentForApp: vi.fn(async () => ({
-      artifact: {
-        artifactId: 'gate-3-build-output-html',
-        label: 'Gate 3 build output',
-        kind: 'build_output',
-        path: 'dist/index.html',
-        materialized: true,
-        sizeBytes: Buffer.byteLength(PREVIEW_HTML),
-        contentType: 'text/html',
-        readable: true,
-        updatedAt: new Date(),
-      },
-      content: PREVIEW_HTML,
-      truncated: false,
-    })),
-    getArtifactManifest: vi.fn(),
-    getArtifactContent: vi.fn(),
-  };
+  /** 生成队列替身：入队即在本进程执行该运行（与 worker 调用同一个 executeRun） */
+  const queueAdd = vi.fn(
+    async (_name: string, data: GeneratedAppGenerationJobData) => {
+      pendingRuns.push(
+        new Promise<void>((resolve) => setImmediate(resolve)).then(() =>
+          pipeline.executeRun(data),
+        ),
+      );
+      return { id: data.generationRunId };
+    },
+  );
 
   beforeAll(async () => {
     process.env.APP_JWT_SECRET = JWT_SECRET;
+    workspaceRoot = await mkdtemp(join(tmpdir(), 'e2e-generated-app-'));
+    process.env.GENERATED_APP_WORKSPACE_ROOT = workspaceRoot;
+    // e2e 库里没有真实发布的工作流：Gate 4 用 fixture 跳过租户复核，Gate 5 禁用，运行在 Gate 5 停止
+    process.env.GENERATED_APP_GATE4_EXECUTOR_MODE = 'fixture';
+    process.env.GENERATED_APP_GATE5_EXECUTOR_MODE = 'disabled';
     ctx = await createRlsTestContext();
 
     const moduleRef = await Test.createTestingModule({
@@ -199,10 +325,13 @@ describe('Generated App (E2E)', () => {
       .useValue(createMockRedisCacheService())
       .overrideProvider(RedisPubSubService)
       .useValue(createMockRedisPubSubService())
-      .overrideProvider(GeneratedAppGenerationOrchestratorService)
-      .useValue({ startGenerationRun })
-      .overrideProvider(GeneratedAppArtifactService)
-      .useValue(artifactServiceFake)
+      .overrideProvider(GeneratedAppSpecGeneratorService)
+      .useValue({ generate })
+      .overrideProvider(getQueueToken(GENERATED_APP_GENERATION_QUEUE))
+      .useValue({ add: queueAdd })
+      // 队列已换成同进程执行的替身，不再启动 BullMQ worker 消费真实队列
+      .overrideProvider(GeneratedAppGenerationWorker)
+      .useValue({})
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(
@@ -214,19 +343,26 @@ describe('Generated App (E2E)', () => {
 
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
-    repository = app.get(GeneratedAppRepository);
+    pipeline = app.get(GeneratedAppGenerationPipelineService);
   }, 120_000);
 
   afterAll(async () => {
+    await Promise.allSettled(pendingRuns);
     await app?.close();
     await ctx?.close();
+    await rm(workspaceRoot, { recursive: true, force: true });
+    delete process.env.GENERATED_APP_WORKSPACE_ROOT;
+    delete process.env.GENERATED_APP_GATE4_EXECUTOR_MODE;
+    delete process.env.GENERATED_APP_GATE5_EXECUTOR_MODE;
   });
 
   beforeEach(async () => {
+    await Promise.allSettled(pendingRuns.splice(0));
     await ctx.adminSql`DELETE FROM generated_app_gate_runs`;
     await ctx.adminSql`DELETE FROM generated_app_repair_attempts`;
-    await ctx.adminSql`DELETE FROM generated_app_generation_runs`;
     await ctx.adminSql`DELETE FROM generated_app_submissions`;
+    await ctx.adminSql`UPDATE generated_apps SET acceptance_generation_run_id = NULL`;
+    await ctx.adminSql`DELETE FROM generated_app_generation_runs`;
     await ctx.adminSql`DELETE FROM generated_apps`;
     await ctx.reset();
     vi.clearAllMocks();
@@ -256,6 +392,20 @@ describe('Generated App (E2E)', () => {
       SET current_organization_id = ${organizationId}::uuid
       WHERE id = ${id}::uuid
     `;
+    // Gate 0 落库时 generation_model_config_id 外键指向本租户的 chat 模型
+    const [provider] = await ctx.adminSql<{ id: string }[]>`
+      INSERT INTO llm_providers (org_id, tenant_id, slug, name, base_url, api_protocol)
+      VALUES (${organizationId}::uuid, ${tenantId}::uuid, 'custom', 'E2E Chat',
+              'http://127.0.0.1:9/v1', 'openai_chat')
+      RETURNING id
+    `;
+    const [model] = await ctx.adminSql<{ id: string }[]>`
+      INSERT INTO llm_model_configs (org_id, tenant_id, provider_id, name, model_id)
+      VALUES (${organizationId}::uuid, ${tenantId}::uuid, ${provider.id}::uuid,
+              'E2E Chat Model', 'e2e-chat-model')
+      RETURNING id
+    `;
+    modelConfigByTenant.set(tenantId, model.id);
 
     return {
       id,
@@ -264,6 +414,7 @@ describe('Generated App (E2E)', () => {
       organizationId,
       role,
       headers: authHeaders(id, email, tenantId, role),
+      modelConfigId: model.id,
     };
   }
 
@@ -284,10 +435,9 @@ describe('Generated App (E2E)', () => {
       WHERE id = ${id}::uuid
     `;
     return {
+      ...owner,
       id,
       email,
-      tenantId: owner.tenantId,
-      organizationId: owner.organizationId,
       role: 'viewer',
       headers: authHeaders(id, email, owner.tenantId, 'viewer'),
     };
@@ -298,13 +448,33 @@ describe('Generated App (E2E)', () => {
       method: 'POST',
       url: '/api/v1/generated-apps',
       headers: owner.headers,
-      payload: { prompt: '创建一个离线验收表单应用' },
+      payload: { prompt: PROMPT },
     });
     expect(response.statusCode).toBe(201);
     return parseJson(response).data as CreatedApp;
   }
 
-  async function markPublishCandidate(appId: string) {
+  /** 等待已入队的运行在本进程执行完，并确认运行已落终态 */
+  async function waitForRun(runId: string) {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      await Promise.allSettled(pendingRuns);
+      const [run] = await ctx.adminSql<
+        { status: string; failure_reason: string | null }[]
+      >`
+        SELECT status, failure_reason
+        FROM generated_app_generation_runs
+        WHERE id = ${runId}::uuid
+      `;
+      if (run && TERMINAL_RUN_STATUSES.includes(run.status)) return run;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error(`生成运行 ${runId} 没有进入终态`);
+  }
+
+  /** 生成到 Gate 5 后，用管理员 SQL 把门禁置为全部通过，模拟已签收的发布候选 */
+  async function createPublishCandidate(owner: TestUser) {
+    const created = await createApp(owner);
+    await waitForRun(created.generationRunId);
     const now = new Date().toISOString();
     const gateResults = GENERATED_APP_GATE_DEFINITIONS.map((gate) => ({
       gateId: gate.gateId,
@@ -312,7 +482,7 @@ describe('Generated App (E2E)', () => {
       name: gate.name,
       blocking: gate.blocking,
       status: 'passed',
-      summary: `${gate.gateId} offline evidence passed`,
+      summary: `${gate.gateId} passed`,
       evidence: [],
       updatedAt: now,
     }));
@@ -325,161 +495,84 @@ describe('Generated App (E2E)', () => {
       blockers: [],
       warnings: [],
     };
-
     await ctx.adminSql`
       UPDATE generated_apps
       SET status = 'publish_candidate',
           gate_results = ${ctx.adminSql.json(gateResults)},
           readiness = ${ctx.adminSql.json(readiness)}
-      WHERE id = ${appId}::uuid
+      WHERE id = ${created.id}::uuid
     `;
+    return created;
   }
 
-  async function publishApp(owner: TestUser, appId: string) {
-    await markPublishCandidate(appId);
+  async function publishApp(owner: TestUser) {
+    const created = await createPublishCandidate(owner);
     const response = await app.inject({
       method: 'POST',
-      url: `/api/v1/generated-apps/${appId}/public-share`,
+      url: `/api/v1/generated-apps/${created.id}/public-share`,
       headers: owner.headers,
     });
     expect(response.statusCode).toBe(200);
     const published = parseJson(response).data as CreatedApp;
     expect(published.status).toBe('published');
     expect(published.publicShareToken).toMatch(/^[a-f0-9]{64}$/);
-    return published.publicShareToken as string;
+    return { created, token: published.publicShareToken as string };
   }
 
-  /**
-   * 按公开详情返回的 runtimeForm 构造一份合法提交。
-   * 公开提交现在是 fail-closed 的：未在运行时表单声明的字段一律 422，
-   * 因此测试不能再硬编码任意字段名，必须依据服务端声明的契约来填。
-   */
-  type RuntimeFormField = {
-    id: string;
-    type: string;
-    required: boolean;
-    // 选项用 value 作为提交值（不是 id）——写错会得到 undefined，
-    // 而 JSON.stringify 会把 undefined 整个键丢掉，表现成「必填项缺失」。
-    options: Array<{ value: string; label: string }>;
-  };
-
-  async function buildValidSubmissionInput(token: string) {
-    const publicApp = await app.inject({
-      method: 'GET',
-      url: `/api/v1/generated-apps/public/${token}`,
-    });
-    expect(publicApp.statusCode).toBe(200);
-
-    const fields = parseJson(publicApp).data.runtimeForm
-      .fields as RuntimeFormField[];
-    const input: Record<string, unknown> = {};
-
-    for (const field of fields) {
-      if (!field.required) continue;
-
-      if (field.options.length > 0) {
-        input[field.id] = field.options[0].value;
-        continue;
-      }
-
-      switch (field.type) {
-        case 'number':
-        case 'range':
-          input[field.id] = 1;
-          break;
-        case 'checkbox':
-          input[field.id] = true;
-          break;
-        default:
-          input[field.id] = 'offline E2E';
-      }
-    }
-
-    expect(Object.keys(input).length).toBeGreaterThan(0);
-    return input;
-  }
-
-  it('固化 create → 离线 generation run → run/gate 列表 → readiness 核心链', async () => {
+  it('创建即排队首次生成运行：201 app_spec_generating，进行中重复 start 409，worker 执行 Gate 0–5', async () => {
     const owner = await seedTenant('generated-owner');
     const created = await createApp(owner);
 
-    expect(created.status).toBe('app_spec_ready');
+    expect(created.status).toBe('app_spec_generating');
     expect(created.readiness).toMatchObject({
       state: 'preview',
       canCreatePublicShare: false,
     });
+    expect(created.generationRunId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(queueAdd).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        appId: created.id,
+        generationRunId: created.generationRunId,
+        regenerateAppSpec: false,
+      }),
+      { jobId: created.generationRunId },
+    );
 
-    const prematureShare = await app.inject({
-      method: 'POST',
-      url: `/api/v1/generated-apps/${created.id}/public-share`,
-      headers: owner.headers,
-    });
-    expect(prematureShare.statusCode).toBe(409);
-
-    const start = await app.inject({
+    const duplicate = await app.inject({
       method: 'POST',
       url: `/api/v1/generated-apps/${created.id}/generation-runs/start`,
       headers: owner.headers,
-      payload: { triggerSource: 'manual', maxRepairAttempts: 0 },
+      payload: {},
     });
-    expect(start.statusCode).toBe(201);
-    const started = parseJson(start).data;
-    expect(started.generationRun).toMatchObject({
-      appId: created.id,
-      status: 'passed',
-      summary: '离线 fake runner 已完成，不调用 LLM',
-    });
-    expect(startGenerationRun).toHaveBeenCalledOnce();
+    expect(duplicate.statusCode).toBe(409);
+    expect(parseJson(duplicate).type).toContain(
+      'generated-app-generation-run-in-progress',
+    );
 
-    const runs = await app.inject({
-      method: 'GET',
-      url: `/api/v1/generated-apps/${created.id}/generation-runs`,
-      headers: owner.headers,
-    });
-    expect(runs.statusCode).toBe(200);
-    expect(parseJson(runs)).toMatchObject({
-      meta: { total: 1 },
-      data: [{ id: started.generationRun.id, status: 'passed' }],
-    });
-
-    const updateRun = await app.inject({
-      method: 'PATCH',
-      url: `/api/v1/generated-apps/${created.id}/generation-runs/${started.generationRun.id}`,
-      headers: owner.headers,
-      payload: { summary: '详情已通过更新接口回读' },
-    });
-    expect(updateRun.statusCode).toBe(200);
-    expect(parseJson(updateRun).data).toMatchObject({
-      id: started.generationRun.id,
-      summary: '详情已通过更新接口回读',
-    });
-
-    const gate = await app.inject({
-      method: 'POST',
-      url: `/api/v1/generated-apps/${created.id}/gate-runs`,
-      headers: owner.headers,
-      payload: {
-        gateId: 'gate-1',
-        generationRunId: started.generationRun.id,
-        status: 'passed',
-        summary: '离线 gate evidence passed',
-      },
-    });
-    expect(gate.statusCode).toBe(201);
-    expect(parseJson(gate).data.gateRun).toMatchObject({
-      gateId: 'gate-1',
-      status: 'passed',
-    });
+    const run = await waitForRun(created.generationRunId);
+    expect(run.status).toBe('failed');
+    expect(run.failure_reason).toContain('Gate 5');
+    expect(generate).toHaveBeenCalledOnce();
 
     const gates = await app.inject({
       method: 'GET',
-      url: `/api/v1/generated-apps/${created.id}/gate-runs?generationRunId=${started.generationRun.id}`,
+      url: `/api/v1/generated-apps/${created.id}/gate-runs?generationRunId=${created.generationRunId}&pageSize=20`,
       headers: owner.headers,
     });
     expect(gates.statusCode).toBe(200);
-    expect(parseJson(gates)).toMatchObject({
-      meta: { total: 1 },
-      data: [{ gateId: 'gate-1', status: 'passed' }],
+    const gateStatuses = Object.fromEntries(
+      (parseJson(gates).data as Array<{ gateId: string; status: string }>).map(
+        (gate) => [gate.gateId, gate.status],
+      ),
+    );
+    expect(gateStatuses).toEqual({
+      'gate-0': 'passed',
+      'gate-1': 'passed',
+      'gate-2': 'passed',
+      'gate-3': 'passed',
+      'gate-4': 'passed',
+      'gate-5': 'failed',
     });
 
     const detail = await app.inject({
@@ -488,63 +581,107 @@ describe('Generated App (E2E)', () => {
       headers: owner.headers,
     });
     expect(detail.statusCode).toBe(200);
-    expect(parseJson(detail).data.readiness.canCreatePublicShare).toBe(false);
+    const detailData = parseJson(detail).data;
+    expect(detailData.appSpec).toMatchObject({
+      version: 2,
+      appName: '文档问答',
+    });
+    expect(detailData.generationModelConfigId).toBe(owner.modelConfigId);
+    expect(detailData.generationPlan).toMatchObject({
+      planVersion: 2,
+      generationRunId: created.generationRunId,
+    });
+    expect(detailData.readiness.canCreatePublicShare).toBe(false);
+
+    const repairs = await app.inject({
+      method: 'GET',
+      url: `/api/v1/generated-apps/${created.id}/generation-runs/${created.generationRunId}/repair-attempts`,
+      headers: owner.headers,
+    });
+    expect(repairs.statusCode).toBe(200);
+    expect(parseJson(repairs).data).toEqual([
+      expect.objectContaining({ targetGateId: 'gate-5', status: 'failed' }),
+    ]);
+
+    const artifacts = await app.inject({
+      method: 'GET',
+      url: `/api/v1/generated-apps/${created.id}/artifacts`,
+      headers: owner.headers,
+    });
+    expect(artifacts.statusCode).toBe(200);
+    const manifest = parseJson(artifacts).data;
+    expect(manifest.workspace).toMatchObject({
+      executionLevel: 'real',
+      materialized: true,
+    });
+    expect(manifest.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'src/generated-app/app-spec.ts',
+          materialized: true,
+          readable: true,
+        }),
+      ]),
+    );
+
+    // 上一次运行结束后可以再次 start：202 queued，复用已存规格不再调用模型
+    const restart = await app.inject({
+      method: 'POST',
+      url: `/api/v1/generated-apps/${created.id}/generation-runs/start`,
+      headers: owner.headers,
+      payload: {},
+    });
+    expect(restart.statusCode).toBe(202);
+    const restarted = parseJson(restart).data.generationRun;
+    expect(restarted).toMatchObject({ status: 'queued', runNumber: 2 });
+    await waitForRun(restarted.id);
+    expect(generate).toHaveBeenCalledOnce();
   });
 
-  it('公开 @Public 路由支持详情、HTML 预览、提交和提交状态查询', async () => {
+  it('公开路由按 AppSpec v2 渲染表单、校验提交并返回提交状态', async () => {
     const owner = await seedTenant('public-owner');
-    const created = await createApp(owner);
-    const token = await publishApp(owner, created.id);
+    const { created, token } = await publishApp(owner);
 
     const publicApp = await app.inject({
       method: 'GET',
       url: `/api/v1/generated-apps/public/${token}`,
     });
     expect(publicApp.statusCode).toBe(200);
-    expect(parseJson(publicApp).data).toMatchObject({
+    const publicData = parseJson(publicApp).data;
+    expect(publicData).toMatchObject({
       token,
       appId: created.id,
-      runtimeSurface: {
-        kind: 'generated-app',
-        previewUrl: `/api/v1/generated-apps/public/${token}/preview`,
-      },
+      title: '文档问答',
+      runtimeSurface: { kind: 'generated-app', previewUrl: null },
     });
+    expect(
+      (publicData.runtimeForm.fields as Array<{ id: string }>).map(
+        (field) => field.id,
+      ),
+    ).toEqual(['question']);
 
-    const preview = await app.inject({
-      method: 'GET',
-      url: `/api/v1/generated-apps/public/${token}/preview`,
-    });
-    expect(preview.statusCode).toBe(200);
-    expect(preview.headers['content-type']).toContain('text/html');
-    expect(preview.headers['cache-control']).toBe('no-store');
-    expect(preview.body).toBe(PREVIEW_HTML);
-
-    const validInput = await buildValidSubmissionInput(token);
     const submission = await app.inject({
       method: 'POST',
       url: `/api/v1/generated-apps/public/${token}/submissions`,
       payload: {
         anonymousSessionId: 'anonymous-e2e-session',
-        input: validInput,
+        input: { question: '最多几个子 Agent？' },
       },
     });
     expect(submission.statusCode).toBe(201);
     const submitted = parseJson(submission).data;
+    // 绑定的工作流不在 e2e 库中：提交照常落库为 failed，公开端只看到通用原因
     expect(submitted).toMatchObject({
       appId: created.id,
       anonymousSessionId: 'anonymous-e2e-session',
-      input: validInput,
+      input: { question: '最多几个子 Agent？' },
+      status: 'failed',
     });
-    expect(submitted.id).toMatch(/^[0-9a-f-]{36}$/);
 
-    // 公开提交 fail-closed：未声明字段必须 422，且不得落库。
     const undeclared = await app.inject({
       method: 'POST',
       url: `/api/v1/generated-apps/public/${token}/submissions`,
-      payload: {
-        anonymousSessionId: 'anonymous-e2e-session',
-        input: { ...validInput, topic: 'offline E2E' },
-      },
+      payload: { input: { question: '问题', topic: '未声明字段' } },
     });
     expect(undeclared.statusCode).toBe(422);
 
@@ -556,21 +693,20 @@ describe('Generated App (E2E)', () => {
     expect(parseJson(status).data).toMatchObject({
       id: submitted.id,
       appId: created.id,
-      status: submitted.status,
+      status: 'failed',
     });
   });
 
-  it('非法 public token 对详情、预览、提交和状态查询均 fail-closed 为 404', async () => {
+  it('非法 public token 与已删除的 v1 构建预览路由均返回 404', async () => {
     const invalidToken = 'invalid-public-token';
-    const submissionId = crypto.randomUUID();
-    const requests = [
+    const responses = await Promise.all([
       app.inject({
         method: 'GET',
         url: `/api/v1/generated-apps/public/${invalidToken}`,
       }),
       app.inject({
         method: 'GET',
-        url: `/api/v1/generated-apps/public/${invalidToken}/preview`,
+        url: `/api/v1/generated-apps/public/${'a'.repeat(64)}/preview`,
       }),
       app.inject({
         method: 'POST',
@@ -579,20 +715,17 @@ describe('Generated App (E2E)', () => {
       }),
       app.inject({
         method: 'GET',
-        url: `/api/v1/generated-apps/public/${invalidToken}/submissions/${submissionId}`,
+        url: `/api/v1/generated-apps/public/${invalidToken}/submissions/${crypto.randomUUID()}`,
       }),
-    ];
-
-    const responses = await Promise.all(requests);
+    ]);
     expect(responses.map((response) => response.statusCode)).toEqual([
       404, 404, 404, 404,
     ]);
   });
 
-  it('即使 token 已写入，未发布应用的全部公开路径仍返回 404', async () => {
+  it('即使 token 已写入，未发布应用的公开路径仍返回 404', async () => {
     const owner = await seedTenant('unpublished-owner');
-    const created = await createApp(owner);
-    await markPublishCandidate(created.id);
+    const created = await createPublishCandidate(owner);
     const token = crypto.randomBytes(32).toString('hex');
     await ctx.adminSql`
       UPDATE generated_apps
@@ -600,24 +733,73 @@ describe('Generated App (E2E)', () => {
       WHERE id = ${created.id}::uuid
     `;
 
-    const submissionId = crypto.randomUUID();
     const responses = await Promise.all([
       app.inject({
         method: 'GET',
         url: `/api/v1/generated-apps/public/${token}`,
       }),
       app.inject({
+        method: 'POST',
+        url: `/api/v1/generated-apps/public/${token}/submissions`,
+        payload: { input: { question: '问题' } },
+      }),
+      app.inject({
         method: 'GET',
-        url: `/api/v1/generated-apps/public/${token}/preview`,
+        url: `/api/v1/generated-apps/public/${token}/submissions/${crypto.randomUUID()}`,
+      }),
+    ]);
+    expect(responses.map((response) => response.statusCode)).toEqual([
+      404, 404, 404,
+    ]);
+  });
+
+  it('跨租户 owner 读取、修改、启动应用及读取提交记录均不泄露资源', async () => {
+    const owner = await seedTenant('tenant-a');
+    const foreignOwner = await seedTenant('tenant-b');
+    const { created, token } = await publishApp(owner);
+
+    const submission = await app.inject({
+      method: 'POST',
+      url: `/api/v1/generated-apps/public/${token}/submissions`,
+      payload: { input: { question: '问题' } },
+    });
+    expect(submission.statusCode).toBe(201);
+    const submissionId = parseJson(submission).data.id as string;
+
+    const responses = await Promise.all([
+      app.inject({
+        method: 'GET',
+        url: `/api/v1/generated-apps/${created.id}`,
+        headers: foreignOwner.headers,
+      }),
+      app.inject({
+        method: 'PATCH',
+        url: `/api/v1/generated-apps/${created.id}/gates`,
+        headers: foreignOwner.headers,
+        payload: {
+          gateResults: [
+            {
+              gateId: 'gate-0',
+              order: 0,
+              name: '需求规格门禁',
+              blocking: true,
+              status: 'passed',
+              summary: 'foreign update must not apply',
+              evidence: [],
+            },
+          ],
+        },
       }),
       app.inject({
         method: 'POST',
-        url: `/api/v1/generated-apps/public/${token}/submissions`,
-        payload: { input: {} },
+        url: `/api/v1/generated-apps/${created.id}/generation-runs/start`,
+        headers: foreignOwner.headers,
+        payload: {},
       }),
       app.inject({
         method: 'GET',
-        url: `/api/v1/generated-apps/public/${token}/submissions/${submissionId}`,
+        url: `/api/v1/generated-apps/${created.id}/submissions/${submissionId}`,
+        headers: foreignOwner.headers,
       }),
     ]);
     expect(responses.map((response) => response.statusCode)).toEqual([
@@ -625,59 +807,12 @@ describe('Generated App (E2E)', () => {
     ]);
   });
 
-  it('跨租户 owner 读取、修改应用及读取提交记录均不泄露资源', async () => {
-    const owner = await seedTenant('tenant-a');
-    const foreignOwner = await seedTenant('tenant-b');
-    const created = await createApp(owner);
-    const token = await publishApp(owner, created.id);
-
-    const submission = await app.inject({
-      method: 'POST',
-      url: `/api/v1/generated-apps/public/${token}/submissions`,
-      payload: { input: await buildValidSubmissionInput(token) },
-    });
-    expect(submission.statusCode).toBe(201);
-    const submissionId = parseJson(submission).data.id as string;
-
-    const read = await app.inject({
-      method: 'GET',
-      url: `/api/v1/generated-apps/${created.id}`,
-      headers: foreignOwner.headers,
-    });
-    expect(read.statusCode).toBe(404);
-
-    const write = await app.inject({
-      method: 'PATCH',
-      url: `/api/v1/generated-apps/${created.id}/gates`,
-      headers: foreignOwner.headers,
-      payload: {
-        gateResults: [
-          {
-            gateId: 'gate-0',
-            order: 0,
-            name: '需求规格门禁',
-            blocking: true,
-            status: 'passed',
-            summary: 'foreign update must not apply',
-            evidence: [],
-          },
-        ],
-      },
-    });
-    expect(write.statusCode).toBe(404);
-
-    const submissionRead = await app.inject({
-      method: 'GET',
-      url: `/api/v1/generated-apps/${created.id}/submissions/${submissionId}`,
-      headers: foreignOwner.headers,
-    });
-    expect(submissionRead.statusCode).toBe(404);
-  });
-
-  it('viewer 可读但所有 generated-app 写接口返回 403', async () => {
+  it('viewer 可读但所有 generated-app 写接口返回 403，且不会排队运行', async () => {
     const owner = await seedTenant('rbac-owner');
     const viewer = await seedViewer(owner);
     const created = await createApp(owner);
+    await waitForRun(created.generationRunId);
+    vi.clearAllMocks();
 
     const list = await app.inject({
       method: 'GET',
@@ -722,9 +857,6 @@ describe('Generated App (E2E)', () => {
     expect(responses.map((response) => response.statusCode)).toEqual([
       403, 403, 403, 403,
     ]);
-    expect(startGenerationRun).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
   });
-
-  // 当前 controller 没有 GET generation-runs/:runId；运行详情只能由创建/更新响应返回。
-  it.todo('新增真实 generation run detail 路由后固化独立详情查询');
 });

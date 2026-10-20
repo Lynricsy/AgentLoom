@@ -28,6 +28,7 @@ import type {
 } from '../types/generation-v2.ports';
 import {
   APP_ID,
+  DEFAULT_START_GENERATION_RUN_DTO as DEFAULT_START_DTO,
   GENERATION_RUN_ID,
   TENANT_ID,
   USER_ID,
@@ -347,7 +348,7 @@ describe('GeneratedAppGenerationPipelineService.enqueueRun', () => {
     });
 
     await expect(
-      pipeline.enqueueRun(TENANT_ID, USER_ID, APP_ID, {}),
+      pipeline.enqueueRun(TENANT_ID, USER_ID, APP_ID, DEFAULT_START_DTO),
     ).rejects.toBeInstanceOf(GeneratedAppGenerationRunInProgressException);
     expect(store.db.insert).not.toHaveBeenCalled();
     expect(queue.add).not.toHaveBeenCalled();
@@ -358,7 +359,7 @@ describe('GeneratedAppGenerationPipelineService.enqueueRun', () => {
     queue.add.mockRejectedValueOnce(new Error('redis down'));
 
     await expect(
-      pipeline.enqueueRun(TENANT_ID, USER_ID, APP_ID, {}),
+      pipeline.enqueueRun(TENANT_ID, USER_ID, APP_ID, DEFAULT_START_DTO),
     ).rejects.toThrow('redis down');
     expect(store.runs[0]).toMatchObject({
       status: 'failed',
@@ -505,21 +506,21 @@ describe('GeneratedAppGenerationPipelineService.executeRun', () => {
       }),
     });
     let observedSignal: AbortSignal | undefined;
-    gate3.run.mockImplementationOnce((ctx?: GeneratedAppGateContextV2) => {
-      const { promise, resolve } =
-        Promise.withResolvers<GeneratedAppGateEvaluationV2<unknown>>();
-      observedSignal = ctx?.signal;
-      ctx?.signal.addEventListener('abort', () =>
-        resolve(
-          passed('g3', {
-            executionLevel: 'real',
-            workspace: null,
-            contractCases: [],
-          }),
-        ),
-      );
-      return promise as never;
-    });
+    gate3.run.mockImplementationOnce(
+      (ctx?: GeneratedAppGateContextV2) =>
+        new Promise<GeneratedAppGateEvaluationV2<unknown>>((resolve) => {
+          observedSignal = ctx?.signal;
+          ctx?.signal.addEventListener('abort', () =>
+            resolve(
+              passed('g3', {
+                executionLevel: 'real',
+                workspace: null,
+                contractCases: [],
+              }),
+            ),
+          );
+        }) as never,
+    );
 
     const running = pipeline.executeRun(job);
     await vi.advanceTimersByTimeAsync(5_000);
