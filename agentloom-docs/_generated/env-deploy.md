@@ -68,7 +68,7 @@
 | `APP_MASTER_ENCRYPTION_KEY` | `REPLACE_WITH_BASE64_32_BYTES` | 必须是 32 字节 Base64；运行: openssl rand -base64 32 |
 | `APP_OAUTH_REDIRECT_URL` | `http://localhost:8080/api/v1/auth/oauth/callback` | 公网部署请改成实际 HTTPS 域名；保留 localhost 会导致 OAuth / 邮件跳转回本机地址。 |
 | `APP_FRONTEND_URL` | `http://localhost:8080` |  |
-| `APP_PUBLIC_BASE_URL` |  | 对外公开访问的站点基址（A2A Agent Card 的 RPC 地址前缀）；留空时取请求的协议与主机 |
+| `APP_PUBLIC_BASE_URL` |  | 对外公开访问的站点基址（A2A Agent Card 的 RPC 地址前缀）；留空时取 APP_FRONTEND_URL 的 origin（Studio 与 API 不同源时必须设置） |
 | `APP_TRUST_PROXY_HOPS` | `1` | server 前方可信反向代理跳数：compose 自带 reverse-proxy 为 1；外层再套一层 TLS 终止代理时改为 2 |
 | `APP_SANDBOX_CALLBACK_BASE_URL_SERVER` | `http://server:3000/api/v1` | sandbox 容器需要回调到创建 session 的同一进程，server / worker 不能共用同一个地址 |
 | `APP_SANDBOX_CALLBACK_BASE_URL_WORKER` | `http://worker:3000/api/v1` |  |

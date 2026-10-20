@@ -6792,7 +6792,7 @@
                       "disabled",
                       "error"
                     ],
-                    "description": "注册后要切换到的状态，默认 registered"
+                    "description": "注册后要切换到的状态；首次注册默认 registered，发布新版本时省略则沿用当前状态"
                   }
                 }
               }
@@ -6801,25 +6801,25 @@
         },
         "responses": {
           "201": {
-            "description": "插件注册成功"
+            "description": "插件注册成功或新版本已发布"
           },
           "400": {
             "description": "缺少插件签名"
           },
           "401": {
-            "description": "认证失败或签名验证失败"
+            "description": "认证失败"
           },
           "403": {
             "description": "权限不足"
           },
           "409": {
-            "description": "插件已存在"
+            "description": "版本不高于已注册版本，或同 ID 插件是市场安装副本"
           },
           "413": {
             "description": "插件文件过大"
           },
           "422": {
-            "description": "插件包校验失败"
+            "description": "插件包或签名校验失败"
           }
         },
         "security": [
@@ -6830,7 +6830,7 @@
             "bearer": []
           }
         ],
-        "summary": "上传 .alp 插件包并注册插件",
+        "summary": "上传 .alp 插件包：首次注册，或为同一插件 ID 就地发布更高版本（记录 id 不变）",
         "tags": [
           "Plugins"
         ]
@@ -6955,6 +6955,9 @@
           },
           "404": {
             "description": "插件不存在"
+          },
+          "409": {
+            "description": "插件仍有 listed / pending_review 的市场 listing，需先下架"
           }
         },
         "security": [
@@ -11829,7 +11832,7 @@
         },
         "responses": {
           "201": {
-            "description": "文件上传成功"
+            "description": "文件上传成功，返回 { data: { name, size } }"
           },
           "400": {
             "description": "缺少文件或文件名无效"
@@ -23741,7 +23744,7 @@
                   }
                 },
                 "updatedAt": {
-                  "default": "2026-10-20T11:11:39.248Z",
+                  "default": "2026-10-20T13:08:47.032Z",
                   "type": "string",
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"

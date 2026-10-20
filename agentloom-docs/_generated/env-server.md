@@ -36,7 +36,7 @@
 | `APP_SANDBOX_CALLBACK_BASE_URL` | 否 |  |  | 可选：sandbox 容器回调当前进程的 API 基址（容器化部署建议显式配置） |
 | `APP_AGENT_API_CONVERSATION_IDLE_HOURS` | 否 | `24` |  | Agent 对外 API：API 对话空闲多少小时后由维护任务自动结束 |
 | `APP_AGENT_CONVERSATION_CONCURRENCY` | 否 | `10` |  | 每个进程同时执行的 Agent 对话数（agent-conversation-execution 队列并发，同一对话始终串行） |
-| `APP_PUBLIC_BASE_URL` | 否 |  |  | 可选：对外公开访问的站点基址（A2A Agent Card 中的 RPC 地址以它为前缀）；留空时取请求的协议与主机 |
+| `APP_PUBLIC_BASE_URL` | 否 |  |  | 可选：对外公开访问的站点基址（A2A Agent Card 中的 RPC 地址以它为前缀）；留空时取 APP_FRONTEND_URL 的 origin |
 | `APP_QDRANT_URL` | 否 | `http://localhost:6333` |  | 向量数据库（Qdrant） |
 | `APP_TYPESAFE_API_KEY` | 否 |  |  | TypeSafe Jev 决策 API Key；设置后以影子模式调用 Jev 并写入 decision_records，留空即不调用 |
 | `APP_TYPESAFE_BASE_URL` | 否 | `https://api.typesafe.ai` |  | TypeSafe API 基址 |
