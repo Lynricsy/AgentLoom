@@ -1,11 +1,6 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { HTTPError } from 'ky'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -13,6 +8,7 @@ import type {
   GeneratedAppPublicSubmission,
   GeneratedAppRuntimeForm,
 } from '../../types'
+import { GeneratedAppPublicRuntimePage } from '../GeneratedAppPublicRuntimePage'
 
 const {
   createPublicSubmissionMutation,
@@ -62,86 +58,64 @@ function makeRuntimeForm(
   overrides: Partial<GeneratedAppRuntimeForm> = {},
 ): GeneratedAppRuntimeForm {
   return {
-    formId: 'consultation-runtime-form',
-    title: '问诊采集表',
-    description: '请填写问诊采集信息，提交后查看结构化摘要。',
-    submitLabel: '提交问诊信息',
-    sections: [
-      {
-        id: 'consultation-basic',
-        title: '问诊信息',
-        description: '采集主诉、症状、严重程度和联系偏好。',
-        fieldIds: [
-          'chiefComplaint',
-          'symptoms',
-          'severity',
-          'contactMode',
-          'additionalNotes',
-        ],
-      },
-    ],
+    formId: 'docs-qa-form',
+    title: '文档问答',
+    description: '输入问题，基于产品文档回答并给出引用。',
+    submitLabel: '提问',
     fields: [
       {
-        id: 'chiefComplaint',
-        label: '主诉',
-        type: 'text',
+        id: 'question',
+        label: '问题',
+        type: 'textarea',
         required: true,
-        placeholder: '例如：反复头痛',
-        helpText: '请描述当前最主要的不适。',
-        options: [],
+        placeholder: '例如：工作流有哪几种状态？',
+        helpText: '只回答文档里有的内容。',
+        maxLength: 500,
       },
       {
-        id: 'symptoms',
-        label: '症状或感受',
-        type: 'multi_select',
-        required: true,
+        id: 'topK',
+        label: '引用条数',
+        type: 'number',
+        required: false,
         placeholder: '',
-        helpText: '可多选。',
-        options: [
-          { value: 'pain', label: '疼痛' },
-          { value: 'fever', label: '发热' },
-        ],
-      },
-      {
-        id: 'severity',
-        label: '严重程度',
-        type: 'range',
-        required: true,
-        placeholder: '',
-        helpText: '1 表示轻微，10 表示非常严重。',
-        options: [],
+        helpText: '',
         min: 1,
-        max: 10,
-        step: 1,
+        max: 5,
       },
       {
-        id: 'contactMode',
-        label: '联系偏好',
+        id: 'tone',
+        label: '回答风格',
         type: 'single_select',
         required: true,
         placeholder: '',
-        helpText: '选择后续沟通方式。',
+        helpText: '',
         options: [
-          { value: 'online', label: '线上沟通' },
-          { value: 'offline', label: '线下沟通' },
+          { value: 'brief', label: '简短' },
+          { value: 'detailed', label: '详细' },
         ],
       },
       {
-        id: 'additionalNotes',
-        label: '补充说明',
-        type: 'textarea',
+        id: 'topics',
+        label: '关注主题',
+        type: 'multi_select',
         required: false,
-        placeholder: '可补充其他观察信息',
-        helpText: '仅用于整理提交摘要。',
-        options: [],
+        placeholder: '',
+        helpText: '',
+        options: [
+          { value: 'workflow', label: '工作流' },
+          { value: 'agent', label: 'Agent' },
+        ],
       },
     ],
     resultView: {
-      title: '问诊信息报告',
-      description: '提交后展示问诊摘要、下一步问题和边界说明。',
-      emptyState: '提交后会在这里显示结构化报告。',
-      successTitle: '已生成问诊摘要',
-      nextStepHint: '如有急重症或持续不适，请及时线下就医。',
+      title: '回答',
+      emptyState: '提交后在这里显示答案与引用。',
+      sections: [
+        { id: 'answer', label: '答案', format: 'markdown' },
+        { id: 'citations', label: '引用', format: 'citations' },
+        { id: 'raw', label: '原始输出', format: 'json' },
+        { id: 'note', label: '备注', format: 'text' },
+      ],
     },
     ...overrides,
   }
@@ -153,21 +127,20 @@ function makePublicRuntime(
   return {
     token: 'public-token-with-a-very-long-value',
     appId: 'app-public',
-    title: '自动化中医问诊系统',
-    description: '围绕问诊、报告和公开提交生成的终端用户应用。',
-    dataUseNotice:
-      '提交内容、运行结果和最终报告会被保存，并提供给应用创建者查看。',
+    title: '文档问答助手',
+    description: '基于产品文档回答问题。',
+    dataUseNotice: '提交内容与结果会被保存，并提供给应用创建者查看。',
     appSpec: {
-      version: 1,
-      appName: '自动化中医问诊系统',
-      summary: '根据患者回答逐步提问，并生成结构化分析报告。',
-      userGoal: '让终端用户完成问诊并查看分析报告。',
-      actors: ['终端用户', '应用创建者'],
+      version: 2,
+      appName: '文档问答助手',
+      summary: '输入问题，返回答案与文档引用。',
+      userGoal: '快速从产品文档中找到答案。',
+      actors: ['终端用户'],
       pages: [
         {
-          id: 'page-public-runtime',
-          name: '问诊运行页',
-          purpose: '终端用户回答问诊问题并查看报告。',
+          id: 'public-runtime',
+          name: '问答页',
+          purpose: '终端用户提问并查看答案。',
         },
       ],
     },
@@ -176,7 +149,7 @@ function makePublicRuntime(
       previewUrl: 'https://preview.example.test/apps/app-public',
     },
     runtimeForm: makeRuntimeForm(),
-    createdAt: '2026-04-25T00:00:00.000Z',
+    createdAt: '2026-10-20T00:00:00.000Z',
     ...overrides,
   }
 }
@@ -187,40 +160,47 @@ function makePublicSubmission(
   return {
     id: 'submission-public',
     appId: 'app-public',
-    appSpecVersion: 1,
+    appSpecVersion: 2,
     status: 'completed',
     anonymousSessionId: 'anon-public',
-    input: { chiefComplaint: '我最近头痛', symptoms: ['pain'] },
+    input: { question: '工作流有哪几种状态？', tone: 'brief' },
     result: {
-      summary: '已整理问诊信息。',
-      nextStepQuestions: ['是否伴随发热或持续加重？'],
-      followUpPrompts: ['请补充持续时间。'],
-    },
-    report: {
-      title: '已生成问诊摘要',
-      summary: '系统已整理主诉、症状和严重程度。',
+      status: 'completed',
       sections: [
         {
-          id: 'submitted-information',
-          title: '提交内容摘要',
-          body: '主诉：我最近头痛',
-          items: ['chiefComplaint: 我最近头痛', 'symptoms: 疼痛'],
+          sectionId: 'answer',
+          label: '答案',
+          format: 'markdown',
+          value: '工作流有 **草稿** 和 **已发布** 两种状态。',
         },
+        {
+          sectionId: 'citations',
+          label: '引用',
+          format: 'citations',
+          value: [
+            {
+              title: 'core-concepts.md',
+              quote: '工作流分为草稿与已发布。',
+              source: 'docs/core-concepts.md',
+            },
+          ],
+        },
+        {
+          sectionId: 'raw',
+          label: '原始输出',
+          format: 'json',
+          value: { confidence: 0.9 },
+        },
+        { sectionId: 'note', label: '备注', format: 'text', value: null },
       ],
-      nextStepQuestions: ['主要不适从什么时候开始？'],
-      followUpPrompts: ['请补充既往处理。'],
-      disclaimers: ['不提供诊断结论、处方或治疗建议。'],
-      runtimeNotice: '这是本地 deterministic runtime report。',
+      publicError: null,
     },
     errorMessage: null,
-    createdAt: '2026-04-25T02:00:00.000Z',
-    updatedAt: '2026-04-25T02:05:00.000Z',
+    createdAt: '2026-10-20T02:00:00.000Z',
+    updatedAt: '2026-10-20T02:00:05.000Z',
     ...overrides,
   }
 }
-
-const { GeneratedAppPublicRuntimePage } =
-  await import('../GeneratedAppPublicRuntimePage')
 
 describe('GeneratedAppPublicRuntimePage', () => {
   beforeEach(() => {
@@ -239,179 +219,91 @@ describe('GeneratedAppPublicRuntimePage', () => {
     createPublicSubmissionMutation.isPending = false
   })
 
-  it('renders data use notice, limited AppSpec, and preview link', () => {
+  it('渲染数据使用说明、公开 AppSpec 摘要与预览链接，不泄露令牌', () => {
     render(<GeneratedAppPublicRuntimePage token="public-token" />)
 
     expect(useGeneratedAppPublicRuntimeMock).toHaveBeenCalledWith(
       'public-token',
     )
-    expect(screen.getByText('自动化中医问诊系统')).toBeInTheDocument()
     expect(
-      screen.getByText(
-        '提交内容、运行结果和最终报告会被保存，并提供给应用创建者查看。',
-      ),
+      screen.getByText('提交内容与结果会被保存，并提供给应用创建者查看。'),
     ).toBeInTheDocument()
+    expect(screen.getByText('输入问题，返回答案与文档引用。')).toBeInTheDocument()
+    expect(screen.getByText('快速从产品文档中找到答案。')).toBeInTheDocument()
+    expect(screen.getByText('问答页')).toBeInTheDocument()
+    expect(screen.getByText('提交后在这里显示答案与引用。')).toBeInTheDocument()
     expect(
-      screen.getByText('根据患者回答逐步提问，并生成结构化分析报告。'),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText('让终端用户完成问诊并查看分析报告。'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('问诊采集表')).toBeInTheDocument()
-    expect(screen.getByLabelText(/主诉/)).toBeInTheDocument()
-    expect(screen.getByLabelText('疼痛')).toBeInTheDocument()
-    expect(screen.getByLabelText(/严重程度/)).toBeInTheDocument()
-    expect(screen.getByText('问诊运行页')).toBeInTheDocument()
-    expect(
-      screen.getByText('终端用户回答问诊问题并查看报告。'),
-    ).toBeInTheDocument()
-
-    const previewLink = screen.getByRole('link', { name: /打开运行预览/ })
-    expect(previewLink).toHaveAttribute(
-      'href',
-      'https://preview.example.test/apps/app-public',
-    )
-
-    expect(screen.queryByText(/Gate/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/readiness/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/源码/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/测试报告/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/插件/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/访问标识/)).not.toBeInTheDocument()
+      screen.getByRole('link', { name: /打开运行预览/ }),
+    ).toHaveAttribute('href', 'https://preview.example.test/apps/app-public')
     expect(
       screen.queryByText('public-token-with-a-very-long-value'),
     ).not.toBeInTheDocument()
   })
 
-  it('renders a preparation message when preview URL is not available', () => {
-    publicRuntimeQuery.data = makePublicRuntime({
-      runtimeSurface: {
-        kind: 'generated-app',
-        previewUrl: null,
-      },
-    })
-
-    render(<GeneratedAppPublicRuntimePage token="public-token" />)
-
-    expect(screen.getByText('运行界面尚在准备中。')).toBeInTheDocument()
-    expect(
-      screen.queryByRole('link', { name: /打开运行预览/ }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('renders required fields even when a generated runtime section forgets to reference them', async () => {
-    const user = userEvent.setup()
-    const publicSubmission = makePublicSubmission({
-      input: {
-        chiefComplaint: '我最近头痛',
-        symptoms: ['pain'],
-        severity: 7,
-        unsectionedConcern: '夜间加重',
-      },
-    })
-    publicRuntimeQuery.data = makePublicRuntime({
-      runtimeForm: makeRuntimeForm({
-        sections: [
-          {
-            id: 'consultation-basic',
-            title: '问诊信息',
-            description: '采集主诉、症状和严重程度。',
-            fieldIds: ['chiefComplaint', 'symptoms', 'severity'],
-          },
-        ],
-        fields: [
-          ...makeRuntimeForm().fields,
-          {
-            id: 'unsectionedConcern',
-            label: '未分组关注点',
-            type: 'text',
-            required: true,
-            placeholder: '例如：夜间加重',
-            helpText: '生成器漏挂 section 时仍应可填写。',
-            options: [],
-          },
-        ],
-      }),
-    })
-    createPublicSubmissionMutation.mutateAsync.mockResolvedValue(
-      publicSubmission,
+  it('按 AppSpec 字段渲染控件，控件或选项容器带 data-field-id，选项带 data-option-value', () => {
+    const { container } = render(
+      <GeneratedAppPublicRuntimePage token="public-token" />,
     )
 
-    render(<GeneratedAppPublicRuntimePage token="public-token" />)
+    const question = container.querySelector('[data-field-id="question"]')
+    expect(question?.tagName).toBe('TEXTAREA')
+    expect(question).toHaveAttribute('maxlength', '500')
+    expect(screen.getByLabelText(/问题/)).toBe(question)
 
-    expect(screen.getByText('其他信息')).toBeInTheDocument()
-    expect(screen.getByLabelText(/未分组关注点/)).toBeInTheDocument()
+    const topK = container.querySelector('[data-field-id="topK"]')
+    expect(topK).toHaveAttribute('type', 'number')
+    expect(topK).toHaveAttribute('min', '1')
+    expect(topK).toHaveAttribute('max', '5')
 
-    await user.type(screen.getByLabelText(/主诉/), '我最近头痛')
-    await user.click(screen.getByLabelText('疼痛'))
-    fireEvent.change(screen.getByLabelText(/严重程度/), {
-      target: { value: '7' },
-    })
-    await user.click(screen.getByLabelText(/联系偏好/))
-    await user.click(await screen.findByRole('option', { name: '线上沟通' }))
-    await user.type(screen.getByLabelText(/未分组关注点/), '夜间加重')
-    await user.click(screen.getByRole('button', { name: '提交问诊信息' }))
+    const tone = container.querySelector('[data-field-id="tone"]')
+    expect(tone).toHaveAttribute('role', 'radiogroup')
+    expect(
+      tone?.querySelector('[data-option-value="brief"]'),
+    ).toHaveAttribute('role', 'radio')
 
-    await waitFor(() => {
-      expect(createPublicSubmissionMutation.mutateAsync).toHaveBeenCalledWith({
-        input: expect.objectContaining({
-          chiefComplaint: '我最近头痛',
-          symptoms: ['pain'],
-          severity: 7,
-          contactMode: 'online',
-          unsectionedConcern: '夜间加重',
-        }),
-        clientContext: expect.objectContaining({
-          formId: 'consultation-runtime-form',
-        }),
-      })
-    })
+    const topics = container.querySelector('[data-field-id="topics"]')
+    expect(topics?.tagName).toBe('FIELDSET')
+    expect(
+      topics?.querySelector('[data-option-value="agent"]'),
+    ).toHaveAttribute('role', 'checkbox')
+
+    expect(container.querySelectorAll('form button[type="submit"]')).toHaveLength(1)
+    expect(container.querySelector('input[type="range"]')).toBeNull()
   })
 
-  it('renders dynamic form, validates required fields, submits payload, and renders structured report', async () => {
+  it('校验必填后按字段类型组装提交 JSON，并以返回的提交 id 轮询结果', async () => {
     const user = userEvent.setup()
-    const publicSubmission = {
-      ...makePublicSubmission(),
-      tenantId: 'tenant-private',
-      publicShareToken: 'public-token',
-      gateResults: [{ gateId: 'gate-0' }],
-      sourceArtifactUrl: 'https://internal.example.test/source.zip',
-      testReportUrl: 'https://internal.example.test/report.json',
-      pluginIds: ['plugin-private'],
-    } as unknown as GeneratedAppPublicSubmission
-    createPublicSubmissionMutation.mutateAsync.mockImplementation(async () => {
-      publicSubmissionQuery.data = publicSubmission
-      return publicSubmission
+    const submission = makePublicSubmission({
+      status: 'running',
+      result: { status: 'running', sections: [], publicError: null },
     })
+    createPublicSubmissionMutation.mutateAsync.mockResolvedValue(submission)
 
     render(<GeneratedAppPublicRuntimePage token="public-token" />)
 
-    await user.click(screen.getByRole('button', { name: '提交问诊信息' }))
-
-    expect(screen.getByText('请先补齐必填字段。')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '提问' }))
+    expect(screen.getByText('请先修正标出的字段。')).toBeInTheDocument()
+    expect(screen.getByText('请填写问题。')).toBeInTheDocument()
+    expect(screen.getByText('请填写回答风格。')).toBeInTheDocument()
     expect(createPublicSubmissionMutation.mutateAsync).not.toHaveBeenCalled()
 
-    await user.type(screen.getByLabelText(/主诉/), '我最近头痛')
-    await user.click(screen.getByLabelText('疼痛'))
-    fireEvent.change(screen.getByLabelText(/严重程度/), {
-      target: { value: '7' },
-    })
-    await user.click(screen.getByLabelText(/联系偏好/))
-    await user.click(await screen.findByRole('option', { name: '线上沟通' }))
-    await user.type(screen.getByLabelText(/补充说明/), '夜间加重')
-    await user.click(screen.getByRole('button', { name: '提交问诊信息' }))
+    await user.type(screen.getByLabelText(/问题/), '  工作流有哪几种状态？ ')
+    await user.type(screen.getByLabelText(/引用条数/), '3')
+    await user.click(screen.getByLabelText('详细'))
+    await user.click(screen.getByLabelText('工作流'))
+    await user.click(screen.getByLabelText('Agent'))
+    await user.click(screen.getByRole('button', { name: '提问' }))
 
     await waitFor(() => {
       expect(createPublicSubmissionMutation.mutateAsync).toHaveBeenCalledWith({
         input: {
-          chiefComplaint: '我最近头痛',
-          symptoms: ['pain'],
-          severity: 7,
-          contactMode: 'online',
-          additionalNotes: '夜间加重',
+          question: '工作流有哪几种状态？',
+          topK: 3,
+          tone: 'detailed',
+          topics: ['workflow', 'agent'],
         },
         clientContext: expect.objectContaining({
-          formId: 'consultation-runtime-form',
+          formId: 'docs-qa-form',
           submittedAt: expect.any(String),
         }),
       })
@@ -420,173 +312,158 @@ describe('GeneratedAppPublicRuntimePage', () => {
         'submission-public',
       )
     })
-
-    expect(screen.getByText('已完成')).toBeInTheDocument()
-    expect(screen.getByText('已生成问诊摘要')).toBeInTheDocument()
-    expect(screen.getByText('提交内容摘要')).toBeInTheDocument()
-    expect(screen.getAllByText(/我最近头痛/).length).toBeGreaterThan(0)
-    expect(screen.getByText('主要不适从什么时候开始？')).toBeInTheDocument()
-    expect(screen.getByText('请补充既往处理。')).toBeInTheDocument()
-    expect(
-      screen.getByText('不提供诊断结论、处方或治疗建议。'),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText('这是本地 deterministic runtime report。'),
-    ).toBeInTheDocument()
-
-    expect(screen.queryByText(/public-token/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/publicShareToken/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/readiness/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/gateResults/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/sourceArtifactUrl/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/testReportUrl/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/pluginIds/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/runtimeKind/)).not.toBeInTheDocument()
   })
 
-  it.each([
-    ['pending', '等待执行', 'Workflow 正在排队，页面会自动刷新执行状态。'],
-    ['running', '正在执行', 'Workflow 正在执行，页面会自动刷新执行状态。'],
-    [
-      'paused',
-      '已暂停',
-      'Workflow 已暂停，页面会继续刷新执行状态，并保留本地报告。',
-    ],
-    ['completed', '已完成', 'Workflow 执行已完成，当前仅展示安全摘要。'],
-    ['failed', '执行未完成', 'Workflow 执行未完成，页面继续保留本地报告。'],
-    ['cancelled', '已取消', 'Workflow 已取消，页面继续保留本地报告。'],
-  ] as const)(
-    'renders safe async workflow handoff UI for %s status',
-    (executionStatus, label, message) => {
-      createPublicSubmissionMutation.data = makePublicSubmission({
-        status:
-          executionStatus === 'pending'
-            ? 'received'
-            : executionStatus === 'running' || executionStatus === 'paused'
-              ? 'running'
-              : executionStatus === 'completed'
-                ? 'completed'
-                : 'failed',
-        result: {
-          summary: '已整理问诊信息。',
-          workflowExecution: true,
-          executionId: '55555555-5555-4555-8555-555555555557',
-          executionStatus,
-          workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
-          executionBoundary:
-            executionStatus === 'completed'
-              ? 'async-workflow-execution-completed'
-              : executionStatus === 'failed'
-                ? 'async-workflow-execution-failed'
-                : executionStatus === 'cancelled'
-                  ? 'async-workflow-execution-cancelled'
-                  : 'async-workflow-execution-created',
-          workflowExecutionNotice:
-            executionStatus === 'completed'
-              ? 'Workflow execution 已完成；公开页面仅展示安全执行摘要。'
-              : 'Workflow execution 状态已刷新。',
-          workflowExecutionSummary:
-            executionStatus === 'completed'
-              ? {
-                  summary: 'Workflow execution 已完成。',
-                  completedSteps: 2,
-                  totalSteps: 2,
-                  failedSteps: 0,
-                  cancelledSteps: 0,
-                }
-              : null,
-          definitionSnapshot: { token: 'secret-token-value' },
-          checkpointData: { stack: 'internal stack' },
-          nodeData: { path: '/root/AgentLoom/.env' },
-          toolCalls: [{ token: 'secret-token-value' }],
-        },
-        report: {
-          title: '已生成问诊摘要',
-          summary: '系统已整理主诉、症状和严重程度。',
-          sections: [
-            {
-              id: 'submitted-information',
-              title: '提交内容摘要',
-              body: '主诉：我最近头痛',
-              items: ['chiefComplaint: 我最近头痛'],
-            },
-          ],
-          workflowExecution: true,
-          executionId: '55555555-5555-4555-8555-555555555557',
-          executionStatus,
-          workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
-          workflowExecutionNotice: 'Workflow execution 状态已刷新。',
-        },
-      })
+  it('选填字段留空时不进入提交 JSON', async () => {
+    const user = userEvent.setup()
+    createPublicSubmissionMutation.mutateAsync.mockResolvedValue(
+      makePublicSubmission(),
+    )
 
-      render(<GeneratedAppPublicRuntimePage token="public-token" />)
+    render(<GeneratedAppPublicRuntimePage token="public-token" />)
 
-      const panel = screen.getByTestId('workflow-execution-status')
-      expect(panel).toHaveAttribute('data-execution-status', executionStatus)
-      expect(within(panel).getByText(label)).toBeInTheDocument()
-      expect(within(panel).getByText(message)).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/问题/), '工作流有哪几种状态？')
+    await user.click(screen.getByLabelText('简短'))
+    await user.click(screen.getByRole('button', { name: '提问' }))
 
-      if (executionStatus === 'completed') {
-        expect(within(panel).getByText('完成步骤：2')).toBeInTheDocument()
-        expect(within(panel).getByText('总步骤：2')).toBeInTheDocument()
-      }
+    await waitFor(() => {
+      expect(createPublicSubmissionMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: { question: '工作流有哪几种状态？', tone: 'brief' },
+        }),
+      )
+    })
+  })
 
-      expect(screen.queryByText(/55555555-5555/)).not.toBeInTheDocument()
-      expect(screen.queryByText(/definitionSnapshot/)).not.toBeInTheDocument()
-      expect(screen.queryByText(/checkpointData/)).not.toBeInTheDocument()
-      expect(screen.queryByText(/nodeData/)).not.toBeInTheDocument()
-      expect(screen.queryByText(/toolCalls/)).not.toBeInTheDocument()
-      expect(screen.queryByText(/secret-token-value/)).not.toBeInTheDocument()
-      expect(screen.queryByText(/internal stack/)).not.toBeInTheDocument()
-      expect(screen.queryByText('/root/AgentLoom')).not.toBeInTheDocument()
-    },
-  )
-
-  it('renders failed public submissions as a safe failure state instead of a success report', () => {
+  it('执行中的提交显示 data-result-status=running，不渲染结果分区', () => {
     createPublicSubmissionMutation.data = makePublicSubmission({
-      status: 'failed',
+      status: 'received',
       result: null,
-      report: null,
-      errorMessage:
-        '提交内容包含当前本地 Generated App runtime 无法处理的结构，已保存失败状态，请调整输入后重新提交。',
+    })
+
+    const { container } = render(
+      <GeneratedAppPublicRuntimePage token="public-token" />,
+    )
+
+    const result = screen.getByTestId('generated-app-public-submission-result')
+    expect(result).toHaveAttribute('data-result-status', 'running')
+    expect(result).toHaveAttribute('data-submission-id', 'submission-public')
+    expect(screen.getByText('正在处理，结果出来后会自动显示。')).toBeInTheDocument()
+    expect(container.querySelectorAll('[data-result-section-id]')).toHaveLength(0)
+  })
+
+  it('完成后按 result.sections 渲染 markdown、citations、json、text 分区', () => {
+    publicSubmissionQuery.data = makePublicSubmission()
+
+    const { container } = render(
+      <GeneratedAppPublicRuntimePage token="public-token" />,
+    )
+
+    const result = screen.getByTestId('generated-app-public-submission-result')
+    expect(result).toHaveAttribute('data-result-status', 'completed')
+
+    const answer = container.querySelector('[data-result-section-id="answer"]')
+    expect(answer).toHaveTextContent('工作流有 草稿 和 已发布 两种状态。')
+    expect(answer?.querySelector('strong')).toHaveTextContent('草稿')
+    expect(within(result).getByText('答案')).toBeInTheDocument()
+
+    const citations = container.querySelector(
+      '[data-result-section-id="citations"]',
+    ) as HTMLElement
+    expect(within(citations).getByText('core-concepts.md')).toBeInTheDocument()
+    expect(
+      within(citations).getByText('工作流分为草稿与已发布。'),
+    ).toBeInTheDocument()
+    expect(within(citations).getByText('docs/core-concepts.md')).toBeInTheDocument()
+
+    const raw = container.querySelector('[data-result-section-id="raw"]')
+    expect(raw?.querySelector('pre')).toHaveTextContent('"confidence": 0.9')
+
+    // 缺失输出的分区容器保持为空，说明文字放在容器外，避免浏览器验收把它当成内容
+    const note = container.querySelector('[data-result-section-id="note"]')
+    expect(note).toBeEmptyDOMElement()
+    expect(screen.getByText('没有返回内容。')).toBeInTheDocument()
+  })
+
+  it('执行失败时显示公开失败原因并标记 data-result-status=failed', () => {
+    publicSubmissionQuery.data = makePublicSubmission({
+      status: 'failed',
+      result: {
+        status: 'failed',
+        sections: [],
+        publicError: '应用暂时无法处理提交，请稍后再试或联系应用创建者。',
+      },
+      errorMessage: '应用暂时无法处理提交，请稍后再试或联系应用创建者。',
     })
 
     render(<GeneratedAppPublicRuntimePage token="public-token" />)
 
-    expect(screen.getByText('失败')).toBeInTheDocument()
-    expect(screen.getByText('提交未能生成报告')).toBeInTheDocument()
     expect(
-      screen.getByText(
-        '提交内容已保存为失败状态，但当前公开运行页无法安全处理该输入结构。请调整输入后重新提交。',
-      ),
-    ).toBeInTheDocument()
+      screen.getByTestId('generated-app-public-submission-result'),
+    ).toHaveAttribute('data-result-status', 'failed')
     expect(
-      screen.getByText(
-        /提交内容包含当前本地 Generated App runtime 无法处理的结构/,
-      ),
+      screen.getByText('应用暂时无法处理提交，请稍后再试或联系应用创建者。'),
     ).toBeInTheDocument()
-    expect(screen.queryByText('已生成问诊摘要')).not.toBeInTheDocument()
   })
 
-  it('renders an inaccessible or closed state when public runtime lookup fails', async () => {
+  it('提交被服务端 422 拒绝时显示 problem detail，并把 errors[] 标到对应字段', async () => {
+    const user = userEvent.setup()
+    const rejection = new HTTPError(
+      new Response(null, { status: 422 }),
+      new Request('http://localhost/api/v1/generated-apps/public/t/submissions'),
+      {} as never,
+    )
+    rejection.data = {
+      type: 'https://agentloom.dev/errors/generated-app-public-submission-invalid',
+      detail: '提交内容未通过该应用的运行时表单契约校验，请修正后重试',
+      errors: [
+        { field: 'input.tone', message: '不是可选的选项' },
+        { field: 'input.unknownField', message: '不是该应用表单声明的字段' },
+      ],
+    }
+    createPublicSubmissionMutation.mutateAsync.mockRejectedValue(rejection)
+
+    render(<GeneratedAppPublicRuntimePage token="public-token" />)
+
+    await user.type(screen.getByLabelText(/问题/), '工作流有哪几种状态？')
+    await user.click(screen.getByLabelText('简短'))
+    await user.click(screen.getByRole('button', { name: '提问' }))
+
+    expect(
+      await screen.findByText(
+        '提交内容未通过该应用的运行时表单契约校验，请修正后重试',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText('不是可选的选项')).toBeInTheDocument()
+    expect(screen.queryByText('不是该应用表单声明的字段')).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId('generated-app-public-submission-result'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('没有预览地址时显示准备中', () => {
+    publicRuntimeQuery.data = makePublicRuntime({
+      runtimeSurface: { kind: 'generated-app', previewUrl: null },
+    })
+
+    render(<GeneratedAppPublicRuntimePage token="public-token" />)
+
+    expect(screen.getByText('运行界面尚在准备中。')).toBeInTheDocument()
+  })
+
+  it('公开链接不可用时显示关闭状态并可重试', async () => {
     const user = userEvent.setup()
     publicRuntimeQuery.data = undefined
     publicRuntimeQuery.isError = true
 
     render(<GeneratedAppPublicRuntimePage token="closed-token" />)
 
-    expect(screen.getByText('公开应用不可访问或已关闭')).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        '这个链接不存在、已被创建者关闭，或应用当前不满足公开访问条件。',
-      ),
-    ).toBeInTheDocument()
-
+    expect(screen.getByTestId('generated-app-public-runtime-error')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '重新加载' }))
     expect(publicRuntimeQuery.refetch).toHaveBeenCalled()
   })
 
-  it('renders a loading state', () => {
+  it('加载中显示占位', () => {
     publicRuntimeQuery.data = undefined
     publicRuntimeQuery.isLoading = true
 

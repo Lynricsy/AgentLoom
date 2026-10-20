@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { GeneratedApp } from '../../types'
+import { makeGeneratedAppSpecV2 } from '../../__tests__/fixtures'
 
 const {
   createMutation,
@@ -100,29 +101,9 @@ function makeGeneratedApp(overrides: Partial<GeneratedApp> = {}): GeneratedApp {
     description: '围绕需求生成的 AppSpec 初稿。',
     status:
       state === 'publish_candidate' ? 'publish_candidate' : 'preview_ready',
-    appSpec: {
-      version: 1,
-      appName: '自动化中医问诊系统',
-      summary: '围绕需求生成的 AppSpec 初稿。',
-      userGoal: '自动化中医问诊系统',
-      actors: ['创建者', '终端用户'],
-      coreRequirements: [{ id: 'req-1', text: '自动化中医问诊系统' }],
-      pages: [
-        {
-          id: 'page-public-runtime',
-          name: '公开运行页',
-          purpose: '让终端用户使用业务应用。',
-        },
-      ],
-      dataPolicy: {
-        publicSubmissionsPersisted: true,
-        creatorCanDeleteSubmissions: true,
-        endUserLoginRequired: false,
-      },
-      nonGoals: [],
-      acceptanceScenarios: [],
-      traceability: [],
-    },
+    appSpec: makeGeneratedAppSpecV2(),
+    generationModelConfigId: null,
+    bindingTarget: null,
     generationPlan: null,
     gateResults: [],
     readiness: {

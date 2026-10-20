@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { GeneratedAppSubmission } from '../../types'
+import { GeneratedAppSubmissionsPanel } from '../GeneratedAppSubmissionsPanel'
 
 const {
   bulkDeleteMutation,
@@ -60,6 +61,10 @@ vi.mock('@/shared/ui/toast', () => ({
   useToast: () => ({ notify: notifyMock }),
 }))
 
+const EXECUTION_ID = '77777777-7777-4777-8777-777777777777'
+const WORKFLOW_ID = '88888888-8888-4888-8888-888888888888'
+const VERSION_ID = '99999999-9999-4999-8999-999999999999'
+
 function makeSubmission(
   overrides: Partial<GeneratedAppSubmission> = {},
 ): GeneratedAppSubmission {
@@ -67,16 +72,35 @@ function makeSubmission(
     id: 'submission-1',
     tenantId: 'tenant-1',
     appId: 'app-1',
-    appSpecVersion: 1,
+    appSpecVersion: 2,
     publicShareToken: 'token-snapshot',
+    origin: 'public',
+    generationRunId: null,
     anonymousSessionId: 'anon-1',
     status: 'completed',
-    input: { name: '张三', symptom: '头痛' },
-    result: { pattern: '阴虚', score: 0.82 },
-    report: { title: '问诊报告', suggestion: '建议休息并复查。' },
+    input: { question: '工作流有哪几种状态？' },
+    result: {
+      status: 'completed',
+      sections: [
+        {
+          sectionId: 'answer',
+          label: '答案',
+          format: 'text',
+          value: '草稿与已发布',
+        },
+      ],
+      publicError: null,
+    },
+    report: {
+      kind: 'generated-app-runtime-execution',
+      workflowDefinitionId: WORKFLOW_ID,
+      workflowVersionId: VERSION_ID,
+      executionId: EXECUTION_ID,
+      notStartedReason: null,
+    },
     errorMessage: null,
-    createdAt: '2026-04-25T02:00:00.000Z',
-    updatedAt: '2026-04-25T02:05:00.000Z',
+    createdAt: '2026-10-20T02:00:00.000Z',
+    updatedAt: '2026-10-20T02:05:00.000Z',
     deletedAt: null,
     ...overrides,
   }
@@ -94,9 +118,11 @@ function makeListData(submissions: GeneratedAppSubmission[] = []) {
   }
 }
 
-const { GeneratedAppSubmissionsPanel } = await import(
-  '../GeneratedAppSubmissionsPanel'
-)
+function lastListParams() {
+  return useGeneratedAppSubmissionsMock.mock.calls[
+    useGeneratedAppSubmissionsMock.mock.calls.length - 1
+  ]
+}
 
 describe('GeneratedAppSubmissionsPanel', () => {
   beforeEach(() => {
@@ -107,10 +133,13 @@ describe('GeneratedAppSubmissionsPanel', () => {
         id: 'submission-2',
         anonymousSessionId: 'anon-2',
         status: 'failed',
-        input: { name: '李四', symptom: '咳嗽' },
-        result: null,
-        report: null,
-        errorMessage: '模型运行超时',
+        input: { question: '最多能同时运行几个子 Agent？' },
+        result: {
+          status: 'failed',
+          sections: [],
+          publicError: '执行记录不可用，无法取得结果，请重新提交。',
+        },
+        errorMessage: '执行记录不可用，无法取得结果，请重新提交。',
       }),
     ])
     submissionsQuery.isError = false
@@ -128,305 +157,144 @@ describe('GeneratedAppSubmissionsPanel', () => {
     bulkDeleteMutation.isPending = false
   })
 
-  it('renders submission list rows with status, session, input, report, and error summaries', () => {
+  it('列表行展示状态、来源、会话、输入、结果与错误摘要，不展示公开令牌', () => {
     render(<GeneratedAppSubmissionsPanel appId="app-1" />)
 
     expect(screen.getByText('共 2 条提交记录')).toBeInTheDocument()
     expect(screen.getAllByText('已完成').length).toBeGreaterThan(0)
     expect(screen.getAllByText('失败').length).toBeGreaterThan(0)
+    expect(screen.getByRole('columnheader', { name: '来源' })).toBeInTheDocument()
+    expect(screen.getAllByText('终端用户').length).toBeGreaterThan(0)
     expect(screen.getByText('anon-1')).toBeInTheDocument()
-    expect(screen.getByText(/头痛/)).toBeInTheDocument()
-    expect(screen.getByText(/阴虚/)).toBeInTheDocument()
-    expect(screen.getByText(/问诊报告/)).toBeInTheDocument()
-    expect(screen.getByText('模型运行超时')).toBeInTheDocument()
+    expect(screen.getByText(/最多能同时运行几个子 Agent/)).toBeInTheDocument()
+    expect(screen.getByText(/草稿与已发布/)).toBeInTheDocument()
+    expect(
+      screen.getAllByText(/执行记录不可用/).length,
+    ).toBeGreaterThan(0)
     expect(screen.queryByText('token-snapshot')).not.toBeInTheDocument()
   })
 
-  it('loads selected submission detail and shows input, report, and error panels', async () => {
+  it('默认只请求终端用户提交（origin=public）', () => {
+    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
+
+    expect(lastListParams()).toEqual([
+      'app-1',
+      { page: 1, pageSize: 10, origin: 'public', status: undefined },
+    ])
+  })
+
+  it('切换来源到 Gate 5 验收后按 origin=gate-acceptance 查询并回到第一页', async () => {
+    const user = userEvent.setup()
+    submissionsQuery.data = {
+      data: [makeSubmission()],
+      meta: { page: 1, pageSize: 10, total: 21, totalPages: 3 },
+    }
+
+    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
+
+    await user.click(screen.getByRole('button', { name: '下一页' }))
+    await user.click(screen.getByRole('combobox', { name: '来源筛选' }))
+    await user.click(await screen.findByRole('option', { name: 'Gate 5 验收' }))
+
+    await waitFor(() => {
+      expect(lastListParams()).toEqual([
+        'app-1',
+        { page: 1, pageSize: 10, origin: 'gate-acceptance', status: undefined },
+      ])
+    })
+  })
+
+  it('详情展示来源、所属生成运行与执行引用', async () => {
     const user = userEvent.setup()
     detailQuery.data = makeSubmission({
-      id: 'submission-2',
-      anonymousSessionId: 'anon-2',
-      status: 'failed',
-      input: { name: '李四', symptom: '咳嗽' },
-      report: { title: '失败报告', reason: '运行中断' },
-      errorMessage: '模型运行超时',
+      origin: 'gate-acceptance',
+      generationRunId: 'run-42',
     })
 
     render(<GeneratedAppSubmissionsPanel appId="app-1" />)
 
     await user.click(
-      screen.getByRole('button', {
-        name: '查看提交记录 submission-2 详情',
-      }),
+      screen.getByRole('button', { name: '查看提交记录 submission-1 详情' }),
     )
 
-    const detail = within(
-      screen.getByTestId('generated-app-submission-detail'),
-    )
-    expect(detail.getByText('anon-2')).toBeInTheDocument()
-    expect(detail.getByText(/李四/)).toBeInTheDocument()
-    expect(detail.getByText(/失败报告/)).toBeInTheDocument()
-    expect(detail.getByText(/模型运行超时/)).toBeInTheDocument()
-    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
-    expect(statusBlock).toHaveAttribute(
-      'data-execution-status',
-      'not-enabled',
-    )
-    expect(
-      within(statusBlock).getByText('Workflow 执行未启用。'),
-    ).toBeInTheDocument()
-    expect(within(statusBlock).getByText('未启用')).toBeInTheDocument()
+    const detail = within(screen.getByTestId('generated-app-submission-detail'))
+    expect(detail.getByText('Gate 5 验收')).toBeInTheDocument()
+    expect(detail.getByText('run-42')).toBeInTheDocument()
+    expect(detail.getByText('v2')).toBeInTheDocument()
+
+    const reference = within(screen.getByTestId('creator-execution-reference'))
+    expect(reference.getByText(EXECUTION_ID)).toBeInTheDocument()
+    expect(reference.getByText(WORKFLOW_ID)).toBeInTheDocument()
+    expect(reference.getByText(VERSION_ID)).toBeInTheDocument()
     expect(detail.queryByText('token-snapshot')).not.toBeInTheDocument()
   })
 
-  it('uses report handoff before result handoff for terminal status', async () => {
+  it('未启动执行时显示原因', async () => {
     const user = userEvent.setup()
-    const resultExecutionId = '11111111-1111-4111-8111-111111111111'
-    const reportExecutionId = '22222222-2222-4222-8222-222222222222'
     detailQuery.data = makeSubmission({
-      status: 'completed',
-      result: {
-        title: '旧的 result handoff',
-        workflowExecution: true,
-        executionId: resultExecutionId,
-        executionStatus: 'running',
-        workflowExecutionNotice: 'Result handoff 仍在运行。',
-      },
+      status: 'failed',
       report: {
-        title: '最终 report handoff',
-        workflowExecution: true,
-        executionId: reportExecutionId,
-        executionStatus: 'completed',
-        workflowExecutionNotice: 'Report handoff 已完成。',
-        workflowExecutionSummary: {
-          summary: 'Report 终态优先生效。',
-          completedSteps: 2,
-          totalSteps: 2,
-        },
+        kind: 'generated-app-runtime-execution',
+        workflowDefinitionId: WORKFLOW_ID,
+        workflowVersionId: null,
+        executionId: null,
+        notStartedReason: 'workflow_not_published',
       },
     })
 
     render(<GeneratedAppSubmissionsPanel appId="app-1" />)
 
     await user.click(
-      screen.getByRole('button', {
-        name: '查看提交记录 submission-1 详情',
-      }),
+      screen.getByRole('button', { name: '查看提交记录 submission-1 详情' }),
     )
 
-    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
-    expect(statusBlock).toHaveAttribute('data-execution-status', 'completed')
-    expect(within(statusBlock).getByText('已完成')).toBeInTheDocument()
+    const reference = within(screen.getByTestId('creator-execution-reference'))
     expect(
-      within(statusBlock).getByText('Report handoff 已完成。'),
+      reference.getByText('未启动执行：workflow_not_published'),
     ).toBeInTheDocument()
-    expect(
-      within(statusBlock).getByText(/Report 终态优先生效。/),
-    ).toBeInTheDocument()
-    expect(statusBlock).not.toHaveTextContent('Result handoff 仍在运行。')
-    expect(statusBlock).not.toHaveTextContent(resultExecutionId)
-    expect(statusBlock).not.toHaveTextContent(reportExecutionId)
+    expect(reference.getAllByText('无').length).toBe(2)
   })
 
-  it('renders running workflow handoff status without internal ids or token values', async () => {
+  it('没有执行引用的历史提交给出说明', async () => {
     const user = userEvent.setup()
-    const executionId = '77777777-7777-4777-8777-777777777777'
     detailQuery.data = makeSubmission({
-      status: 'running',
-      result: {
-        summary: '已接收提交。',
-        workflowExecution: true,
-        executionId: 'result-execution-id',
-        executionStatus: 'pending',
-        workflowDefinitionId: 'result-workflow-definition-id',
-      },
-      report: {
-        title: '后台执行中',
-        workflowExecution: true,
-        executionId,
-        executionStatus: 'running',
-        workflowDefinitionId: '88888888-8888-4888-8888-888888888888',
-        publicShareToken: 'token-snapshot',
-        sourceArtifactUrl: 'https://internal.example/source.zip',
-        testReportUrl: 'https://internal.example/test-report.json',
-        gateResults: [{ id: 'gate-7', status: 'passed' }],
-        workflowExecutionNotice: 'Workflow execution 仍在执行中。',
-        workflowExecutionUpdatedAt: '2026-04-25T02:08:00.000Z',
-        workflowExecutionSummary: {
-          completedSteps: 1,
-          failedSteps: 0,
-          cancelledSteps: 0,
-          totalSteps: 4,
-          latestStepCompletedAt: '2026-04-25T02:07:00.000Z',
-        },
-      },
+      appSpecVersion: 1,
+      report: { title: '问诊报告' },
     })
 
     render(<GeneratedAppSubmissionsPanel appId="app-1" />)
 
     await user.click(
-      screen.getByRole('button', {
-        name: '查看提交记录 submission-1 详情',
-      }),
+      screen.getByRole('button', { name: '查看提交记录 submission-1 详情' }),
     )
 
-    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
-    expect(statusBlock).toHaveAttribute('data-execution-status', 'running')
     expect(
-      within(statusBlock).getByText('Workflow 执行状态'),
-    ).toBeInTheDocument()
-    expect(within(statusBlock).getByText('正在执行')).toBeInTheDocument()
-    expect(
-      within(statusBlock).getByText(
-        'Workflow 正在执行，提交详情会自动刷新状态。',
+      within(screen.getByTestId('creator-execution-reference')).getByText(
+        '这条提交没有执行引用（AppSpec v2 之前的历史提交）。',
       ),
     ).toBeInTheDocument()
-    expect(
-      within(statusBlock).getByText('Workflow execution 仍在执行中。'),
-    ).toBeInTheDocument()
-    expect(within(statusBlock).getByText('完成步骤')).toBeInTheDocument()
-    expect(within(statusBlock).getByText('总步骤')).toBeInTheDocument()
-    expect(statusBlock).not.toHaveTextContent(executionId)
-    expect(statusBlock).not.toHaveTextContent('result-execution-id')
-    expect(statusBlock).not.toHaveTextContent('88888888-8888')
-    expect(statusBlock).not.toHaveTextContent('token-snapshot')
-    expect(statusBlock).not.toHaveTextContent('sourceArtifactUrl')
-    expect(statusBlock).not.toHaveTextContent('testReportUrl')
-    expect(statusBlock).not.toHaveTextContent('gateResults')
   })
 
-  it('keeps selected submission detail visible while workflow handoff polling refreshes', async () => {
+  it('轮询刷新时保留已选详情', async () => {
     const user = userEvent.setup()
     detailQuery.data = makeSubmission({
       status: 'running',
-      report: {
-        title: '后台暂停中',
-        workflowExecution: true,
-        executionId: '77777777-7777-4777-8777-777777777777',
-        executionStatus: 'paused',
-        workflowDefinitionId: '88888888-8888-4888-8888-888888888888',
-        workflowExecutionNotice: 'Workflow execution 暂停等待继续。',
-        workflowExecutionUpdatedAt: '2026-04-25T02:08:00.000Z',
-        workflowExecutionSummary: {
-          completedSteps: 1,
-          failedSteps: 0,
-          cancelledSteps: 0,
-          totalSteps: 4,
-        },
-      },
+      result: { status: 'running', sections: [], publicError: null },
     })
     detailQuery.isFetching = true
 
     render(<GeneratedAppSubmissionsPanel appId="app-1" />)
 
     await user.click(
-      screen.getByRole('button', {
-        name: '查看提交记录 submission-1 详情',
-      }),
+      screen.getByRole('button', { name: '查看提交记录 submission-1 详情' }),
     )
 
     const detail = screen.getByTestId('generated-app-submission-detail')
     expect(within(detail).getByText('正在刷新')).toBeInTheDocument()
     expect(screen.queryByText('正在加载提交详情…')).not.toBeInTheDocument()
-
-    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
-    expect(statusBlock).toHaveAttribute('data-execution-status', 'paused')
-    expect(within(statusBlock).getByText('已暂停')).toBeInTheDocument()
-    expect(
-      within(statusBlock).getByText(
-        'Workflow 已暂停，提交详情会继续自动刷新状态，并保留安全状态摘要。',
-      ),
-    ).toBeInTheDocument()
-    expect(
-      within(statusBlock).getByText('Workflow execution 暂停等待继续。'),
-    ).toBeInTheDocument()
-    expect(statusBlock).not.toHaveTextContent('77777777-7777')
-    expect(statusBlock).not.toHaveTextContent('88888888-8888')
   })
 
-  it('renders completed workflow handoff summary without exposing execution ids', async () => {
-    const user = userEvent.setup()
-    const executionId = '99999999-9999-4999-8999-999999999999'
-    detailQuery.data = makeSubmission({
-      report: {
-        title: '执行完成',
-        workflowExecution: true,
-        executionId,
-        executionStatus: 'completed',
-        workflowDefinitionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        publicShareToken: 'token-snapshot',
-        gateEvidence: [{ kind: 'browser', label: 'internal evidence' }],
-        workflowExecutionUpdatedAt: '2026-04-25T02:12:00.000Z',
-        workflowExecutionCompletedAt: '2026-04-25T02:12:30.000Z',
-        workflowExecutionSummary: {
-          summary: 'Workflow execution 已完成。',
-          completedSteps: 3,
-          failedSteps: 0,
-          cancelledSteps: 0,
-          totalSteps: 3,
-          latestStepCompletedAt: '2026-04-25T02:12:20.000Z',
-        },
-      },
-    })
-
-    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
-
-    await user.click(
-      screen.getByRole('button', {
-        name: '查看提交记录 submission-1 详情',
-      }),
-    )
-
-    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
-    expect(statusBlock).toHaveAttribute('data-execution-status', 'completed')
-    expect(within(statusBlock).getByText('已完成')).toBeInTheDocument()
-    expect(
-      within(statusBlock).getByText(/Workflow execution 已完成。/),
-    ).toBeInTheDocument()
-    expect(within(statusBlock).getByText('完成步骤')).toBeInTheDocument()
-    expect(within(statusBlock).getByText('失败步骤')).toBeInTheDocument()
-    expect(within(statusBlock).getByText('取消步骤')).toBeInTheDocument()
-    expect(within(statusBlock).getByText('总步骤')).toBeInTheDocument()
-    expect(within(statusBlock).getByText('最新步骤完成')).toBeInTheDocument()
-    expect(statusBlock).not.toHaveTextContent(executionId)
-    expect(statusBlock).not.toHaveTextContent('aaaaaaaa-aaaa')
-    expect(statusBlock).not.toHaveTextContent('token-snapshot')
-    expect(statusBlock).not.toHaveTextContent('gateEvidence')
-    expect(statusBlock).not.toHaveTextContent('internal evidence')
-  })
-
-  it('renders unavailable workflow handoff reason and notice', async () => {
-    const user = userEvent.setup()
-    detailQuery.data = makeSubmission({
-      report: {
-        title: '未启动后台执行',
-        workflowExecution: false,
-        workflowExecutionNotStartedReason: '绑定 Workflow 尚未发布，未启动执行。',
-        workflowExecutionNotice: '当前仅展示公开应用本地报告。',
-      },
-    })
-
-    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
-
-    await user.click(
-      screen.getByRole('button', {
-        name: '查看提交记录 submission-1 详情',
-      }),
-    )
-
-    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
-    expect(statusBlock).toHaveAttribute('data-execution-status', 'not-started')
-    expect(within(statusBlock).getByText('未启动')).toBeInTheDocument()
-    expect(
-      within(statusBlock).getByText('绑定 Workflow 尚未发布，未启动执行。'),
-    ).toBeInTheDocument()
-    expect(
-      within(statusBlock).getByText('当前仅展示公开应用本地报告。'),
-    ).toBeInTheDocument()
-  })
-
-  it('updates status filter and pagination query params', async () => {
+  it('状态筛选与翻页保留来源参数', async () => {
     const user = userEvent.setup()
     submissionsQuery.data = {
       data: [makeSubmission()],
@@ -439,31 +307,23 @@ describe('GeneratedAppSubmissionsPanel', () => {
     await user.click(await screen.findByRole('option', { name: '失败' }))
 
     await waitFor(() => {
-      const lastCall =
-        useGeneratedAppSubmissionsMock.mock.calls[
-          useGeneratedAppSubmissionsMock.mock.calls.length - 1
-        ]
-      expect(lastCall).toEqual([
+      expect(lastListParams()).toEqual([
         'app-1',
-        { page: 1, pageSize: 10, status: 'failed' },
+        { page: 1, pageSize: 10, origin: 'public', status: 'failed' },
       ])
     })
 
     await user.click(screen.getByRole('button', { name: '下一页' }))
 
     await waitFor(() => {
-      const lastCall =
-        useGeneratedAppSubmissionsMock.mock.calls[
-          useGeneratedAppSubmissionsMock.mock.calls.length - 1
-        ]
-      expect(lastCall).toEqual([
+      expect(lastListParams()).toEqual([
         'app-1',
-        { page: 2, pageSize: 10, status: 'failed' },
+        { page: 2, pageSize: 10, origin: 'public', status: 'failed' },
       ])
     })
   })
 
-  it('confirms and deletes a single submission', async () => {
+  it('确认后删除单条提交', async () => {
     const user = userEvent.setup()
     deleteMutation.mutateAsync.mockResolvedValue({ deletedCount: 1 })
 
@@ -487,7 +347,7 @@ describe('GeneratedAppSubmissionsPanel', () => {
     })
   })
 
-  it('confirms and bulk deletes selected submissions', async () => {
+  it('确认后批量删除所选提交', async () => {
     const user = userEvent.setup()
     bulkDeleteMutation.mutateAsync.mockResolvedValue({ deletedCount: 2 })
 
@@ -518,7 +378,7 @@ describe('GeneratedAppSubmissionsPanel', () => {
     })
   })
 
-  it('renders empty and error states', () => {
+  it('空列表与加载失败状态', () => {
     submissionsQuery.data = makeListData([])
 
     const { rerender } = render(<GeneratedAppSubmissionsPanel appId="app-1" />)

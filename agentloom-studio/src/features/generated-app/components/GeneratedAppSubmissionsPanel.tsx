@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
-  CheckCircle2,
   Eye,
   Inbox,
   Loader2,
@@ -55,10 +54,9 @@ import {
   formatGeneratedAppDateTime,
 } from '../lib/generatedAppDisplay'
 import type {
-  GeneratedAppPublicWorkflowExecutionHandoff,
   GeneratedAppSubmission,
+  GeneratedAppSubmissionOrigin,
   GeneratedAppSubmissionStatus,
-  GeneratedAppWorkflowExecutionStatus,
 } from '../types'
 
 const PAGE_SIZE = 10
@@ -83,6 +81,12 @@ const SUBMISSION_STATUS_OPTIONS: Array<{
   { value: 'completed', label: GENERATED_APP_SUBMISSION_STATUS_META.completed.label },
   { value: 'failed', label: GENERATED_APP_SUBMISSION_STATUS_META.failed.label },
 ]
+
+/** 默认只看终端用户提交；Gate 5 验收提交单独筛出，不混进业务数据 */
+const SUBMISSION_ORIGIN_LABELS: Record<GeneratedAppSubmissionOrigin, string> = {
+  public: '终端用户',
+  'gate-acceptance': 'Gate 5 验收',
+}
 
 interface GeneratedAppSubmissionsPanelProps {
   appId: string
@@ -142,233 +146,61 @@ function ErrorReadOnlyPanel({ value }: { value: string | null }) {
   )
 }
 
-function hasWorkflowExecutionHandoff(
-  value: GeneratedAppSubmission['report'] | GeneratedAppSubmission['result'],
-): value is NonNullable<GeneratedAppSubmission['report']> {
-  return typeof value?.workflowExecution === 'boolean'
+function getStringField(
+  value: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const raw = value?.[key]
+  return typeof raw === 'string' && raw.length > 0 ? raw : null
 }
 
-function getWorkflowExecutionHandoff(
-  submission: GeneratedAppSubmission,
-): GeneratedAppPublicWorkflowExecutionHandoff | null {
-  const reportHandoff = hasWorkflowExecutionHandoff(submission.report)
-    ? submission.report
-    : null
-  const resultHandoff = hasWorkflowExecutionHandoff(submission.result)
-    ? submission.result
-    : null
-
-  return reportHandoff ?? resultHandoff
-}
-
-function getWorkflowExecutionStatusLabel(
-  status: GeneratedAppWorkflowExecutionStatus | null | undefined,
-): string {
-  switch (status) {
-    case 'pending':
-      return '等待执行'
-    case 'running':
-      return '正在执行'
-    case 'paused':
-      return '已暂停'
-    case 'completed':
-      return '已完成'
-    case 'failed':
-      return '执行失败'
-    case 'cancelled':
-      return '已取消'
-    default:
-      return '未启动'
-  }
-}
-
-function getWorkflowExecutionDisplayStatus(
-  handoff: GeneratedAppPublicWorkflowExecutionHandoff | null,
-): GeneratedAppWorkflowExecutionStatus | 'not-enabled' | 'not-started' {
-  if (!handoff) {
-    return 'not-enabled'
-  }
-
-  if (handoff.workflowExecution === false) {
-    return 'not-started'
-  }
-
-  return handoff.executionStatus ?? 'not-started'
-}
-
-function getWorkflowExecutionMessage(
-  handoff: GeneratedAppPublicWorkflowExecutionHandoff | null,
-): string {
-  if (!handoff) {
-    return 'Workflow 执行未启用。'
-  }
-
-  if (handoff.workflowExecution === false) {
-    return (
-      handoff.workflowExecutionNotStartedReason ??
-      'Workflow 执行未启动或不可用。'
-    )
-  }
-
-  switch (handoff.executionStatus) {
-    case 'pending':
-      return 'Workflow 正在等待执行，提交详情会自动刷新状态。'
-    case 'running':
-      return 'Workflow 正在执行，提交详情会自动刷新状态。'
-    case 'paused':
-      return 'Workflow 已暂停，提交详情会继续自动刷新状态，并保留安全状态摘要。'
-    case 'completed':
-      return 'Workflow 执行已完成，当前仅展示安全状态摘要。'
-    case 'failed':
-      return 'Workflow 执行未完成，当前仅展示安全终态。'
-    case 'cancelled':
-      return 'Workflow 已取消，当前仅展示安全终态。'
-    default:
-      return '当前提交尚未创建后台 Workflow execution。'
-  }
-}
-
-function getWorkflowExecutionPanelClass(
-  status: ReturnType<typeof getWorkflowExecutionDisplayStatus>,
-): string {
-  if (status === 'completed') {
-    return 'border-success/30 bg-success/5'
-  }
-
-  if (status === 'pending' || status === 'running' || status === 'paused') {
-    return 'border-info/30 bg-info/5'
-  }
-
-  return 'border-warning/30 bg-warning/5'
-}
-
-function WorkflowExecutionStatusBlock({
+/** submission.report 的执行引用：执行 id、固定的工作流与版本、未启动原因 */
+function ExecutionReferenceBlock({
   submission,
 }: {
   submission: GeneratedAppSubmission
 }) {
-  const handoff = getWorkflowExecutionHandoff(submission)
-  const displayStatus = getWorkflowExecutionDisplayStatus(handoff)
-  const summary = handoff?.workflowExecutionSummary ?? null
-  const isActive =
-    displayStatus === 'pending' ||
-    displayStatus === 'running' ||
-    displayStatus === 'paused'
-  const hasStepSummary =
-    typeof summary?.completedSteps === 'number' ||
-    typeof summary?.failedSteps === 'number' ||
-    typeof summary?.cancelledSteps === 'number' ||
-    typeof summary?.totalSteps === 'number' ||
-    Boolean(summary?.latestStepCompletedAt)
+  const report =
+    submission.report?.kind === 'generated-app-runtime-execution'
+      ? submission.report
+      : null
+  const notStartedReason = getStringField(report, 'notStartedReason')
+  const rows: Array<[string, string | null]> = [
+    ['执行 ID', getStringField(report, 'executionId')],
+    ['Workflow', getStringField(report, 'workflowDefinitionId')],
+    ['固定版本', getStringField(report, 'workflowVersionId')],
+  ]
 
   return (
     <section
       className={cn(
-        'rounded-lg border p-3',
-        getWorkflowExecutionPanelClass(displayStatus),
+        'space-y-2 rounded-lg border p-3',
+        notStartedReason
+          ? 'border-warning/30 bg-warning/5'
+          : 'border-border bg-muted',
       )}
-      data-testid="creator-workflow-execution-status"
-      data-execution-status={displayStatus}
+      data-testid="creator-execution-reference"
     >
-      <div className="flex items-start gap-3">
-        {isActive ? (
-          <Spinner className="mt-0.5 shrink-0 text-info" />
-        ) : displayStatus === 'completed' ? (
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" />
-        ) : (
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-        )}
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="break-words text-sm font-semibold text-foreground">
-              Workflow 执行状态
-            </h4>
-            <Badge variant="secondary" size="sm">
-              {handoff
-                ? getWorkflowExecutionStatusLabel(
-                    displayStatus === 'not-enabled' ||
-                      displayStatus === 'not-started'
-                      ? null
-                      : displayStatus,
-                  )
-                : '未启用'}
-            </Badge>
-          </div>
-          <p className="break-words text-xs leading-5 text-muted-foreground">
-            {getWorkflowExecutionMessage(handoff)}
-          </p>
-          {handoff?.workflowExecutionNotice ? (
-            <p className="break-words text-xs leading-5 text-muted-foreground">
-              {handoff.workflowExecutionNotice}
-            </p>
-          ) : null}
-
-          {summary?.summary ? (
-            <p className="break-words text-xs leading-5 text-muted-foreground">
-              执行摘要：{summary.summary}
-            </p>
-          ) : null}
-
-          {hasStepSummary ||
-          handoff?.workflowExecutionUpdatedAt ||
-          handoff?.workflowExecutionCompletedAt ? (
-            <dl className="grid gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
-              {typeof summary?.completedSteps === 'number' ? (
-                <div>
-                  <dt>完成步骤</dt>
-                  <dd className="text-foreground">{summary.completedSteps}</dd>
-                </div>
-              ) : null}
-              {typeof summary?.failedSteps === 'number' ? (
-                <div>
-                  <dt>失败步骤</dt>
-                  <dd className="text-foreground">{summary.failedSteps}</dd>
-                </div>
-              ) : null}
-              {typeof summary?.cancelledSteps === 'number' ? (
-                <div>
-                  <dt>取消步骤</dt>
-                  <dd className="text-foreground">{summary.cancelledSteps}</dd>
-                </div>
-              ) : null}
-              {typeof summary?.totalSteps === 'number' ? (
-                <div>
-                  <dt>总步骤</dt>
-                  <dd className="text-foreground">{summary.totalSteps}</dd>
-                </div>
-              ) : null}
-              {handoff?.workflowExecutionUpdatedAt ? (
-                <div>
-                  <dt>更新时间</dt>
-                  <dd className="text-foreground">
-                    {formatGeneratedAppDateTime(
-                      handoff.workflowExecutionUpdatedAt,
-                    )}
-                  </dd>
-                </div>
-              ) : null}
-              {handoff?.workflowExecutionCompletedAt ? (
-                <div>
-                  <dt>完成时间</dt>
-                  <dd className="text-foreground">
-                    {formatGeneratedAppDateTime(
-                      handoff.workflowExecutionCompletedAt,
-                    )}
-                  </dd>
-                </div>
-              ) : null}
-              {summary?.latestStepCompletedAt ? (
-                <div>
-                  <dt>最新步骤完成</dt>
-                  <dd className="text-foreground">
-                    {formatGeneratedAppDateTime(summary.latestStepCompletedAt)}
-                  </dd>
-                </div>
-              ) : null}
-            </dl>
-          ) : null}
-        </div>
-      </div>
+      <h4 className="text-sm font-semibold text-foreground">执行引用</h4>
+      {report ? (
+        <dl className="grid gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-3">
+          {rows.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt>{label}</dt>
+              <dd className="break-all text-foreground">{value ?? '无'}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          这条提交没有执行引用（AppSpec v2 之前的历史提交）。
+        </p>
+      )}
+      {notStartedReason ? (
+        <p className="break-words text-xs text-warning">
+          未启动执行：{notStartedReason}
+        </p>
+      ) : null}
     </section>
   )
 }
@@ -378,6 +210,8 @@ export function GeneratedAppSubmissionsPanel({
 }: GeneratedAppSubmissionsPanelProps) {
   const { notify } = useToast()
   const [page, setPage] = useState(1)
+  const [originFilter, setOriginFilter] =
+    useState<GeneratedAppSubmissionOrigin>('public')
   const [statusFilter, setStatusFilter] =
     useState<SubmissionStatusFilter>(STATUS_FILTER_ALL)
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<
@@ -389,12 +223,13 @@ export function GeneratedAppSubmissionsPanel({
     () => ({
       page,
       pageSize: PAGE_SIZE,
+      origin: originFilter,
       status:
         statusFilter === STATUS_FILTER_ALL
           ? undefined
           : (statusFilter as GeneratedAppSubmissionStatus),
     }),
-    [page, statusFilter],
+    [originFilter, page, statusFilter],
   )
 
   const submissionsQuery = useGeneratedAppSubmissions(appId, listParams)
@@ -420,6 +255,13 @@ export function GeneratedAppSubmissionsPanel({
 
   const handleStatusFilterChange = useCallback((value: string) => {
     setStatusFilter(value as SubmissionStatusFilter)
+    setPage(1)
+    setSelectedSubmissionId(null)
+    setSelectedIds(new Set())
+  }, [])
+
+  const handleOriginFilterChange = useCallback((value: string) => {
+    setOriginFilter(value as GeneratedAppSubmissionOrigin)
     setPage(1)
     setSelectedSubmissionId(null)
     setSelectedIds(new Set())
@@ -624,6 +466,27 @@ export function GeneratedAppSubmissionsPanel({
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="space-y-1 text-xs text-muted-foreground">
+            <span className="block">来源</span>
+            <Select
+              value={originFilter}
+              onValueChange={handleOriginFilterChange}
+            >
+              <SelectTrigger aria-label="来源筛选" className="min-w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(SUBMISSION_ORIGIN_LABELS).map(
+                  ([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1 text-xs text-muted-foreground">
             <span className="block">状态筛选</span>
             <Select
               value={statusFilter}
@@ -663,7 +526,11 @@ export function GeneratedAppSubmissionsPanel({
         <EmptyState
           icon={Inbox}
           title="暂无提交记录"
-          description="终端用户通过公开应用提交后，会在这里展示输入、运行状态和报告。"
+          description={
+            originFilter === 'gate-acceptance'
+              ? 'Gate 5 浏览器验收经验收令牌提交后，会在这里展示，不计入终端用户提交。'
+              : '终端用户通过公开应用提交后，会在这里展示输入、运行状态和结果。'
+          }
         />
       ) : (
         <Table>
@@ -683,6 +550,7 @@ export function GeneratedAppSubmissionsPanel({
                 />
               </TableHead>
               <TableHead>状态</TableHead>
+              <TableHead>来源</TableHead>
               <TableHead className="min-w-44">匿名会话</TableHead>
               <TableHead>提交时间</TableHead>
               <TableHead className="min-w-48">输入</TableHead>
@@ -719,6 +587,18 @@ export function GeneratedAppSubmissionsPanel({
                   >
                     {GENERATED_APP_SUBMISSION_STATUS_META[submission.status].label}
                   </StatusBadge>
+                </TableCell>
+                <TableCell className="whitespace-nowrap py-3">
+                  <Badge
+                    variant={
+                      submission.origin === 'gate-acceptance'
+                        ? 'secondary'
+                        : 'outline'
+                    }
+                    size="sm"
+                  >
+                    {SUBMISSION_ORIGIN_LABELS[submission.origin]}
+                  </Badge>
                 </TableCell>
                 <TableCell className="py-3">
                   <code className="break-all text-xs text-muted-foreground">
@@ -848,6 +728,20 @@ export function GeneratedAppSubmissionsPanel({
                     </dd>
                   </div>
                   <div className="border-l border-border pl-3">
+                    <dt>来源</dt>
+                    <dd className="text-foreground">
+                      {SUBMISSION_ORIGIN_LABELS[selectedSubmission.origin]}
+                    </dd>
+                  </div>
+                  {selectedSubmission.generationRunId ? (
+                    <div className="border-l border-border pl-3">
+                      <dt>生成运行</dt>
+                      <dd className="break-all text-foreground">
+                        {selectedSubmission.generationRunId}
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div className="border-l border-border pl-3">
                     <dt>AppSpec 版本</dt>
                     <dd className="text-foreground">
                       v{selectedSubmission.appSpecVersion}
@@ -888,7 +782,7 @@ export function GeneratedAppSubmissionsPanel({
               token 不在创建者详情面板明文展示。
             </Alert>
 
-            <WorkflowExecutionStatusBlock submission={selectedSubmission} />
+            <ExecutionReferenceBlock submission={selectedSubmission} />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <JsonReadOnlyPanel label="Input" value={selectedSubmission.input} />

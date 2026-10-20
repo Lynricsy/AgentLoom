@@ -14,6 +14,7 @@ import type {
   GeneratedAppArtifactManifest,
   GeneratedAppReadinessState,
 } from '../../types'
+import { makeGeneratedAppSpecV2 } from '../../__tests__/fixtures'
 
 const {
   disableShareMutation,
@@ -114,14 +115,14 @@ const {
   },
   runtimeBindingReadinessQuery: {
     data: {
-      state: 'deterministic_only',
+      state: 'runtime_not_bound',
       workflowDefinitionId: null,
       workflowStatus: null,
       publishedVersionId: null,
+      pinnedVersionId: null,
       canStartWorkflowExecution: false,
-      summary: '当前 Generated App 没有绑定 Workflow。',
-      notice:
-        '公开提交只会返回本地 deterministic report，不会创建 Workflow execution。',
+      summary: '应用还没有可执行的运行时工作流。',
+      notice: '生成运行通过后，公开提交才会执行绑定的工作流。',
       updatedAt: '2026-04-25T01:00:00.000Z',
     } as unknown,
     isError: false,
@@ -237,47 +238,31 @@ function makeGeneratedApp(overrides: Partial<GeneratedApp> = {}): GeneratedApp {
       readiness.state === 'publish_candidate'
         ? 'publish_candidate'
         : 'preview_ready',
-    appSpec: {
-      version: 1,
-      appName: '自动化中医问诊系统',
+    appSpec: makeGeneratedAppSpecV2({
       summary: '按患者回答动态提问并生成问诊报告。',
-      userGoal: '让终端用户完成问诊并查看分析报告。',
-      actors: ['创建者', '终端用户'],
-      coreRequirements: [
-        { id: 'req-intake', text: '逐步收集问诊信息。' },
-        { id: 'req-report', text: '生成结构化分析报告。' },
-      ],
-      pages: [
-        {
-          id: 'page-runtime',
-          name: '问诊运行页',
-          purpose: '终端用户填写问诊答案。',
-        },
-      ],
-      dataPolicy: {
-        publicSubmissionsPersisted: true,
-        creatorCanDeleteSubmissions: true,
-        endUserLoginRequired: false,
-      },
-      nonGoals: ['不提供诊断结论'],
       acceptanceScenarios: [
         {
           id: 'scenario-main',
           title: '完成问诊并得到报告',
+          scope: 'requirement',
           requirementIds: ['req-intake', 'req-report'],
           given: ['患者打开问诊页'],
           when: ['患者回答全部问题'],
           then: ['系统展示结构化报告'],
+          browserSteps: [],
         },
       ],
       traceability: [
         {
           requirementId: 'req-intake',
           scenarioIds: ['scenario-main'],
-          evidenceIds: ['evidence-browser-main'],
+          fieldIds: ['chiefComplaint'],
+          sectionIds: ['report'],
         },
       ],
-    },
+    }),
+    generationModelConfigId: null,
+    bindingTarget: null,
     generationPlan: null,
     gateResults: [
       {
@@ -344,14 +329,14 @@ describe('GeneratedAppDetailPage', () => {
     regenerateShareMutation.mutateAsync = vi.fn()
     regenerateShareMutation.isPending = false
     runtimeBindingReadinessQuery.data = {
-      state: 'deterministic_only',
+      state: 'runtime_not_bound',
       workflowDefinitionId: null,
       workflowStatus: null,
       publishedVersionId: null,
+      pinnedVersionId: null,
       canStartWorkflowExecution: false,
-      summary: '当前 Generated App 没有绑定 Workflow。',
-      notice:
-        '公开提交只会返回本地 deterministic report，不会创建 Workflow execution。',
+      summary: '应用还没有可执行的运行时工作流。',
+      notice: '生成运行通过后，公开提交才会执行绑定的工作流。',
       updatedAt: '2026-04-25T01:00:00.000Z',
     }
     runtimeBindingReadinessQuery.isError = false
@@ -594,7 +579,36 @@ describe('GeneratedAppDetailPage', () => {
     )
     expect(traceability.getByText('req-intake')).toBeInTheDocument()
     expect(traceability.getByText('scenario-main')).toBeInTheDocument()
-    expect(traceability.getByText('evidence-browser-main')).toBeInTheDocument()
+    expect(traceability.getByText('chiefComplaint')).toBeInTheDocument()
+    expect(traceability.getByText('report')).toBeInTheDocument()
+  })
+
+  it('AppSpec 生成中时显示生成提示而不是规格内容', () => {
+    generatedAppQuery.data = makeGeneratedApp({
+      status: 'app_spec_generating',
+      appSpec: null,
+    })
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    expect(
+      screen.getByText('AppSpec 正在生成，完成后显示在这里。'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('尚未生成验收场景。')).toBeInTheDocument()
+    expect(screen.getByText('尚未生成追踪矩阵。')).toBeInTheDocument()
+  })
+
+  it('旧版模板规格提示会在下一次生成运行时重新生成', () => {
+    generatedAppQuery.data = makeGeneratedApp({ appSpec: { version: 1 } })
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    expect(
+      screen.getByText(
+        '这是旧版模板规格，已不能运行。下一次生成运行会按需求重新生成 AppSpec。',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('generated-app-traceability')).not.toBeInTheDocument()
   })
 
   it('renders professional editor links for bound Agent and Workflow resources', () => {
@@ -615,33 +629,28 @@ describe('GeneratedAppDetailPage', () => {
     ).toHaveAttribute('href', '/workflows/workflow-bound-1')
   })
 
-  it('shows editor handoff draft runtime readiness as not automatically executable', () => {
+  it('绑定工作流重新发布后显示版本漂移与仍在执行的固定版本', () => {
     generatedAppQuery.data = makeGeneratedApp({
-      workflowDefinitionId: 'workflow-editor-draft',
+      workflowDefinitionId: 'workflow-drifted',
     })
     runtimeBindingReadinessQuery.data = {
-      state: 'editor_handoff_draft',
-      workflowDefinitionId: 'workflow-editor-draft',
-      workflowStatus: 'draft',
-      publishedVersionId: null,
-      canStartWorkflowExecution: false,
-      summary: '绑定 Workflow 是 Generated App 专业编辑器草稿。',
-      notice:
-        'Gate 7 创建的专业编辑器草稿只用于创建者精修，不会被公开提交自动执行；需要精修并发布真正 Workflow 后，公开提交才可启动 Workflow execution。',
+      state: 'workflow_version_drift',
+      workflowDefinitionId: 'workflow-drifted',
+      workflowStatus: 'published',
+      publishedVersionId: 'workflow-version-new',
+      pinnedVersionId: 'workflow-version-pinned',
+      canStartWorkflowExecution: true,
+      summary: '绑定的工作流已重新发布。',
+      notice: '公开提交仍执行固定版本，重新生成才会采用新版本。',
       updatedAt: '2026-04-25T02:00:00.000Z',
     }
 
     render(<GeneratedAppDetailPage appId="app-detail" />)
 
     const panel = within(screen.getByTestId('runtime-binding-readiness'))
-    expect(panel.getByText('编辑器草稿')).toBeInTheDocument()
-    expect(
-      panel.getByText(/不会被公开提交自动执行/),
-    ).toBeInTheDocument()
-    expect(
-      panel.getByText('公开提交不会启动 Workflow'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('workflow-editor-draft')).toBeInTheDocument()
+    expect(panel.getByText('Workflow 已重新发布')).toBeInTheDocument()
+    expect(panel.getByText('workflow-version-pinned')).toBeInTheDocument()
+    expect(panel.getByText(/重新生成才会采用新版本/)).toBeInTheDocument()
   })
 
   it('shows published runtime readiness as able to start async Workflow execution', () => {
@@ -653,6 +662,7 @@ describe('GeneratedAppDetailPage', () => {
       workflowDefinitionId: 'workflow-runtime-published',
       workflowStatus: 'published',
       publishedVersionId: 'workflow-version-published',
+      pinnedVersionId: 'workflow-version-pinned',
       canStartWorkflowExecution: true,
       summary: '绑定 Workflow 已发布，可由公开提交创建异步执行。',
       notice:
@@ -774,9 +784,9 @@ describe('GeneratedAppDetailPage', () => {
     render(<GeneratedAppDetailPage appId="app-detail" />)
 
     expect(screen.getAllByText('尚未绑定')).toHaveLength(2)
-    expect(screen.getByText('Deterministic only')).toBeInTheDocument()
+    expect(screen.getByText('未绑定运行时')).toBeInTheDocument()
     expect(
-      screen.getByText(/只会返回本地 deterministic report/),
+      screen.getByText('生成运行通过后，公开提交才会执行绑定的工作流。'),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: '打开 Agent 专业编辑器' }),

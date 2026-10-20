@@ -251,7 +251,7 @@ function GateResultsTable({ gates }: { gates: GeneratedAppGateResult[] }) {
 }
 
 function TraceabilityTable({ app }: { app: GeneratedApp }) {
-  const rows = app.appSpec.traceability
+  const rows = app.appSpec?.version === 2 ? app.appSpec.traceability : []
 
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">尚未生成追踪矩阵。</p>
@@ -263,7 +263,8 @@ function TraceabilityTable({ app }: { app: GeneratedApp }) {
         <TableRow>
           <TableHead>需求</TableHead>
           <TableHead className="min-w-56">场景</TableHead>
-          <TableHead className="min-w-56">证据</TableHead>
+          <TableHead className="min-w-40">表单字段</TableHead>
+          <TableHead className="min-w-40">结果分区</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -278,7 +279,10 @@ function TraceabilityTable({ app }: { app: GeneratedApp }) {
               <IdList values={row.scenarioIds} />
             </TableCell>
             <TableCell>
-              <IdList values={row.evidenceIds} />
+              <IdList values={row.fieldIds} />
+            </TableCell>
+            <TableCell>
+              <IdList values={row.sectionIds} />
             </TableCell>
           </TableRow>
         ))}
@@ -669,10 +673,10 @@ function ProfessionalEditorLink({
 }
 
 const RUNTIME_BINDING_READINESS_LABELS = {
-  deterministic_only: 'Deterministic only',
-  editor_handoff_draft: '编辑器草稿',
+  runtime_not_bound: '未绑定运行时',
   workflow_not_found: 'Workflow 不可用',
   workflow_not_published: '尚未发布',
+  workflow_version_drift: 'Workflow 已重新发布',
   workflow_published: '可启动 Workflow',
 } as const satisfies Record<
   GeneratedAppRuntimeBindingReadiness['state'],
@@ -747,6 +751,12 @@ function RuntimeBindingReadinessPanel({
             </dd>
           </div>
           <div>
+            <dt>固定版本</dt>
+            <dd className="break-all font-medium text-foreground">
+              {readiness.pinnedVersionId ?? '未固定'}
+            </dd>
+          </div>
+          <div>
             <dt>检查时间</dt>
             <dd className="font-medium text-foreground">
               {formatGeneratedAppDateTime(readiness.updatedAt)}
@@ -759,12 +769,31 @@ function RuntimeBindingReadinessPanel({
 }
 
 function AppSpecSection({ app }: { app: GeneratedApp }) {
-  const { appSpec } = app
+  const appSpec = app.appSpec?.version === 2 ? app.appSpec : null
+
+  if (!appSpec) {
+    return (
+      <DetailSection
+        title="AppSpec 摘要"
+        description="模型按需求生成的可执行规格。"
+      >
+        <p className="text-sm text-muted-foreground">
+          {app.status === 'app_spec_generating'
+            ? 'AppSpec 正在生成，完成后显示在这里。'
+            : app.appSpec
+              ? '这是旧版模板规格，已不能运行。下一次生成运行会按需求重新生成 AppSpec。'
+              : '尚未生成 AppSpec，失败原因见 Gate 0 结果。'}
+        </p>
+      </DetailSection>
+    )
+  }
+
+  const { binding } = appSpec
 
   return (
     <DetailSection
       title="AppSpec 摘要"
-      description="从自然语言需求归一化出的可执行规格。"
+      description="模型按需求生成的可执行规格。"
     >
       <dl className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1 md:col-span-2">
@@ -804,6 +833,32 @@ function AppSpecSection({ app }: { app: GeneratedApp }) {
               <span>终端用户需登录</span>
               <BooleanValue value={appSpec.dataPolicy.endUserLoginRequired} />
             </div>
+          </dd>
+        </div>
+        <div className="space-y-2">
+          <dt className="text-sm font-medium text-foreground">Binding</dt>
+          <dd className="space-y-1 text-sm text-muted-foreground">
+            <Badge variant="secondary" size="sm">
+              {binding.kind === 'workflow' ? 'Workflow' : 'Agent'}
+            </Badge>
+            <IdList
+              values={
+                binding.kind === 'workflow'
+                  ? [binding.workflowDefinitionId, binding.workflowVersionId]
+                  : [binding.agentDefinitionId, binding.agentVersionId]
+              }
+            />
+          </dd>
+        </div>
+        <div className="space-y-2">
+          <dt className="text-sm font-medium text-foreground">
+            表单字段 / 结果分区
+          </dt>
+          <dd className="space-y-2">
+            <IdList values={appSpec.inputForm.fields.map((field) => field.id)} />
+            <IdList
+              values={appSpec.resultView.sections.map((section) => section.id)}
+            />
           </dd>
         </div>
         <div className="space-y-2 md:col-span-2">
@@ -1039,7 +1094,11 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
         title="Acceptance scenarios"
         description="Given / When / Then 分组展示，用于约束后续浏览器验收。"
       >
-        <AcceptanceScenarioList scenarios={app.appSpec.acceptanceScenarios} />
+        <AcceptanceScenarioList
+          scenarios={
+            app.appSpec?.version === 2 ? app.appSpec.acceptanceScenarios : []
+          }
+        />
       </DetailSection>
 
       <DetailSection

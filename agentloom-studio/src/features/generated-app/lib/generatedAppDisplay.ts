@@ -20,6 +20,7 @@ export const GENERATED_APP_STATUS_META: Record<
   GeneratedAppStatus,
   GeneratedAppStatusMeta
 > = {
+  app_spec_generating: { label: '规格生成中', tone: 'info' },
   app_spec_ready: { label: '规格就绪', tone: 'info' },
   preview_ready: { label: '预览就绪', tone: 'info' },
   trial_ready: { label: '试用态', tone: 'warning' },
