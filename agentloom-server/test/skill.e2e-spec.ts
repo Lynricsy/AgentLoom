@@ -97,6 +97,22 @@ function authHeaders(
   return { authorization: `Bearer ${token}` };
 }
 
+/** 不属于任何组织的用户（刚注册，或被移除后刷新）签发的 JWT：没有 tenant claim */
+function noTenantHeaders(user: TestUser) {
+  const token = jwt.sign(
+    {
+      sub: user.id,
+      email: user.email,
+      aud: 'authenticated',
+      jti: crypto.randomUUID(),
+    },
+    JWT_SECRET,
+    { algorithm: 'HS256', expiresIn: '1h' },
+  );
+
+  return { authorization: `Bearer ${token}` };
+}
+
 function createMockSupabaseService() {
   return {
     signUp: vi.fn(),
@@ -420,7 +436,11 @@ describe('Skill E2E', () => {
     });
 
     const uploadBody = buildMultipart(undefined, [
-      { filename: 'examples/extra.txt', content: 'extra!', contentType: 'text/plain' },
+      {
+        filename: 'examples/extra.txt',
+        content: 'extra!',
+        contentType: 'text/plain',
+      },
     ]);
     const uploadResponse = await app.inject({
       method: 'POST',
@@ -578,5 +598,101 @@ describe('Skill E2E', () => {
       payload: updateBody.payload,
     });
     expect(updateResponse.statusCode).toBe(403);
+  });
+
+  it('无组织用户（JWT 无 tenant）读 Skill 返回 400 tenant-required，看不到任何租户的 Skill（D-209）', async () => {
+    const createResponse = await createSkill(owner);
+    expect(createResponse.statusCode).toBe(201);
+    const created = createResponse.json().data;
+
+    const loner = {
+      id: crypto.randomUUID(),
+      email: `skill-loner-${crypto.randomUUID().slice(0, 8)}@example.com`,
+    };
+    await seedAppUser(ctx.adminSql, loner.id, loner.email);
+    const lonerHeaders = noTenantHeaders(loner);
+
+    for (const url of [
+      '/api/v1/skills?pageSize=100',
+      `/api/v1/skills/${created.id}`,
+      `/api/v1/skills/${created.id}/files`,
+      `/api/v1/skills/${created.id}/files/SKILL.md`,
+    ]) {
+      const response = await app.inject({
+        method: 'GET',
+        url,
+        headers: lonerHeaders,
+      });
+
+      expect({ url, statusCode: response.statusCode }).toEqual({
+        url,
+        statusCode: 400,
+      });
+      expect(response.json()).toMatchObject({
+        type: 'https://agentloom.dev/errors/tenant-required',
+      });
+      // problem+json 的 instance 会回显请求路径（含 id），因此只断言没有返回任何 Skill 数据
+      expect(response.json()).not.toHaveProperty('data');
+      expect(response.body).not.toContain('multipart skill description');
+      expect(response.body).not.toContain('# Instructions');
+    }
+  });
+
+  it('被移除成员持旧 JWT 读 Skill 列表、详情与文件立即返回 403（D-210）', async () => {
+    const createResponse = await createSkill(owner);
+    expect(createResponse.statusCode).toBe(201);
+    const created = createResponse.json().data;
+
+    const member = {
+      id: crypto.randomUUID(),
+      email: `skill-removed-${crypto.randomUUID().slice(0, 8)}@example.com`,
+    };
+    await seedAppUser(ctx.adminSql, member.id, member.email);
+    await seedMember(
+      ctx.adminSql,
+      owner.organizationId,
+      member.id,
+      'creator',
+      owner.user.id,
+    );
+    // 移除前签发的 JWT：tenant claim 仍指向该组织，1 小时内有效
+    const staleHeaders = authHeaders(member, owner.tenantId, 'creator');
+
+    const beforeRemoval = await app.inject({
+      method: 'GET',
+      url: '/api/v1/skills',
+      headers: staleHeaders,
+    });
+    expect(beforeRemoval.statusCode).toBe(200);
+    expect(beforeRemoval.body).toContain(created.id);
+
+    const removeResponse = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/organizations/${owner.organizationId}/members/${member.id}`,
+      headers: owner.headers,
+    });
+    expect(removeResponse.statusCode).toBe(204);
+
+    for (const url of [
+      '/api/v1/skills',
+      `/api/v1/skills/${created.id}`,
+      `/api/v1/skills/${created.id}/files`,
+      `/api/v1/skills/${created.id}/files/SKILL.md`,
+    ]) {
+      const response = await app.inject({
+        method: 'GET',
+        url,
+        headers: staleHeaders,
+      });
+
+      expect({ url, statusCode: response.statusCode }).toEqual({
+        url,
+        statusCode: 403,
+      });
+      expect(response.json()).toMatchObject({
+        type: 'https://agentloom.dev/errors/insufficient-permissions',
+      });
+      expect(response.body).not.toContain('# Instructions');
+    }
   });
 });

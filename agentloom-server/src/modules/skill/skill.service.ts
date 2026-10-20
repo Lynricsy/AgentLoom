@@ -56,6 +56,20 @@ export class SkillService {
   }
 
   /**
+   * 应用层可见性条件：本租户的 Skill 加内置 Skill，与 skills_select_policy 同口径。
+   * RLS 之外再显式过滤，是因为 Skill 也会在不处于租户事务的 worker、沙箱工具回调中查询。
+   */
+  private visibleTo(tenantId: string) {
+    return or(
+      eq(schema.skills.tenantId, tenantId),
+      and(
+        eq(schema.skills.isBuiltin, true),
+        eq(schema.skills.tenantId, schema.BUILTIN_SKILL_TENANT_ID),
+      ),
+    );
+  }
+
+  /**
    * 解析 SKILL.md 内容中的 YAML frontmatter（平面 key: value 格式）
    */
   private parseFrontmatter(content: string): {
@@ -265,14 +279,17 @@ export class SkillService {
     };
   }
 
-  async findAll(query: SkillQueryDtoType): Promise<{
+  async findAll(
+    tenantId: string,
+    query: SkillQueryDtoType,
+  ): Promise<{
     data: SkillWithSourceKind[];
     meta: { total: number; page: number; pageSize: number; totalPages: number };
   }> {
     const { page, pageSize, status, isBuiltin, search, sourceKind } = query;
     const offset = (page - 1) * pageSize;
 
-    const conditions = [];
+    const conditions = [this.visibleTo(tenantId)];
     if (status) {
       conditions.push(eq(schema.skills.status, status));
     }
@@ -341,7 +358,7 @@ export class SkillService {
     tenantId: string,
     skillId: string,
   ): Promise<SkillWithSourceKind> {
-    const row = await this.findRecordOrThrow(skillId);
+    const row = await this.findRecordOrThrow(tenantId, skillId);
 
     const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
       'skill',
@@ -356,15 +373,16 @@ export class SkillService {
 
   /**
    * 读取当前租户可见的 Skill（含所有租户共享的只读内置 Skill），不存在抛 404。
-   * 他租户的 Skill 被 RLS 过滤，与不存在同样返回 404。
+   * 他租户的 Skill 被可见性条件与 RLS 过滤，与不存在同样返回 404。
    */
   private async findRecordOrThrow(
+    tenantId: string,
     skillId: string,
   ): Promise<schema.SkillRecord> {
     const [row] = await this.tenantDb
       .select()
       .from(schema.skills)
-      .where(eq(schema.skills.id, skillId));
+      .where(and(eq(schema.skills.id, skillId), this.visibleTo(tenantId)));
 
     if (!row) {
       throw new SkillNotFoundException(skillId);
@@ -375,9 +393,10 @@ export class SkillService {
 
   /** 写操作前置校验：Skill 必须存在且不是内置 Skill。 */
   private async findWritableRecordOrThrow(
+    tenantId: string,
     skillId: string,
   ): Promise<schema.SkillRecord> {
-    const row = await this.findRecordOrThrow(skillId);
+    const row = await this.findRecordOrThrow(tenantId, skillId);
 
     if (row.isBuiltin) {
       throw new SkillBuiltinReadonlyException(skillId);
@@ -390,7 +409,7 @@ export class SkillService {
     tenantId: string,
     skillId: string,
   ): Promise<{ name: string; size: number }[]> {
-    const skill = await this.findRecordOrThrow(skillId);
+    const skill = await this.findRecordOrThrow(tenantId, skillId);
 
     if (skill.isBuiltin) {
       return Object.entries(
@@ -409,7 +428,7 @@ export class SkillService {
     skillId: string,
     fileName: string,
   ): Promise<Readable> {
-    const skill = await this.findRecordOrThrow(skillId);
+    const skill = await this.findRecordOrThrow(tenantId, skillId);
 
     if (skill.isBuiltin) {
       const canonicalName = validateAndCanonicalizeSkillFileName(fileName);
@@ -434,7 +453,7 @@ export class SkillService {
     skillId: string,
     file: SkillUploadFile,
   ): Promise<void> {
-    await this.findWritableRecordOrThrow(skillId);
+    await this.findWritableRecordOrThrow(tenantId, skillId);
 
     await this.skillStorageService.uploadSkillFile(
       tenantId,
@@ -452,7 +471,7 @@ export class SkillService {
     skillId: string,
     fileName: string,
   ): Promise<void> {
-    await this.findWritableRecordOrThrow(skillId);
+    await this.findWritableRecordOrThrow(tenantId, skillId);
 
     // 单文件删除必须经过 Skill 存储边界，避免自行拼键绕过统一文件名校验。
     await this.skillStorageService.deleteSkillFile(tenantId, skillId, fileName);
@@ -469,7 +488,9 @@ export class SkillService {
     return this.tenantDb
       .select()
       .from(schema.skills)
-      .where(inArray(schema.skills.id, skillIds));
+      .where(
+        and(inArray(schema.skills.id, skillIds), this.visibleTo(tenantId)),
+      );
   }
 
   async getSkillFileMap(
@@ -523,7 +544,7 @@ export class SkillService {
     dto: UpdateSkillDtoType,
     files?: SkillUploadFile[],
   ): Promise<SkillWithSourceKind> {
-    await this.findWritableRecordOrThrow(skillId);
+    await this.findWritableRecordOrThrow(tenantId, skillId);
 
     const setClause: Record<string, any> = {
       version: sql`${schema.skills.version} + 1`,
@@ -627,7 +648,7 @@ export class SkillService {
   }
 
   async delete(tenantId: string, skillId: string): Promise<void> {
-    await this.findWritableRecordOrThrow(skillId);
+    await this.findWritableRecordOrThrow(tenantId, skillId);
 
     await this.skillStorageService.deleteSkillFiles(tenantId, skillId);
 
@@ -643,7 +664,7 @@ export class SkillService {
     userId: string,
     skillId: string,
   ): Promise<SkillWithSourceKind> {
-    const skill = await this.findWritableRecordOrThrow(skillId);
+    const skill = await this.findWritableRecordOrThrow(tenantId, skillId);
 
     if (skill.status === 'archived') {
       throw new SkillAlreadyArchivedException(skillId);

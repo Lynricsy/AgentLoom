@@ -11550,8 +11550,14 @@
           "200": {
             "description": "Skill 列表"
           },
+          "400": {
+            "description": "缺少租户上下文"
+          },
           "401": {
             "description": "认证失败"
+          },
+          "403": {
+            "description": "不是该组织成员"
           }
         },
         "security": [
@@ -11562,7 +11568,7 @@
             "bearer": []
           }
         ],
-        "summary": "分页查询 Skill 列表",
+        "summary": "分页查询 Skill 列表（本租户与内置 Skill）",
         "tags": [
           "Skills"
         ]
@@ -11586,8 +11592,14 @@
           "200": {
             "description": "Skill 详情"
           },
+          "400": {
+            "description": "缺少租户上下文"
+          },
           "401": {
             "description": "认证失败"
+          },
+          "403": {
+            "description": "不是该组织成员"
           },
           "404": {
             "description": "Skill 不存在"
@@ -11777,8 +11789,14 @@
           "200": {
             "description": "文件列表"
           },
+          "400": {
+            "description": "缺少租户上下文"
+          },
           "401": {
             "description": "认证失败"
+          },
+          "403": {
+            "description": "不是该组织成员"
           },
           "404": {
             "description": "Skill 不存在"
@@ -11891,8 +11909,14 @@
           "200": {
             "description": "文件流"
           },
+          "400": {
+            "description": "缺少租户上下文"
+          },
           "401": {
             "description": "认证失败"
+          },
+          "403": {
+            "description": "不是该组织成员"
           },
           "404": {
             "description": "Skill 或文件不存在"

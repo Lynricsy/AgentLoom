@@ -1338,6 +1338,7 @@ describe('SelfEvolutionService', () => {
       );
 
       expect(mockSkillService.findAll).toHaveBeenCalledWith(
+        'tenant-1',
         expect.objectContaining({ pageSize: 100, search: 'Search' }),
       );
       expect(result).toMatchObject({

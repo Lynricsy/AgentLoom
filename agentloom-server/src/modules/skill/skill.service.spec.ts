@@ -361,7 +361,7 @@ describe('SkillService', () => {
         .mockReturnValueOnce(paginatedChain)
         .mockReturnValueOnce(countChain);
 
-      const result = await service.findAll({
+      const result = await service.findAll(TENANT_ID, {
         page: 1,
         pageSize: 20,
         search: undefined,
@@ -388,7 +388,7 @@ describe('SkillService', () => {
         .mockReturnValueOnce(paginatedChain)
         .mockReturnValueOnce(countChain);
 
-      const result = await service.findAll({
+      const result = await service.findAll(TENANT_ID, {
         page: 1,
         pageSize: 10,
         status: 'active',
@@ -408,7 +408,7 @@ describe('SkillService', () => {
         .mockReturnValueOnce(paginatedChain)
         .mockReturnValueOnce(countChain);
 
-      const result = await service.findAll({
+      const result = await service.findAll(TENANT_ID, {
         page: 1,
         pageSize: 20,
         search: undefined,

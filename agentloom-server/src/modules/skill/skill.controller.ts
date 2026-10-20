@@ -100,24 +100,34 @@ export class SkillController {
       data: undefined,
     }) as CreateSkillDtoType;
 
-    return { data: await this.skillService.create(tenantId, userId, dto, files) };
+    return {
+      data: await this.skillService.create(tenantId, userId, dto, files),
+    };
   }
 
   @Get()
-  @ApiOperation({ summary: '分页查询 Skill 列表' })
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '分页查询 Skill 列表（本租户与内置 Skill）' })
   @ApiResponse({ status: 200, description: 'Skill 列表' })
+  @ApiResponse({ status: 400, description: '缺少租户上下文' })
   @ApiResponse({ status: 401, description: '认证失败' })
+  @ApiResponse({ status: 403, description: '不是该组织成员' })
   async findAll(
+    @Req() req: AuthenticatedRequest,
     @Query(new ZodValidationPipe(SkillQuerySchema)) query: SkillQueryDtoType,
   ) {
-    return this.skillService.findAll(query);
+    const tenantId = this.requireTenantId(req);
+    return this.skillService.findAll(tenantId, query);
   }
 
   @Get(':id')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '获取 Skill 详情' })
   @ApiParam({ name: 'id', description: 'Skill UUID' })
   @ApiResponse({ status: 200, description: 'Skill 详情' })
+  @ApiResponse({ status: 400, description: '缺少租户上下文' })
   @ApiResponse({ status: 401, description: '认证失败' })
+  @ApiResponse({ status: 403, description: '不是该组织成员' })
   @ApiResponse({ status: 404, description: 'Skill 不存在' })
   async findById(
     @Req() req: AuthenticatedRequest,
@@ -209,10 +219,13 @@ export class SkillController {
   }
 
   @Get(':id/files')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '列出 Skill 关联文件' })
   @ApiParam({ name: 'id', description: 'Skill UUID' })
   @ApiResponse({ status: 200, description: '文件列表' })
+  @ApiResponse({ status: 400, description: '缺少租户上下文' })
   @ApiResponse({ status: 401, description: '认证失败' })
+  @ApiResponse({ status: 403, description: '不是该组织成员' })
   @ApiResponse({ status: 404, description: 'Skill 不存在' })
   async listFiles(
     @Req() req: AuthenticatedRequest,
@@ -223,11 +236,14 @@ export class SkillController {
   }
 
   @Get(':id/files/:fileName')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @ApiOperation({ summary: '下载 Skill 单个文件' })
   @ApiParam({ name: 'id', description: 'Skill UUID' })
   @ApiParam({ name: 'fileName', description: '文件名' })
   @ApiResponse({ status: 200, description: '文件流' })
+  @ApiResponse({ status: 400, description: '缺少租户上下文' })
   @ApiResponse({ status: 401, description: '认证失败' })
+  @ApiResponse({ status: 403, description: '不是该组织成员' })
   @ApiResponse({ status: 404, description: 'Skill 或文件不存在' })
   async downloadFile(
     @Req() req: AuthenticatedRequest,
@@ -263,7 +279,10 @@ export class SkillController {
       },
     },
   })
-  @ApiResponse({ status: 201, description: '文件上传成功，返回 { data: { name, size } }' })
+  @ApiResponse({
+    status: 201,
+    description: '文件上传成功，返回 { data: { name, size } }',
+  })
   @ApiResponse({ status: 400, description: '缺少文件或文件名无效' })
   @ApiResponse({ status: 401, description: '认证失败' })
   @ApiResponse({ status: 403, description: '权限不足或内置 Skill 只读' })

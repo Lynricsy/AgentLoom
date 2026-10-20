@@ -143,6 +143,7 @@ export class SelfEvolutionReadService {
 
     if (shouldInclude('skill')) {
       const skills = await this.skillService.findAll(
+        context.tenantId,
         SkillQuerySchema.parse({
           page: 1,
           pageSize: limit,

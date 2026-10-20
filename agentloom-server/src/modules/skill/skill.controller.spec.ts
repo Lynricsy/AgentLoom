@@ -74,6 +74,8 @@ function getHttpCode(controller: any, methodName: string): number | undefined {
   return Reflect.getMetadata(HTTP_CODE_METADATA, controller[methodName]);
 }
 
+const ALL_MEMBER_ROLES = ['owner', 'admin', 'creator', 'operator', 'viewer'];
+
 describe('SkillController', () => {
   let controller: SkillController;
   let skillService: ReturnType<typeof mocks.createMockSkillService>;
@@ -100,12 +102,13 @@ describe('SkillController', () => {
       ]);
     });
 
-    it('findAll: no roles', () => {
-      expect(getRoles(controller, 'findAll')).toBeUndefined();
+    // 读接口与其他资源一致声明全部角色：TenantGuard 要求 tenant，RolesGuard 实时校验成员身份
+    it('findAll: all member roles', () => {
+      expect(getRoles(controller, 'findAll')).toEqual(ALL_MEMBER_ROLES);
     });
 
-    it('findById: no roles', () => {
-      expect(getRoles(controller, 'findById')).toBeUndefined();
+    it('findById: all member roles', () => {
+      expect(getRoles(controller, 'findById')).toEqual(ALL_MEMBER_ROLES);
     });
 
     it('update: owner/admin/creator', () => {
@@ -129,12 +132,12 @@ describe('SkillController', () => {
       ]);
     });
 
-    it('listFiles: no roles', () => {
-      expect(getRoles(controller, 'listFiles')).toBeUndefined();
+    it('listFiles: all member roles', () => {
+      expect(getRoles(controller, 'listFiles')).toEqual(ALL_MEMBER_ROLES);
     });
 
-    it('downloadFile: no roles', () => {
-      expect(getRoles(controller, 'downloadFile')).toBeUndefined();
+    it('downloadFile: all member roles', () => {
+      expect(getRoles(controller, 'downloadFile')).toEqual(ALL_MEMBER_ROLES);
     });
 
     it('uploadFile: CREATED + owner/admin/creator', () => {
@@ -174,9 +177,9 @@ describe('SkillController', () => {
         sourceKind: undefined,
       };
 
-      const result = await controller.findAll(query);
+      const result = await controller.findAll(makeReq(), query);
       expect(result).toEqual(response);
-      expect(skillService.findAll).toHaveBeenCalledWith(query);
+      expect(skillService.findAll).toHaveBeenCalledWith(TENANT_ID, query);
     });
   });
 
