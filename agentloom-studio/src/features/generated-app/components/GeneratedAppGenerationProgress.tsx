@@ -235,7 +235,11 @@ export function GeneratedAppGenerationProgress({
                 </p>
               ) : null}
             </div>
-            <StatusBadge tone={GATE_PROGRESS_META[row.status].tone} size="sm">
+            <StatusBadge
+              tone={GATE_PROGRESS_META[row.status].tone}
+              size="sm"
+              className="shrink-0"
+            >
               {GATE_PROGRESS_META[row.status].label}
             </StatusBadge>
           </li>
