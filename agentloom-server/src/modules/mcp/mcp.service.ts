@@ -114,25 +114,23 @@ export class McpService {
   async testConnection(
     dto: TestMcpConnectionDto,
   ): Promise<TestMcpConnectionResponse> {
-    const { client, transport } = await this.createAndConnectClient(
-      dto.connection,
-      CONNECT_TIMEOUT_MS,
-      '连接测试',
-    );
+    const { client, transport, getNegotiatedProtocolVersion } =
+      await this.createAndConnectClient(
+        dto.connection,
+        CONNECT_TIMEOUT_MS,
+        '连接测试',
+      );
 
     try {
+      // getServerVersion() 只是 initialize 结果里的 Implementation（name/version），
+      // 协议版本要取 SDK 在 initialize 后写回 transport 的协商结果
       const serverVersion = client.getServerVersion();
-      const protocolVersion =
-        serverVersion &&
-        'protocolVersion' in serverVersion &&
-        typeof serverVersion.protocolVersion === 'string'
-          ? serverVersion.protocolVersion
-          : undefined;
+      const protocolVersion = getNegotiatedProtocolVersion();
       const serverInfo: TestMcpConnectionResponse['serverInfo'] = serverVersion
         ? {
             name: serverVersion.name,
             version: serverVersion.version,
-            protocolVersion,
+            ...(protocolVersion ? { protocolVersion } : {}),
           }
         : undefined;
 
@@ -447,6 +445,10 @@ export class McpService {
     configId: string,
     data: UpdateMcpServerConfigType,
   ): Promise<PublicMcpConfig & { sourceKind: ResourceSourceKind }> {
+    // 与测试/发现/导入一致：开关关闭时不允许把连接改成 stdio，避免落库一个无法发现工具的配置
+    if (data.connection?.transportType === 'stdio') {
+      this.assertStdioEnabled();
+    }
     await this.getSavedConfigOrThrow(configId, tenantId);
 
     const setClause: Record<string, unknown> = {
@@ -1107,8 +1109,14 @@ export class McpService {
     connection: McpConnection,
     timeout: number,
     operation: McpOperation,
-  ): Promise<{ client: Client; transport: Transport }> {
+  ): Promise<{
+    client: Client;
+    transport: Transport;
+    getNegotiatedProtocolVersion: () => string | undefined;
+  }> {
     const transport = this.createTransport(connection);
+    const getNegotiatedProtocolVersion =
+      this.captureNegotiatedProtocolVersion(transport);
     const client = new Client({ name: 'agentloom', version: '1.0.0' });
 
     try {
@@ -1117,11 +1125,28 @@ export class McpService {
         timeout,
         `连接 MCP 服务器超时 (${timeout / 1000}s)`,
       );
-      return { client, transport };
+      return { client, transport, getNegotiatedProtocolVersion };
     } catch (error) {
       await this.safeCloseClient(client, transport);
       this.handleOperationError(error, connection, operation);
     }
+  }
+
+  /**
+   * SDK 的 Client 不暴露协商出的协议版本：initialize 成功后它只会调用
+   * transport.setProtocolVersion(result.protocolVersion)（HTTP 传输据此设置请求头，
+   * stdio 没有该方法）。这里在连接前包一层记录下来，原有方法照常执行。
+   */
+  private captureNegotiatedProtocolVersion(
+    transport: Transport,
+  ): () => string | undefined {
+    let negotiated: string | undefined;
+    const original = transport.setProtocolVersion?.bind(transport);
+    transport.setProtocolVersion = (version: string) => {
+      negotiated = version;
+      original?.(version);
+    };
+    return () => negotiated;
   }
 
   private async listAllTools(
@@ -1154,13 +1179,18 @@ export class McpService {
     }
   }
 
+  private assertStdioEnabled(): void {
+    if (process.env.APP_MCP_STDIO_ENABLED !== 'true') {
+      throw new McpStdioDisabledException();
+    }
+  }
+
   private createTransport(connection: McpConnection): Transport {
     switch (connection.transportType) {
       case 'stdio':
-        // stdio 在服务端宿主机上 spawn 任意命令，是所有 stdio 路径（测试、发现、导入、运行时调用）的唯一出口。
-        if (process.env.APP_MCP_STDIO_ENABLED !== 'true') {
-          throw new McpStdioDisabledException();
-        }
+        // stdio 在服务端宿主机上 spawn 任意命令，是服务端所有 stdio 路径（测试、发现、导入、服务端代调的
+        // 运行时调用）的唯一出口；sandbox 会话的 stdio MCP 由 guest 在 microVM 内启动，不经过这里。
+        this.assertStdioEnabled();
         return new StdioClientTransport({
           command: connection.command,
           args: connection.args,

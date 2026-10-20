@@ -340,6 +340,13 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
+/** 模拟 SDK Client.connect：initialize 成功后把协商出的协议版本写回 transport */
+function negotiateProtocolVersion(version: string) {
+  return async (transport: { setProtocolVersion?: (value: string) => void }) => {
+    transport.setProtocolVersion?.(version);
+  };
+}
+
 function getCallableMethod<TArgs extends unknown[], TResult>(
   target: object,
   methodName: string,
@@ -392,10 +399,10 @@ describe('McpService', () => {
       transaction: vi.fn(),
     };
 
+    // SDK 1.30 的 getServerVersion() 只返回 Implementation（name/version），不含协议版本
     mcpMocks.mockClient.getServerVersion.mockReturnValue({
       name: 'AgentLoom MCP',
       version: '1.0.0',
-      protocolVersion: '2024-11-05',
     });
 
     const module: TestingModule = await Test.createTestingModule({
@@ -441,14 +448,25 @@ describe('McpService', () => {
         await expect(
           service.callRuntimeTool(createStdioConnection(), 'tool', {}),
         ).rejects.toMatchObject(disabled);
+        db.select.mockReturnValueOnce(
+          createSelectChain([createMcpServerConfigRecord()]),
+        );
+        await expect(
+          service.updateConfig(TENANT_ID, CONFIG_ID, {
+            connection: createStdioConnection(),
+          }),
+        ).rejects.toMatchObject(disabled);
+        expect(db.update).not.toHaveBeenCalled();
         expect(mcpMocks.StdioClientTransport).not.toHaveBeenCalled();
       },
     );
   });
 
   describe('testConnection', () => {
-    it('应当通过 stdio 连接并返回服务器信息', async () => {
-      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+    it('应当通过 stdio 连接并返回服务器信息与协商出的协议版本', async () => {
+      mcpMocks.mockClient.connect.mockImplementation(
+        negotiateProtocolVersion('2024-11-05'),
+      );
 
       const result = await service.testConnection({
         connection: createStdioConnection(),
@@ -728,11 +746,12 @@ describe('McpService', () => {
           'X-Workspace': 'workspace-1',
         }),
       );
-      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.connect.mockImplementation(
+        negotiateProtocolVersion('2025-11-25'),
+      );
       mcpMocks.mockClient.getServerVersion.mockReturnValue({
         name: 'Knowledge MCP',
         version: '2.1.0',
-        protocolVersion: '2025-11-25',
       });
 
       const result = await testSavedConfigConnection(CONFIG_ID, TENANT_ID);
@@ -1541,12 +1560,11 @@ describe('McpService', () => {
       );
     });
 
-    it('应当忽略服务端非字符串 protocolVersion', async () => {
+    it('传输层没有协商结果时省略 protocolVersion', async () => {
       mcpMocks.mockClient.connect.mockResolvedValue(undefined);
       mcpMocks.mockClient.getServerVersion.mockReturnValue({
         name: 'Legacy MCP',
         version: '0.9.0',
-        protocolVersion: 42,
       });
 
       await expect(
@@ -1556,7 +1574,6 @@ describe('McpService', () => {
         serverInfo: {
           name: 'Legacy MCP',
           version: '0.9.0',
-          protocolVersion: undefined,
         },
       });
     });
