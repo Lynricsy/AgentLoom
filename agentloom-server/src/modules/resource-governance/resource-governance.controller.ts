@@ -14,6 +14,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { SkipTenantApiQuota } from '../../common/decorators/skip-tenant-api-quota.decorator';
 import { ExecutionService } from '../execution/execution.service';
 import {
   type TerminateExecutionDto,
@@ -24,6 +25,8 @@ import { UpsertTenantQuotaRequestDto } from './dto/upsert-tenant-quota.dto';
 import { ResourceGovernanceService } from './resource-governance.service';
 
 @ApiTags('Resource Governance')
+// 组织配额打满后管理员仍要能查看并调整配额，整个控制器不计入组织配额（D-211）
+@SkipTenantApiQuota()
 @Controller()
 export class ResourceGovernanceController {
   constructor(

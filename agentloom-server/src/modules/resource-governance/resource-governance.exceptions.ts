@@ -80,17 +80,16 @@ export class ResourceGovernanceDecisionBlockedException extends DomainException 
   }
 }
 
+/**
+ * API 调用频率与日额度都属于「一段时间内请求过多」，按 api/index.md 的限流约定返回 429 并带 Retry-After；
+ * 执行配额、暂停等其他治理拦截与资源当前状态冲突，返回 409。
+ */
 function resolveDecisionStatus(
   block: ResourceGovernanceDecisionBlockDetail,
 ): HttpStatus {
-  if (
-    block.category === 'api_rate_limit' &&
-    block.metadata?.metric === 'apiRateLimitPerMinute'
-  ) {
-    return HttpStatus.TOO_MANY_REQUESTS;
-  }
-
-  return HttpStatus.CONFLICT;
+  return block.category === 'api_rate_limit'
+    ? HttpStatus.TOO_MANY_REQUESTS
+    : HttpStatus.CONFLICT;
 }
 
 function buildResourceGovernanceDecisionDetail(

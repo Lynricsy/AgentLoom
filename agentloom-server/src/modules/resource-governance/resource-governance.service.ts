@@ -60,7 +60,9 @@ import {
 } from './resource-governance.events';
 
 export const SYSTEM_DEFAULT_TENANT_QUOTA = {
-  apiRateLimitPerMinute: 100,
+  // 整个组织共用的分钟桶：Studio 单人停在轮询页面就有 25–50 次/分钟（对话沙箱统计与进程各每 5s，
+  // 生成应用提交每 2s、生成进度每 3s），再加页面跳转的突发请求，100 撑不住多人同时使用
+  apiRateLimitPerMinute: 600,
   maxConcurrentExecutions: null,
   dailyExecutionLimit: null,
   dailyApiCallLimit: null,
@@ -176,6 +178,11 @@ export class ResourceGovernanceService {
     };
   }
 
+  /**
+   * 判定新执行能否启动。配置了并发或每日执行上限时，先对租户加事务级 advisory 锁再计数（D-212）：
+   * 调用方必须在同一事务里插入 workflow_executions，锁随事务提交释放，
+   * 后到的请求才能看到已插入的执行，计数与插入之间不会被并发请求插队。
+   */
   async resolveExecutionAdmissionDecision(params: {
     tenantId: string;
     workflowId: string;
@@ -231,35 +238,49 @@ export class ResourceGovernanceService {
       });
     }
 
-    const [{ count: activeExecutionCount }] = await dbClient
-      .select({ count: sql<number>`count(*)::int` })
-      .from(workflowExecutions)
-      .where(
-        and(
-          eq(workflowExecutions.tenantId, params.tenantId),
-          inArray(workflowExecutions.status, ACTIVE_EXECUTION_STATUSES),
-        ),
-      );
+    const { maxConcurrentExecutions, dailyExecutionLimit } =
+      runtimeState.quota;
 
-    if (
-      runtimeState.quota.maxConcurrentExecutions !== null &&
-      activeExecutionCount >= runtimeState.quota.maxConcurrentExecutions
-    ) {
-      return this.buildBlockedDecision({
-        action: 'execution_start',
-        category: 'execution_quota',
-        scope: 'tenant',
-        reason: 'tenant concurrent execution quota has been exceeded',
-        organizationId: runtimeState.organizationId,
-        tenantControl,
-        workflowControl,
-        metadata: {
-          workflowId: params.workflowId,
-          metric: 'maxConcurrentExecutions',
-          limit: runtimeState.quota.maxConcurrentExecutions,
-          currentValue: activeExecutionCount,
-        },
-      });
+    if (maxConcurrentExecutions === null && dailyExecutionLimit === null) {
+      return null;
+    }
+
+    await dbClient.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('execution_admission'), hashtext(${params.tenantId}))`,
+    );
+
+    if (maxConcurrentExecutions !== null) {
+      const [{ count: activeExecutionCount }] = await dbClient
+        .select({ count: sql<number>`count(*)::int` })
+        .from(workflowExecutions)
+        .where(
+          and(
+            eq(workflowExecutions.tenantId, params.tenantId),
+            inArray(workflowExecutions.status, ACTIVE_EXECUTION_STATUSES),
+          ),
+        );
+
+      if (activeExecutionCount >= maxConcurrentExecutions) {
+        return this.buildBlockedDecision({
+          action: 'execution_start',
+          category: 'execution_quota',
+          scope: 'tenant',
+          reason: 'tenant concurrent execution quota has been exceeded',
+          organizationId: runtimeState.organizationId,
+          tenantControl,
+          workflowControl,
+          metadata: {
+            workflowId: params.workflowId,
+            metric: 'maxConcurrentExecutions',
+            limit: maxConcurrentExecutions,
+            currentValue: activeExecutionCount,
+          },
+        });
+      }
+    }
+
+    if (dailyExecutionLimit === null) {
+      return null;
     }
 
     const dayStart = params.now ? new Date(params.now) : new Date();
@@ -275,10 +296,7 @@ export class ResourceGovernanceService {
         ),
       );
 
-    if (
-      runtimeState.quota.dailyExecutionLimit !== null &&
-      dailyExecutionCount >= runtimeState.quota.dailyExecutionLimit
-    ) {
+    if (dailyExecutionCount >= dailyExecutionLimit) {
       return this.buildBlockedDecision({
         action: 'execution_start',
         category: 'execution_quota',
@@ -290,7 +308,7 @@ export class ResourceGovernanceService {
         metadata: {
           workflowId: params.workflowId,
           metric: 'dailyExecutionLimit',
-          limit: runtimeState.quota.dailyExecutionLimit,
+          limit: dailyExecutionLimit,
           currentValue: dailyExecutionCount,
         },
       });

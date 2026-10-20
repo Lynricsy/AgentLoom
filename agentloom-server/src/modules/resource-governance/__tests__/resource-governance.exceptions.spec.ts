@@ -75,7 +75,7 @@ describe('resource-governance.exceptions', () => {
       expect(exception.block).toEqual(block);
     });
 
-    it('keeps daily API quota blocks as RFC7807 conflict responses', () => {
+    it('daily API quota blocks are RFC7807 too-many-requests responses (D-216)', () => {
       const block: ResourceGovernanceDecisionBlockDetail = {
         decision: 'blocked',
         action: 'api_request',
@@ -105,7 +105,7 @@ describe('resource-governance.exceptions', () => {
 
       const exception = new ResourceGovernanceDecisionBlockedException(block);
 
-      expect(exception.getStatus()).toBe(HttpStatus.CONFLICT);
+      expect(exception.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
       expect(exception.detail).toBe(
         '组织 org-123 的配额指标 dailyApiCallLimit 已阻止 api_request：当前值 501，限制值 500',
       );

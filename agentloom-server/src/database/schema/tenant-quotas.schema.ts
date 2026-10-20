@@ -24,9 +24,10 @@ export const tenantQuotas = pgTable(
 
     tenantId: uuid('tenant_id').notNull(),
 
+    // 整个组织共用的每分钟请求数（所有成员与平台 Token 合计），与 SYSTEM_DEFAULT_TENANT_QUOTA 保持一致
     apiRateLimitPerMinute: integer('api_rate_limit_per_minute')
       .notNull()
-      .default(100),
+      .default(600),
 
     maxConcurrentExecutions: integer('max_concurrent_executions'),
 

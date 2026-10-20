@@ -645,6 +645,13 @@
       "when": 1792498315610,
       "tag": "0091_plugin_ledger_detach",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1792511915268,
+      "tag": "0092_tenant_quota_shared_minute_default",
+      "breakpoints": true
     }
   ]
 }

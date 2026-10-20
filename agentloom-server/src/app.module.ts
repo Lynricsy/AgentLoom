@@ -11,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
+import { RedisThrottlerStorageService } from './common/redis/redis-throttler-storage.service';
 import Redis from 'ioredis';
 import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
@@ -91,7 +91,7 @@ function createThrottlerOptions(configService: ConfigService) {
 
   return {
     throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
-    storage: new ThrottlerStorageRedisService(throttlerRedisClient),
+    storage: new RedisThrottlerStorageService(throttlerRedisClient),
   };
 }
 

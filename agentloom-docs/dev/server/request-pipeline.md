@@ -87,16 +87,19 @@ sequenceDiagram
 
 ### CustomThrottlerGuard
 
-源文件：`agentloom-server/src/common/guards/custom-throttler.guard.ts`；默认配额在 `agentloom-server/src/app.module.ts:74`：名为 `default` 的节流器，`ttl: 60_000`、`limit: 100`，即每分钟 100 次。计数存储在 `APP_REDIS_URL` 指向的 Redis（`ThrottlerStorageRedisService`）。
+源文件：`agentloom-server/src/common/guards/custom-throttler.guard.ts`；全局节流器在 `agentloom-server/src/app.module.ts` 的 `createThrottlerOptions()`：名为 `default`，`ttl: 60_000`、`limit: 100`，即每分钟 100 次，只作用于不按组织计数的调用方（见第 3 条）。计数存储在 `APP_REDIS_URL` 指向的 Redis，实现为 `agentloom-server/src/common/redis/redis-throttler-storage.service.ts`（`RedisThrottlerStorageService`）。
 
 它继承 `@nestjs/throttler` 的 `ThrottlerGuard`，覆盖了调用方识别与上限计算：
 
 1. **识别 Agent API Key。** `Authorization` 以 `Bearer alak_` 开头时，先调用 `AgentApiKeyService.validate()`，结果缓存在请求对象上。Key 无效时不在这里报错，回退为按 IP 计数，由后面的 `AgentApiKeyGuard` 返回 401。
 2. **tracker（计数键）优先级**（`getTracker`）：有效的 Agent API Key → `agentkey:<keyPrefix>`；`X-Api-Key` 以 `al_` 开头 → `apikey:<前缀>`（`al_` 加 8 个字符）；可解码出 `sub` 的 JWT → `jwt:<sub>`；否则 → 客户端 IP。
-3. **租户共享桶。** 能解析出租户（来自 Agent Key、`TenantMiddleware`、JWT payload，或用 `X-Api-Key` 查库）且不是 Agent Key 请求时，计数键改为 `tenant:<tenantId>`，同一租户的所有成员共用一个分钟桶。Agent Key 始终按 Key 独立计数。
-4. **有效上限**：Agent Key 自身的 `rateLimitPerMinute` → 租户配额的 `apiRateLimitPerMinute` → 默认 100。
-5. **租户日配额。** 租户配额设置了 `dailyApiCallLimit` 时，另按 UTC 自然日计数，超出抛 `ResourceGovernanceDecisionBlockedException`（409）。
-6. **超限响应。** 写 `Retry-After` 与限流响应头。有租户上下文的平台请求（JWT / `al_` Token）抛 `ResourceGovernanceDecisionBlockedException`（分钟限流为 429，并写入资源治理拦截记录）；Agent Key 请求和无租户的请求抛 `RateLimitExceededException`，problem type 为 `rate-limit-exceeded`、状态 429。
+3. **哪些请求按组织计数。** 有效的 Agent Key 请求一律按 Key 所属组织计入日配额。其余请求中，`@Public()` 路由（登录、Webhook、沙箱回调等，组织只能从未验签的 Bearer 推断）和 `@SkipTenantApiQuota()` 路由（`ResourceGovernanceController` 全部接口、`GET /organizations/current`，供管理员在配额打满时查看和调整配额）不解析租户，按「tracker + 接口」以全局 100 次/分钟计数，也不计入日配额。
+4. **组织共享桶。** 按组织计数且不是 Agent Key 请求时，计数键为 `api-rate-limit:<节流器名>:tenant:<tenantId>`，不含控制器和方法名：同一组织的所有成员、所有平台 Token、所有接口共用一个分钟桶。Agent Key 的计数键为 `api-rate-limit:<节流器名>:agentkey:<keyPrefix>`，同一个 Key 的所有接口共用。其余调用方沿用 `@nestjs/throttler` 默认的「控制器 + 方法 + tracker」键。
+5. **有效上限**：Agent Key 自身的 `rateLimitPerMinute` → 组织配额的 `apiRateLimitPerMinute`（默认 600）→ 全局 100。
+6. **租户日配额。** 组织配额设置了 `dailyApiCallLimit` 时，通过分钟限流的请求再按 UTC 自然日计数（被分钟限流拦下的请求不消耗日额度），超出抛 `ResourceGovernanceDecisionBlockedException`（429，写 `Retry-After`，值为距 UTC 0 点的秒数）。
+7. **超限响应。** 写 `Retry-After` 与限流响应头。有租户上下文的平台请求（JWT / `al_` Token）抛 `ResourceGovernanceDecisionBlockedException`（429，并写入资源治理拦截记录）；Agent Key 请求和无租户的请求抛 `RateLimitExceededException`，problem type 为 `rate-limit-exceeded`、状态 429。
+
+计数是固定窗口：`RedisThrottlerStorageService` 在一次 `EVAL` 里读取窗口内已放行次数，小于本次上限才 `INCR`，否则直接判定拦截。被拦截的请求不计数，也没有独立的阻断键，所以调高或调低 `apiRateLimitPerMinute`、`dailyApiCallLimit` 后，下一次请求立即按新上限判定；拦截持续到当前窗口结束，`Retry-After` 为窗口剩余秒数。
 
 跳过限流用 `@nestjs/throttler` 自带的 `@SkipThrottle()`，例如 `agentloom-server/src/modules/health/health.controller.ts`。
 

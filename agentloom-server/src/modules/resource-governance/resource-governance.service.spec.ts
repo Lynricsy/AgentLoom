@@ -177,6 +177,8 @@ describe('ResourceGovernanceService', () => {
     delete: ReturnType<typeof vi.fn>;
     transaction: ReturnType<typeof vi.fn>;
     select: ReturnType<typeof vi.fn>;
+    // 只有准入判定用例需要（advisory 锁）；缺省时审计走 AuditLogService 分支
+    execute?: ReturnType<typeof vi.fn>;
   };
   let auditLogService: { record: ReturnType<typeof vi.fn> };
   let eventEmitter: { emit: ReturnType<typeof vi.fn> };
@@ -967,6 +969,10 @@ describe('ResourceGovernanceService', () => {
   describe('runtime admission and quota precedence', () => {
     const WORKFLOW_ID = '019577a0-0000-7000-8000-000000001500';
 
+    beforeEach(() => {
+      db.execute = vi.fn().mockResolvedValue(undefined);
+    });
+
     function makeRuntimeState(
       quota: Partial<ResourceGovernanceStateResponseDto['quota']> = {},
       controls: ReturnType<typeof makeGovernanceControl>[] = [],
@@ -1137,6 +1143,11 @@ describe('ResourceGovernanceService', () => {
         },
       });
       expect(db.select).toHaveBeenCalledTimes(1);
+      // 计数前先拿租户 advisory 锁，与调用方随后的插入串行化（D-212）
+      expect(db.execute).toHaveBeenCalledTimes(1);
+      expect(
+        db.execute!.mock.invocationCallOrder[0],
+      ).toBeLessThan(db.select.mock.invocationCallOrder[0]);
     });
 
     it('blocks the UTC daily quota after concurrency passes', async () => {
@@ -1166,15 +1177,13 @@ describe('ResourceGovernanceService', () => {
         },
       });
       expect(db.select).toHaveBeenCalledTimes(2);
+      expect(db.execute).toHaveBeenCalledTimes(1);
     });
 
-    it('allows execution when nullable limits are disabled', async () => {
+    it('allows execution without counting or locking when nullable limits are disabled', async () => {
       vi.spyOn(service, 'resolveRuntimeStateForTenant').mockResolvedValueOnce(
         makeRuntimeState(),
       );
-      db.select
-        .mockReturnValueOnce(createSelectCountChain(999))
-        .mockReturnValueOnce(createSelectCountChain(999));
 
       await expect(
         service.resolveExecutionAdmissionDecision({
@@ -1183,6 +1192,8 @@ describe('ResourceGovernanceService', () => {
           dbClient: db as never,
         }),
       ).resolves.toBeNull();
+      expect(db.execute).not.toHaveBeenCalled();
+      expect(db.select).not.toHaveBeenCalled();
     });
 
     it('returns null without querying counts when runtime state is unavailable', async () => {

@@ -171,15 +171,17 @@ curl -s "http://localhost:3000/api/v1/workflow-definitions" -H "Authorization: B
 
 ## 限流
 
-每分钟窗口计数，默认 100 次。成功响应带 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`（秒）；被拦截时状态码 429，另带 `Retry-After`（秒）。
+每分钟窗口计数。成功响应带 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`（秒）；被拦截时状态码 429，另带 `Retry-After`（秒）。被拦截的请求不计数，窗口结束后恢复。
 
 | 调用方 | 计数桶 | 上限来源 | 超限时的 `type` |
 | --- | --- | --- | --- |
-| 带组织上下文的 JWT 或平台 API Token | 整个组织共用 | 组织资源配额 `apiRateLimitPerMinute`，未设置时 100 | `resource-governance-decision-blocked` |
-| Agent API Key | 每个 Key 独立 | Key 的 `rate_limit_per_minute`，未设置时同所属组织 | `rate-limit-exceeded` |
-| 无凭证的公开接口（如 Webhook） | 按来源 IP | 100 | `rate-limit-exceeded` |
+| 带组织上下文的 JWT 或平台 API Token | 整个组织共用：所有成员、所有平台 Token、所有接口合计 | 组织资源配额 `apiRateLimitPerMinute`，未设置时 600 | `resource-governance-decision-blocked` |
+| Agent API Key | 每个 Key 独立，同一 Key 的所有接口合计 | Key 的 `rate_limit_per_minute`，未设置时同所属组织 | `rate-limit-exceeded` |
+| 无凭证的公开接口（如 Webhook） | 按来源 IP，每个接口分别计数 | 100 | `rate-limit-exceeded` |
 
-组织还可以配置每日调用总量 `dailyApiCallLimit`，超出后同样返回 `resource-governance-decision-blocked`，次日 UTC 0 点重置。
+组织还可以配置每日调用总量 `dailyApiCallLimit`，超出后同样返回 429 `resource-governance-decision-blocked`，`Retry-After` 为距次日 UTC 0 点的秒数。修改 `apiRateLimitPerMinute` 或 `dailyApiCallLimit` 后，下一次请求立即按新上限判定。
+
+资源治理接口（`/api/v1/organizations/:id/resource-governance` 及其子路径）和 `GET /api/v1/organizations/current` 不计入组织的分钟桶和每日额度，改按调用者每个接口每分钟 100 次计数。组织配额被打满时，owner 或 admin 仍能查看并调高配额。
 
 组织请求超限（输出截断了 `block` 扩展字段）：
 
@@ -191,7 +193,7 @@ x-ratelimit-remaining: 0
 x-ratelimit-reset: 60
 content-type: application/problem+json; charset=utf-8
 
-{"type":"https://agentloom.dev/errors/resource-governance-decision-blocked","title":"资源治理决策被阻止","status":429,"detail":"组织 01a0f6d2-bbf5-79f0-9744-fb059f425613 的配额指标 apiRateLimitPerMinute 已阻止 api_request：当前值 104，限制值 100","instance":"/api/v1/workflow-definitions?pageSize=1","errors":[{"field":"apiRateLimitPerMinute","message":"当前资源治理限制阻止了该决策"}],"block":{"decision":"blocked","action":"api_request","category":"api_rate_limit"}}
+{"type":"https://agentloom.dev/errors/resource-governance-decision-blocked","title":"资源治理决策被阻止","status":429,"detail":"组织 01a0f6d2-bbf5-79f0-9744-fb059f425613 的配额指标 apiRateLimitPerMinute 已阻止 api_request：当前值 100，限制值 100","instance":"/api/v1/workflow-definitions?pageSize=1","errors":[{"field":"apiRateLimitPerMinute","message":"当前资源治理限制阻止了该决策"}],"block":{"decision":"blocked","action":"api_request","category":"api_rate_limit"}}
 ```
 
 无凭证请求超限：

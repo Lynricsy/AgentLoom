@@ -189,8 +189,8 @@ Agent 画布上的智能路由（编译后的 `routingConfig`）由 `ModelRoutin
 
 | 字段 | 含义 |
 | --- | --- |
-| `apiRateLimitPerMinute` | 每分钟 API 请求上限，默认 100 |
-| `maxConcurrentExecutions` | 并发执行数上限 |
+| `apiRateLimitPerMinute` | 整个组织每分钟 API 请求上限（所有成员、平台 Token、接口合计），默认 600 |
+| `maxConcurrentExecutions` | 并发执行数上限；超出时直接拒绝新执行（409），不排队。准入判定与插入在同一事务内按租户 advisory 锁串行化 |
 | `dailyExecutionLimit` | 每日执行次数上限 |
 | `dailyApiCallLimit` | 每日 API 调用上限 |
 | `storageQuotaMb` | 存储容量上限（MB） |

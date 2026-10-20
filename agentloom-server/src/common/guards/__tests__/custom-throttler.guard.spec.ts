@@ -8,6 +8,8 @@ import type {
   ThrottlerStorage,
 } from '@nestjs/throttler';
 
+import { IS_PUBLIC_KEY } from '../../decorators/public.decorator';
+import { SKIP_TENANT_API_QUOTA_KEY } from '../../decorators/skip-tenant-api-quota.decorator';
 import { CustomThrottlerGuard } from '../custom-throttler.guard';
 import { PlatformApiTokenService } from '../../../modules/platform-api-token/platform-api-token.service';
 import { AgentApiKeyService } from '../../../modules/agent-api/agent-api-key.service';
@@ -163,11 +165,16 @@ function createResponse(): HeaderWriter {
 function createRequestProps(
   req: GuardRequest,
   res: HeaderWriter,
-  overrides: Partial<Pick<ThrottlerRequest, 'getTracker' | 'generateKey'>> = {},
+  overrides: Partial<Pick<ThrottlerRequest, 'getTracker' | 'generateKey'>> & {
+    controllerClass?: abstract new () => unknown;
+  } = {},
 ): ThrottlerRequest {
+  const controllerClass = overrides.controllerClass ?? class TestController {};
   const context = {
     req,
     res,
+    getHandler: () => function testHandler() {},
+    getClass: () => controllerClass,
   } as unknown as ExecutionContext;
 
   return {
@@ -330,7 +337,7 @@ describe('CustomThrottlerGuard', () => {
     }
 
     expect(storageService.increment).toHaveBeenCalledWith(
-      'minute-key',
+      `api-rate-limit:default:tenant:${TENANT_ID}`,
       60_000,
       5,
       60_000,
@@ -356,7 +363,7 @@ describe('CustomThrottlerGuard', () => {
     );
   });
 
-  it('应在每日 API 配额超限时返回 409 且不再进入分钟限流', async () => {
+  it('每日 API 配额超限时返回 429 并带 Retry-After，分钟限流先计数', async () => {
     const guard = createGuard();
     const req: GuardRequest = {
       tenantId: TENANT_ID,
@@ -370,35 +377,45 @@ describe('CustomThrottlerGuard', () => {
     resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
       createRuntimeState({ dailyApiCallLimit: 2, apiRateLimitPerMinute: 5 }),
     );
-    storageService.increment.mockResolvedValueOnce({
-      totalHits: 3,
-      timeToExpire: 86_400_000,
-      isBlocked: true,
-      timeToBlockExpire: 86_400_000,
-    });
-
-    try {
-      await guard.handleRequestForTest(requestProps);
-      expect.unreachable();
-    } catch (error) {
-      expect(error).toBeInstanceOf(ResourceGovernanceDecisionBlockedException);
-      expect(
-        (error as ResourceGovernanceDecisionBlockedException).getStatus(),
-      ).toBe(409);
-      expect(
-        (error as ResourceGovernanceDecisionBlockedException).block.metadata,
-      ).toMatchObject({
-        metric: 'dailyApiCallLimit',
-        limit: 2,
-        currentValue: 3,
+    storageService.increment
+      .mockResolvedValueOnce({
+        totalHits: 1,
+        timeToExpire: 60,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      })
+      .mockResolvedValueOnce({
+        totalHits: 2,
+        timeToExpire: 3_600,
+        isBlocked: true,
+        timeToBlockExpire: 3_600,
       });
-    }
 
-    expect(storageService.increment).toHaveBeenCalledTimes(1);
-    expect(res.header).not.toHaveBeenCalledWith(
-      'Retry-After',
-      expect.anything(),
+    const error = await guard
+      .handleRequestForTest(requestProps)
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ResourceGovernanceDecisionBlockedException);
+    expect((error as ResourceGovernanceDecisionBlockedException).getStatus()).toBe(
+      429,
     );
+    expect(
+      (error as ResourceGovernanceDecisionBlockedException).block.metadata,
+    ).toMatchObject({
+      metric: 'dailyApiCallLimit',
+      limit: 2,
+      currentValue: 2,
+      retryAfterSeconds: 3_600,
+    });
+    expect(storageService.increment).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining(`resource-governance:daily-api:${TENANT_ID}:`),
+      expect.any(Number),
+      2,
+      expect.any(Number),
+      'default-daily-api-quota',
+    );
+    expect(res.header).toHaveBeenCalledWith('Retry-After', 3_600);
     expect(
       resourceGovernanceService.recordBlockedDecision,
     ).toHaveBeenCalledWith(
@@ -414,6 +431,73 @@ describe('CustomThrottlerGuard', () => {
       }),
     );
   });
+
+  it('分钟限流拦下的请求不消耗日额度', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = { tenantId: TENANT_ID, headers: {} };
+    const requestProps = createRequestProps(req, createResponse());
+
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ dailyApiCallLimit: 10, apiRateLimitPerMinute: 1 }),
+    );
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 1,
+      timeToExpire: 30,
+      isBlocked: true,
+      timeToBlockExpire: 30,
+    });
+
+    await expect(
+      guard.handleRequestForTest(requestProps),
+    ).rejects.toBeInstanceOf(ResourceGovernanceDecisionBlockedException);
+    expect(storageService.increment).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['@SkipTenantApiQuota() 的管理员自救接口', SKIP_TENANT_API_QUOTA_KEY],
+    ['@Public() 接口', IS_PUBLIC_KEY],
+  ])(
+    '%s 不计入组织分钟桶与日额度，按调用方 + 接口用全局上限计数',
+    async (_label, metadataKey) => {
+      const guard = createGuard();
+      const token = jwt.sign({ sub: USER_ID, tenant_id: TENANT_ID }, 'secret');
+      const req: GuardRequest = {
+        headers: { authorization: `Bearer ${token}` },
+      };
+      class ExemptController {}
+      Reflect.defineMetadata(metadataKey, true, ExemptController);
+      const requestProps = createRequestProps(req, createResponse(), {
+        controllerClass: ExemptController,
+      });
+      storageService.increment.mockResolvedValueOnce({
+        totalHits: 1,
+        timeToExpire: 60,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      });
+
+      await expect(guard.handleRequestForTest(requestProps)).resolves.toBe(
+        true,
+      );
+
+      expect(
+        resourceGovernanceService.resolveRuntimeStateForTenant,
+      ).not.toHaveBeenCalled();
+      expect(requestProps.generateKey).toHaveBeenCalledWith(
+        requestProps.context,
+        'jwt:user-1',
+        'default',
+      );
+      expect(storageService.increment).toHaveBeenCalledTimes(1);
+      expect(storageService.increment).toHaveBeenCalledWith(
+        'minute-key',
+        60_000,
+        100,
+        60_000,
+        'default',
+      );
+    },
+  );
 
   it('应在 API key 请求中懒加载 tenant 并使用租户分钟配额', async () => {
     const guard = createGuard();
@@ -453,13 +537,9 @@ describe('CustomThrottlerGuard', () => {
     ).toHaveBeenCalledWith(TENANT_ID);
     expect(req.tenantId).toBe(TENANT_ID);
     expect(req.apiKeyPrefix).toBe('al_testpref');
-    expect(requestProps.generateKey).toHaveBeenCalledWith(
-      requestProps.context,
-      `tenant:${TENANT_ID}`,
-      'default',
-    );
+    expect(requestProps.generateKey).not.toHaveBeenCalled();
     expect(storageService.increment).toHaveBeenCalledWith(
-      'minute-key',
+      `api-rate-limit:default:tenant:${TENANT_ID}`,
       60_000,
       7,
       60_000,
@@ -520,21 +600,11 @@ describe('CustomThrottlerGuard', () => {
       true,
     );
 
-    expect(generateKey).toHaveBeenNthCalledWith(
-      1,
-      jwtRequestProps.context,
-      `tenant:${TENANT_ID}`,
-      'default',
-    );
-    expect(generateKey).toHaveBeenNthCalledWith(
-      2,
-      apiKeyRequestProps.context,
-      `tenant:${TENANT_ID}`,
-      'default',
-    );
+    // 组织桶的键不含控制器与方法名：不同接口、不同身份的请求落到同一个桶（D-214）
+    expect(generateKey).not.toHaveBeenCalled();
     expect(storageService.increment).toHaveBeenNthCalledWith(
       1,
-      `minute:tenant:${TENANT_ID}`,
+      `api-rate-limit:default:tenant:${TENANT_ID}`,
       60_000,
       7,
       60_000,
@@ -542,7 +612,7 @@ describe('CustomThrottlerGuard', () => {
     );
     expect(storageService.increment).toHaveBeenNthCalledWith(
       2,
-      `minute:tenant:${TENANT_ID}`,
+      `api-rate-limit:default:tenant:${TENANT_ID}`,
       60_000,
       7,
       60_000,
@@ -597,9 +667,12 @@ describe('CustomThrottlerGuard', () => {
 
     expect(req.tenantId).toBe(TENANT_ID);
     expect(platformApiTokenService.validateToken).not.toHaveBeenCalled();
-    expect(props.generateKey).toHaveBeenCalledWith(
-      props.context,
-      `tenant:${TENANT_ID}`,
+    expect(props.generateKey).not.toHaveBeenCalled();
+    expect(storageService.increment).toHaveBeenCalledWith(
+      `api-rate-limit:default:tenant:${TENANT_ID}`,
+      60_000,
+      9,
+      60_000,
       'default',
     );
   });
@@ -733,7 +806,7 @@ describe('CustomThrottlerGuard', () => {
 
       expect(agentApiKeyService.validate).toHaveBeenCalledWith(AGENT_RAW_KEY);
       expect(storageService.increment).toHaveBeenCalledWith(
-        `minute:agentkey:${AGENT_KEY_PREFIX}`,
+        `api-rate-limit:default:agentkey:${AGENT_KEY_PREFIX}`,
         60_000,
         30,
         60_000,
@@ -756,14 +829,14 @@ describe('CustomThrottlerGuard', () => {
       );
       storageService.increment
         .mockResolvedValueOnce({
-          totalHits: 3,
-          timeToExpire: 86_400,
+          totalHits: 1,
+          timeToExpire: 60,
           isBlocked: false,
           timeToBlockExpire: 0,
         })
         .mockResolvedValueOnce({
-          totalHits: 1,
-          timeToExpire: 60,
+          totalHits: 3,
+          timeToExpire: 86_400,
           isBlocked: false,
           timeToBlockExpire: 0,
         });
@@ -775,19 +848,19 @@ describe('CustomThrottlerGuard', () => {
       ).toHaveBeenCalledWith(TENANT_ID);
       expect(storageService.increment).toHaveBeenNthCalledWith(
         1,
+        `api-rate-limit:default:agentkey:${AGENT_KEY_PREFIX}`,
+        60_000,
+        12,
+        60_000,
+        'default',
+      );
+      expect(storageService.increment).toHaveBeenNthCalledWith(
+        2,
         expect.stringContaining(`resource-governance:daily-api:${TENANT_ID}:`),
         expect.any(Number),
         1000,
         expect.any(Number),
         'default-daily-api-quota',
-      );
-      expect(storageService.increment).toHaveBeenNthCalledWith(
-        2,
-        `minute:agentkey:${AGENT_KEY_PREFIX}`,
-        60_000,
-        12,
-        60_000,
-        'default',
       );
     });
 
@@ -897,12 +970,19 @@ describe('CustomThrottlerGuard', () => {
     resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
       createRuntimeState({ dailyApiCallLimit: 1 }),
     );
-    storageService.increment.mockResolvedValueOnce({
-      totalHits: 2,
-      timeToExpire: 100,
-      isBlocked: true,
-      timeToBlockExpire: 100,
-    });
+    storageService.increment
+      .mockResolvedValueOnce({
+        totalHits: 1,
+        timeToExpire: 60,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      })
+      .mockResolvedValueOnce({
+        totalHits: 1,
+        timeToExpire: 100,
+        isBlocked: true,
+        timeToBlockExpire: 100,
+      });
 
     await expect(guard.handleRequestForTest(props)).rejects.toBeInstanceOf(
       ResourceGovernanceDecisionBlockedException,

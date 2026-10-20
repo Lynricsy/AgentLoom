@@ -43,24 +43,34 @@ export class PlatformApiTokenService {
     this.ensureTenantId(tenantId);
     const parsedDto = CreatePlatformApiTokenSchema.parse(dto);
 
-    await this.checkTokenLimit(tenantId, userId);
-
     const rawToken = `${TOKEN_PREFIX}${crypto.randomBytes(TOKEN_BYTE_LENGTH).toString('hex')}`;
     const tokenHash = this.hashToken(rawToken);
     const tokenPrefix = rawToken.slice(0, TOKEN_PREFIX.length + 8);
 
-    const [created] = await this.db
-      .insert(platformApiTokens)
-      .values({
-        userId,
-        tenantId,
-        name: parsedDto.name,
-        tokenHash,
-        tokenPrefix,
-        scopes: parsedDto.scopes ?? null,
-        expiresAt: parsedDto.expires_at ? new Date(parsedDto.expires_at) : null,
-      })
-      .returning();
+    // 计数与插入在同一事务里按 (租户, 用户) 串行化，并发创建不会越过 20 个上限（D-213）
+    const created = await this.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext('platform_api_tokens'), hashtext(${`${tenantId}:${userId}`}))`,
+      );
+      await this.checkTokenLimit(tx as unknown as DrizzleDB, tenantId, userId);
+
+      const [inserted] = await tx
+        .insert(platformApiTokens)
+        .values({
+          userId,
+          tenantId,
+          name: parsedDto.name,
+          tokenHash,
+          tokenPrefix,
+          scopes: parsedDto.scopes ?? null,
+          expiresAt: parsedDto.expires_at
+            ? new Date(parsedDto.expires_at)
+            : null,
+        })
+        .returning();
+
+      return inserted;
+    });
 
     return {
       ...this.toResponse(created),
@@ -223,10 +233,11 @@ export class PlatformApiTokenService {
   }
 
   private async checkTokenLimit(
+    dbClient: DrizzleDB,
     tenantId: string,
     userId: string,
   ): Promise<void> {
-    const [result] = await this.db
+    const [result] = await dbClient
       .select({ count: count() })
       .from(platformApiTokens)
       .where(

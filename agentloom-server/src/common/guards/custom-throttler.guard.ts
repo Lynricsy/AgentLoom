@@ -11,6 +11,8 @@ import {
 } from '@nestjs/throttler';
 import * as jwt from 'jsonwebtoken';
 import { validate as isUuid } from 'uuid';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { SKIP_TENANT_API_QUOTA_KEY } from '../decorators/skip-tenant-api-quota.decorator';
 import {
   AgentApiKeyInvalidException,
   RateLimitExceededException,
@@ -230,7 +232,18 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     // Agent Key 必须先于 tracker 解析：tracker 依赖校验结果
     const agentApiKey = await this.resolveAgentApiKey(req);
     const tracker = await getTracker(req, context);
-    const tenantId = agentApiKey?.tenantId ?? (await this.resolveTenantId(req));
+    // 公开接口（登录、Webhook、沙箱回调等）与管理员自救接口不按组织计数：前者的租户只能从未验签的
+    // Bearer 推断，后者要在组织配额打满时仍可用（D-211）。Agent Key 已在上面查库验证，始终按所属组织计数。
+    const routeTargets = [context.getHandler(), context.getClass()];
+    const exemptFromTenantQuota =
+      this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, routeTargets) ||
+      this.reflector.getAllAndOverride<boolean>(
+        SKIP_TENANT_API_QUOTA_KEY,
+        routeTargets,
+      );
+    const tenantId =
+      agentApiKey?.tenantId ??
+      (exemptFromTenantQuota ? null : await this.resolveTenantId(req));
     const resourceGovernanceService = this.getResourceGovernanceService();
     const runtimeState = tenantId
       ? await resourceGovernanceService.resolveRuntimeStateForTenant(tenantId)
@@ -242,58 +255,13 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     // Agent Key 按 Key 独立计数，不并入租户共享桶；租户日配额仍按 Key 所属租户计数
     const rateLimitTracker =
       !agentApiKey && tenantId ? `tenant:${tenantId}` : tracker;
+    // 组织桶与 Agent Key 桶跨接口共用（「组织每分钟最多 N 次」，D-214）；其余调用方按「调用方 + 接口」计数
+    const key =
+      agentApiKey || tenantId
+        ? `api-rate-limit:${throttlerName}:${rateLimitTracker}`
+        : generateKey(context, rateLimitTracker, throttlerName);
     const blockedApiKeyPrefix =
       req.apiKeyPrefix ?? agentApiKey?.keyPrefix ?? null;
-
-    if (
-      tenantId &&
-      runtimeState &&
-      runtimeState.quota.dailyApiCallLimit !== null
-    ) {
-      const { organizationId } = runtimeState;
-      const { tenantControl } = runtimeState.governance;
-      const dailyApiCallLimit = runtimeState.quota.dailyApiCallLimit;
-      const dailyQuotaTtl = this.getDailyQuotaTtlMs(new Date());
-      const dailyQuotaKey = this.buildDailyQuotaKey(tenantId);
-      const dailyQuotaResult = await this.storageService.increment(
-        dailyQuotaKey,
-        dailyQuotaTtl,
-        dailyApiCallLimit,
-        dailyQuotaTtl,
-        `${throttlerName}-daily-api-quota`,
-      );
-
-      if (dailyQuotaResult.isBlocked) {
-        const block = resourceGovernanceService.buildBlockedDecision({
-          action: 'api_request',
-          category: 'api_rate_limit',
-          scope: 'api',
-          reason: 'tenant daily API quota has been exceeded',
-          organizationId,
-          tenantControl,
-          metadata: {
-            metric: 'dailyApiCallLimit',
-            limit: dailyApiCallLimit,
-            currentValue: dailyQuotaResult.totalHits,
-            retryAfterSeconds: dailyQuotaResult.timeToBlockExpire,
-          },
-        });
-        const actor = this.resolveBlockedDecisionActor(req);
-        await resourceGovernanceService.recordBlockedDecision({
-          tenantId,
-          actorId: actor.actorId,
-          actorType: actor.actorType,
-          block,
-          metadata: {
-            apiKeyPrefix: blockedApiKeyPrefix,
-            tracker,
-          },
-        });
-        throw new ResourceGovernanceDecisionBlockedException(block);
-      }
-    }
-
-    const key = generateKey(context, rateLimitTracker, throttlerName);
     const { totalHits, timeToExpire, isBlocked, timeToBlockExpire } =
       await this.storageService.increment(
         key,
@@ -365,6 +333,62 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       };
 
       await this.throwThrottlingException(context, throttlerLimitDetail);
+    }
+
+    // 日额度在分钟限流之后计数：被分钟限流拦下的请求不消耗日额度
+    if (
+      tenantId &&
+      runtimeState &&
+      runtimeState.quota.dailyApiCallLimit !== null
+    ) {
+      const { organizationId } = runtimeState;
+      const { tenantControl } = runtimeState.governance;
+      const dailyApiCallLimit = runtimeState.quota.dailyApiCallLimit;
+      const dailyQuotaTtl = this.getDailyQuotaTtlMs(new Date());
+      const dailyQuotaResult = await this.storageService.increment(
+        this.buildDailyQuotaKey(tenantId),
+        dailyQuotaTtl,
+        dailyApiCallLimit,
+        dailyQuotaTtl,
+        `${throttlerName}-daily-api-quota`,
+      );
+
+      if (dailyQuotaResult.isBlocked) {
+        if (setHeaders) {
+          writeRetryAfterHeader(
+            res,
+            throttlerName,
+            dailyQuotaResult.timeToBlockExpire,
+          );
+        }
+
+        const block = resourceGovernanceService.buildBlockedDecision({
+          action: 'api_request',
+          category: 'api_rate_limit',
+          scope: 'api',
+          reason: 'tenant daily API quota has been exceeded',
+          organizationId,
+          tenantControl,
+          metadata: {
+            metric: 'dailyApiCallLimit',
+            limit: dailyApiCallLimit,
+            currentValue: dailyQuotaResult.totalHits,
+            retryAfterSeconds: dailyQuotaResult.timeToBlockExpire,
+          },
+        });
+        const actor = this.resolveBlockedDecisionActor(req);
+        await resourceGovernanceService.recordBlockedDecision({
+          tenantId,
+          actorId: actor.actorId,
+          actorType: actor.actorType,
+          block,
+          metadata: {
+            apiKeyPrefix: blockedApiKeyPrefix,
+            tracker,
+          },
+        });
+        throw new ResourceGovernanceDecisionBlockedException(block);
+      }
     }
 
     if (setHeaders) {

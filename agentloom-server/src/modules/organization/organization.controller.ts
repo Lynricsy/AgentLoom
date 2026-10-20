@@ -14,6 +14,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { SkipTenantApiQuota } from '../../common/decorators/skip-tenant-api-quota.decorator';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import {
   CaptureAuditLog,
@@ -57,6 +58,8 @@ export class OrganizationController {
 
   @Get('organizations/current')
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  // Studio 资源治理页先用它取组织 id，配额打满时也必须可用（D-211）
+  @SkipTenantApiQuota()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '获取当前租户的组织详情' })
   @ApiResponse({ status: 200, description: '获取成功' })

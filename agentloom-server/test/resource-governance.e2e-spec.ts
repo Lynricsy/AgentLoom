@@ -54,13 +54,18 @@ import {
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import type { JSONValue } from 'postgres';
+import { setTimeout as sleep } from 'node:timers/promises';
 import * as crypto from 'node:crypto';
 import * as jwt from 'jsonwebtoken';
 import request from 'supertest';
+import { GenericContainer, type StartedTestContainer } from 'testcontainers';
+import type Redis from 'ioredis';
+import type * as IoRedisModule from 'ioredis';
 
 import { AppModule } from '../src/app.module';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
+import { RedisThrottlerStorageService } from '../src/common/redis/redis-throttler-storage.service';
 import { RedisCacheService } from '../src/common/redis/redis-cache.service';
 import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
 import { BULLMQ_QUEUE_NAMES } from './support/bullmq-queues';
@@ -72,6 +77,7 @@ import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import { NodeSchedulerService } from '../src/modules/execution/node-scheduler.service';
+import { ResourceGovernanceService } from '../src/modules/resource-governance/resource-governance.service';
 import {
   createRlsTestContext,
   seedAppUser,
@@ -258,73 +264,23 @@ function createMockBullRegistrar() {
   };
 }
 
-function createMockThrottlerOptions() {
-  const buckets = new Map<
-    string,
-    {
-      hits: number;
-      expiresAt: number;
-      blockedUntil: number;
-    }
-  >();
+function createThrottlerOptions(redis: Redis) {
+  const storage = new RedisThrottlerStorageService(redis);
 
   return {
     throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
     storage: {
-      increment: vi
-        .fn()
-        .mockImplementation(
-          async (
-            key: string,
-            ttl: number,
-            limit: number,
-            blockDuration: number,
-          ) => {
-            const now = Date.now();
-            const existingBucket = buckets.get(key);
-            const bucket =
-              existingBucket && existingBucket.expiresAt > now
-                ? existingBucket
-                : {
-                    hits: 0,
-                    expiresAt: now + ttl,
-                    blockedUntil: 0,
-                  };
-
-            if (bucket.blockedUntil > now) {
-              buckets.set(key, bucket);
-
-              return {
-                totalHits: bucket.hits,
-                timeToExpire: Math.max(0, bucket.expiresAt - now),
-                isBlocked: true,
-                timeToBlockExpire: Math.max(
-                  1,
-                  Math.ceil((bucket.blockedUntil - now) / 1_000),
-                ),
-              };
-            }
-
-            bucket.hits += 1;
-            if (bucket.hits > limit) {
-              bucket.blockedUntil = now + blockDuration;
-            }
-
-            buckets.set(key, bucket);
-
-            return {
-              totalHits: bucket.hits,
-              timeToExpire: Math.max(0, bucket.expiresAt - now),
-              isBlocked: bucket.hits > limit,
-              timeToBlockExpire:
-                bucket.hits > limit
-                  ? Math.max(1, Math.ceil((bucket.blockedUntil - now) / 1_000))
-                  : 0,
-            };
-          },
-        ),
+      increment: vi.fn(
+        (
+          key: string,
+          ttl: number,
+          limit: number,
+          blockDuration: number,
+          throttlerName: string,
+        ) => storage.increment(key, ttl, limit, blockDuration, throttlerName),
+      ),
     },
-    reset: () => buckets.clear(),
+    reset: () => redis.flushall(),
   };
 }
 
@@ -358,7 +314,9 @@ describe('Resource Governance E2E', () => {
   let nodeSchedulerMock: ReturnType<typeof createMockNodeSchedulerService>;
   let queueMock: ReturnType<typeof createMockQueue>;
   let bullRegistrarMock: ReturnType<typeof createMockBullRegistrar>;
-  let throttlerOptions: ReturnType<typeof createMockThrottlerOptions>;
+  let throttlerOptions: ReturnType<typeof createThrottlerOptions>;
+  let throttlerRedisContainer: StartedTestContainer | undefined;
+  let throttlerRedis: Redis | undefined;
 
   beforeAll(async () => {
     ensureTestEnvironment();
@@ -372,7 +330,17 @@ describe('Resource Governance E2E', () => {
     nodeSchedulerMock = createMockNodeSchedulerService();
     queueMock = createMockQueue();
     bullRegistrarMock = createMockBullRegistrar();
-    throttlerOptions = createMockThrottlerOptions();
+    throttlerRedisContainer = await new GenericContainer('redis:7-alpine')
+      .withExposedPorts(6379)
+      .start();
+    // 本文件把 ioredis 整体替换成桩；节流计数要验证真实的 Lua 语义，单独用真实客户端连容器
+    const { default: RealRedis } =
+      await vi.importActual<typeof IoRedisModule>('ioredis');
+    throttlerRedis = new RealRedis(
+      throttlerRedisContainer.getMappedPort(6379),
+      throttlerRedisContainer.getHost(),
+    );
+    throttlerOptions = createThrottlerOptions(throttlerRedis);
 
     let moduleBuilder = Test.createTestingModule({
       imports: [AppModule],
@@ -447,12 +415,14 @@ describe('Resource Governance E2E', () => {
     queueMock.add.mockResolvedValue(undefined);
     queueMock.getJob.mockResolvedValue(null);
     queueMock.getJobs.mockResolvedValue([]);
-    throttlerOptions.reset();
+    await throttlerOptions.reset();
   });
 
   afterAll(async () => {
     await app?.close();
     await ctx?.close();
+    await throttlerRedis?.quit();
+    await throttlerRedisContainer?.stop();
   }, 30_000);
 
   async function cleanupExtendedTables(testCtx: RlsTestContext) {
@@ -922,7 +892,7 @@ describe('Resource Governance E2E', () => {
       quota: {
         organizationId: tenant.organizationId,
         tenantId: tenant.tenantId,
-        apiRateLimitPerMinute: 100,
+        apiRateLimitPerMinute: 600,
         maxConcurrentExecutions: null,
         dailyExecutionLimit: null,
         dailyApiCallLimit: null,
@@ -1027,20 +997,20 @@ describe('Resource Governance E2E', () => {
       .send(quotaPayload)
       .expect(200);
 
-    throttlerOptions.reset();
+    await throttlerOptions.reset();
     throttlerOptions.storage.increment.mockClear();
 
+    // 资源治理接口不计入组织桶（D-211），这里用普通业务接口验证共享
     const firstResponse = await request(app!.getHttpServer())
-      .get(`/api/v1/organizations/${tenant.organizationId}/resource-governance`)
+      .get('/api/v1/workflow-definitions?pageSize=1')
       .set(tenant.headers);
 
     expect(firstResponse.status).toBe(200);
-    expect(firstResponse.body.data.quota.apiRateLimitPerMinute).toBe(1);
     expect(firstResponse.headers['x-ratelimit-limit']).toBe('1');
     expect(firstResponse.headers['x-ratelimit-remaining']).toBe('0');
 
     const secondResponse = await request(app!.getHttpServer())
-      .get(`/api/v1/organizations/${tenant.organizationId}/resource-governance`)
+      .get('/api/v1/workflow-definitions?pageSize=1')
       .set(authHeaders(siblingMember));
 
     expect(secondResponse.status).toBe(429);
@@ -1051,7 +1021,7 @@ describe('Resource Governance E2E', () => {
       metadata: expect.objectContaining({
         metric: 'apiRateLimitPerMinute',
         limit: 1,
-        currentValue: 2,
+        currentValue: 1,
       }),
     });
     expect(secondResponse.headers['retry-after']).toBeDefined();
@@ -1060,12 +1030,182 @@ describe('Resource Governance E2E', () => {
     expect(secondResponse.headers['x-ratelimit-reset']).toBeDefined();
 
     const isolatedTenantResponse = await request(app!.getHttpServer())
-      .get(
-        `/api/v1/organizations/${otherTenant.organizationId}/resource-governance`,
-      )
+      .get('/api/v1/workflow-definitions?pageSize=1')
       .set(otherTenant.headers);
 
     expect(isolatedTenantResponse.status).toBe(200);
+  });
+
+  it('分钟限流按组织跨接口共用一个桶，阻断期间调高上限后下一次请求立即放行（D-214、D-215）', async () => {
+    const tenant = await seedTenant('resource-governance-cross-route-bucket');
+    const quotaPath = `/api/v1/organizations/${tenant.organizationId}/resource-governance/quota`;
+
+    await request(app!.getHttpServer())
+      .put(quotaPath)
+      .set(tenant.headers)
+      .send({ apiRateLimitPerMinute: 2 })
+      .expect(200);
+    await throttlerOptions.reset();
+
+    const firstRoute = await request(app!.getHttpServer())
+      .get('/api/v1/workflow-definitions?pageSize=1')
+      .set(tenant.headers);
+    const secondRoute = await request(app!.getHttpServer())
+      .get('/api/v1/agent-definitions?pageSize=1')
+      .set(tenant.headers);
+    const blocked = await request(app!.getHttpServer())
+      .get('/api/v1/organizations/' + tenant.organizationId + '/members')
+      .set(tenant.headers);
+
+    expect(firstRoute.status).toBe(200);
+    expect(secondRoute.status).toBe(200);
+    expect(secondRoute.headers['x-ratelimit-remaining']).toBe('0');
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers['retry-after']).toBeDefined();
+    expect(blocked.body.block.metadata).toMatchObject({
+      metric: 'apiRateLimitPerMinute',
+      limit: 2,
+      currentValue: 2,
+    });
+
+    // 资源治理接口不计入组织桶：阻断期间管理员仍能调高上限，新上限对下一次请求立即生效
+    const raised = await request(app!.getHttpServer())
+      .put(quotaPath)
+      .set(tenant.headers)
+      .send({ apiRateLimitPerMinute: 5 });
+
+    expect(raised.status).toBe(200);
+
+    const afterRaise = await request(app!.getHttpServer())
+      .get('/api/v1/workflow-definitions?pageSize=1')
+      .set(tenant.headers);
+
+    expect(afterRaise.status).toBe(200);
+    expect(afterRaise.headers['x-ratelimit-limit']).toBe('5');
+    expect(afterRaise.headers['x-ratelimit-remaining']).toBe('2');
+  });
+
+  it('日额度用满后返回 429 与 Retry-After，管理员仍可查看并调整配额，调高后立即恢复（D-211、D-216）', async () => {
+    const tenant = await seedTenant('resource-governance-daily-quota');
+    const quotaPath = `/api/v1/organizations/${tenant.organizationId}/resource-governance/quota`;
+
+    await request(app!.getHttpServer())
+      .put(quotaPath)
+      .set(tenant.headers)
+      .send({ dailyApiCallLimit: 2 })
+      .expect(200);
+    await throttlerOptions.reset();
+
+    for (let index = 0; index < 2; index += 1) {
+      await request(app!.getHttpServer())
+        .get('/api/v1/workflow-definitions?pageSize=1')
+        .set(tenant.headers)
+        .expect(200);
+    }
+
+    const blocked = await request(app!.getHttpServer())
+      .get('/api/v1/workflow-definitions?pageSize=1')
+      .set(tenant.headers);
+
+    expect(blocked.status).toBe(429);
+    const retryAfter = Number(blocked.headers['retry-after']);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(86_400);
+    expect(blocked.body.block.metadata).toMatchObject({
+      metric: 'dailyApiCallLimit',
+      limit: 2,
+      currentValue: 2,
+      retryAfterSeconds: retryAfter,
+    });
+
+    await request(app!.getHttpServer())
+      .get('/api/v1/organizations/current')
+      .set(tenant.headers)
+      .expect(200);
+    await request(app!.getHttpServer())
+      .get(`/api/v1/organizations/${tenant.organizationId}/resource-governance`)
+      .set(tenant.headers)
+      .expect(200);
+    await request(app!.getHttpServer())
+      .put(quotaPath)
+      .set(tenant.headers)
+      .send({ dailyApiCallLimit: 5 })
+      .expect(200);
+
+    await request(app!.getHttpServer())
+      .get('/api/v1/workflow-definitions?pageSize=1')
+      .set(tenant.headers)
+      .expect(200);
+  });
+
+  it('并发启动执行不能越过 maxConcurrentExecutions（D-212）', async () => {
+    const tenant = await seedTenant('resource-governance-concurrent-start');
+    const workflow = await seedPublishedWorkflow({
+      tenantId: tenant.tenantId,
+      createdBy: tenant.user.id,
+      prefix: 'concurrent-start',
+    });
+
+    await request(app!.getHttpServer())
+      .put(
+        `/api/v1/organizations/${tenant.organizationId}/resource-governance/quota`,
+      )
+      .set(tenant.headers)
+      .send({ maxConcurrentExecutions: 1 })
+      .expect(200);
+
+    // 准入判定返回后停 200ms 再插入，把「计数 → 插入」的窗口拉宽，让并发请求必然落在窗口内；
+    // 修复前 4 个请求都在窗口内数到 0 个活跃执行，全部被接受
+    const governanceService = app!.get(ResourceGovernanceService);
+    const originalAdmission =
+      governanceService.resolveExecutionAdmissionDecision.bind(
+        governanceService,
+      );
+    const admissionSpy = vi
+      .spyOn(governanceService, 'resolveExecutionAdmissionDecision')
+      .mockImplementation(async (params) => {
+        const decision = await originalAdmission(params);
+        await sleep(200);
+        return decision;
+      });
+
+    // 测试库连接池为 5，留一个连接给被拦截请求的独立审计事务
+    const responses = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        request(app!.getHttpServer())
+          .post(
+            `/api/v1/workflow-definitions/${workflow.workflowDefinitionId}/run`,
+          )
+          .set(tenant.headers)
+          .send({}),
+      ),
+    ).finally(() => admissionSpy.mockRestore());
+    const statuses = responses.map((response) => response.status).sort();
+
+    expect(statuses).toEqual([202, 409, 409, 409]);
+    for (const response of responses.filter((r) => r.status === 409)) {
+      expect(response.body.block.metadata).toMatchObject({
+        metric: 'maxConcurrentExecutions',
+        limit: 1,
+        currentValue: 1,
+      });
+    }
+    expect(
+      await countWorkflowExecutions(
+        tenant.tenantId,
+        workflow.workflowDefinitionId,
+      ),
+    ).toBe(1);
+
+    // 拦截通知由事件监听器异步写入，等它落库，避免与下一个用例的 TRUNCATE 交错
+    await waitForCondition(
+      () =>
+        getNotifications(
+          tenant.tenantId,
+          'resource_governance_execution_blocked',
+        ),
+      (rows) => rows.length === 3,
+    );
   });
 
   it('pauses a tenant without mutating running executions and blocks new execution starts with audit and notification', async () => {

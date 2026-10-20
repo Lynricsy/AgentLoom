@@ -40,7 +40,13 @@ const mocks = vi.hoisted(() => ({
       values: vi.fn().mockReturnThis(),
       update: vi.fn().mockReturnThis(),
       set: vi.fn().mockReturnThis(),
+      execute: vi.fn().mockResolvedValue(undefined),
+      transaction: vi.fn(),
     };
+    // 计数与插入在同一事务内执行，事务对象直接复用 mockDb
+    mockDb.transaction.mockImplementation(
+      async (callback: (tx: typeof mockDb) => unknown) => callback(mockDb),
+    );
 
     return mockDb;
   },
@@ -256,6 +262,11 @@ describe('PlatformApiTokenService', () => {
       ).rejects.toBeInstanceOf(PlatformApiTokenLimitExceededException);
 
       expect(mockDb.insert).not.toHaveBeenCalled();
+      // 计数前先按 (租户, 用户) 拿 advisory 锁（D-213）
+      expect(mockDb.execute).toHaveBeenCalledTimes(1);
+      expect(mockDb.execute.mock.invocationCallOrder[0]).toBeLessThan(
+        mockDb.select.mock.invocationCallOrder[0],
+      );
     });
 
     it('应在 tenantId 缺失时抛出租户缺失异常', async () => {

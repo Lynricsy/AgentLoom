@@ -740,15 +740,24 @@ describe('PlatformApiToken E2E', () => {
       }
     });
 
-    it('同租户 API 请求超过 100 次后应共享分钟限流桶并返回 429', async () => {
+    it('同租户不同 token 共用组织分钟桶，超过组织上限后返回 429', async () => {
       const primaryToken = await createToken({
         name: 'Primary Rate Limit Token',
       });
       const secondaryToken = await createToken({
         name: 'Secondary Rate Limit Token',
       });
+      await ctx.adminSql`
+        INSERT INTO "tenant_quotas" (
+          organization_id, tenant_id, api_rate_limit_per_minute, created_by, updated_by
+        )
+        VALUES (
+          ${orgId}::uuid, ${tenantId}::uuid, 5, ${creatorUser.id}::uuid, ${creatorUser.id}::uuid
+        )
+      `;
 
-      for (let index = 0; index < 100; index += 1) {
+      // 创建 token 的 2 次请求在配额写入前已计入同一个组织桶
+      for (let index = 0; index < 3; index += 1) {
         const res = await listTokens(
           { status: 'all' },
           apiKeyHeaders(primaryToken.token),
@@ -764,7 +773,7 @@ describe('PlatformApiToken E2E', () => {
 
       expect(limited.status).toBe(429);
       expect(String(limited.headers['retry-after'] ?? '')).toMatch(/^\d+$/);
-      expect(String(limited.headers['x-ratelimit-limit'] ?? '')).toBe('100');
+      expect(String(limited.headers['x-ratelimit-limit'] ?? '')).toBe('5');
       expect(limited.headers['x-ratelimit-remaining']).toBeDefined();
       expect(limited.headers['x-ratelimit-reset']).toBeDefined();
 
@@ -778,7 +787,7 @@ describe('PlatformApiToken E2E', () => {
         /^\d+$/,
       );
       expect(String(secondaryRes.headers['x-ratelimit-limit'] ?? '')).toBe(
-        '100',
+        '5',
       );
     });
   });
@@ -857,6 +866,31 @@ describe('PlatformApiToken E2E', () => {
       expect((overflow.body as ProblemDetailsBody).type).toBe(
         'https://agentloom.dev/errors/platform-api-token-limit-exceeded',
       );
+    });
+
+    it('有效 token 为 19 个时并发创建 5 个，只有 1 个成功，总数不超过 20（D-213）', async () => {
+      for (let index = 0; index < 19; index += 1) {
+        await seedPlatformToken({ name: `Seeded ${index}` });
+      }
+
+      const responses = await Promise.all(
+        Array.from({ length: 5 }, (_, index) =>
+          createTokenRequest({ name: `Race ${index}` }),
+        ),
+      );
+      const statuses = responses.map((res) => res.status).sort();
+
+      expect(statuses).toEqual([201, 409, 409, 409, 409]);
+
+      const [{ active }] = await ctx.adminSql<{ active: number }[]>`
+        SELECT count(*)::int AS active
+        FROM "platform_api_tokens"
+        WHERE tenant_id = ${tenantId}::uuid
+          AND user_id = ${creatorUser.id}::uuid
+          AND is_revoked = false
+      `;
+
+      expect(active).toBe(20);
     });
 
     it('缺少 name 时应返回 422', async () => {
