@@ -411,7 +411,7 @@ export class PlaywrightBrowserAcceptanceExecutor implements GeneratedAppBrowserA
     const evidenceDir = await mkdtemp(join(tmpdir(), 'agentloom-gate5-'));
     let outcome: GeneratedAppBrowserScenarioOutcome;
     let screenshot: Buffer | null = null;
-    let trace: Buffer | null = null;
+    let trace: Buffer | null;
     try {
       // 入口同源以外的请求一律拦截：生成内容不能借验收浏览器访问内网或外部地址
       await context.route('**/*', (route) =>
