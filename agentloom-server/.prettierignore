@@ -1,0 +1,2 @@
+# 测试快照由 vitest 精确比对（toMatchFileSnapshot），格式化会改动文件末尾导致快照失配
+**/__snapshots__/
