@@ -14,7 +14,7 @@ import type {
   GeneratedAppGenerationPlan,
   GeneratedAppRepairPlan,
   GeneratedAppReverificationPlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
 import { buildGeneratedAppRuntimeForm } from './generated-app.runtime';
@@ -72,7 +72,7 @@ interface MaterializeWorkspaceParams {
   tenantId: string;
   appId: string;
   generationRunId: string;
-  appSpec: GeneratedAppSpec;
+  appSpec: GeneratedAppSpecV1;
   generationPlan: GeneratedAppGenerationPlan;
   staticContracts: GeneratedAppStaticContracts;
   buildUnitPlan: GeneratedAppBuildUnitPlan;
@@ -287,7 +287,7 @@ export class GeneratedAppGate3WorkspaceRunner {
     tenantId: string;
     appId: string;
     generationRunId: string;
-    appSpec: GeneratedAppSpec;
+    appSpec: GeneratedAppSpecV1;
     staticContracts: GeneratedAppStaticContracts;
   }): GeneratedAppGenerationWorkspaceContract {
     const workspaceId = `generated-app-${this.sanitizeSegment(

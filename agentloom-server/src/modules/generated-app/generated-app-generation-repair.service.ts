@@ -36,7 +36,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,

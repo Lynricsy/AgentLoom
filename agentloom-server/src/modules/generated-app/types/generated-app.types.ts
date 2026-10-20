@@ -1,6 +1,10 @@
 // 本文件集中定义 Generated App 的领域契约；不得包含数据库表或持久化实现。
 
 import type { GeneratedAppRepairAttemptStatus } from '../../../database/schema/generated-apps.schema';
+import type { GeneratedAppSpecV2 } from './app-spec-v2.schema';
+
+export type { GeneratedAppSpecV2 } from './app-spec-v2.schema';
+
 export type GeneratedAppReadinessState =
   'preview' | 'trial' | 'publish_candidate' | 'blocked';
 
@@ -21,7 +25,11 @@ export interface GeneratedAppAcceptanceScenario {
   scope?: 'requirement' | 'platform';
 }
 
-export interface GeneratedAppSpec {
+/**
+ * v1 模板 AppSpec（ADR-0007 之前由 `buildInitialAppSpec` 生成）。只为 v2 落地期间的存量数据与
+ * 旧门禁代码过渡，v2 集成完成后与 `GeneratedAppSpec` 联合一起删除。
+ */
+export interface GeneratedAppSpecV1 {
   version: 1;
   appName: string;
   summary: string;
@@ -50,6 +58,19 @@ export interface GeneratedAppSpec {
     scenarioIds: string[];
     evidenceIds: string[];
   }>;
+}
+
+/** `generated_apps.app_spec` 的持久化形状：v1 存量或 v2 生成结果，按 `version` 区分 */
+export type GeneratedAppSpec = GeneratedAppSpecV1 | GeneratedAppSpecV2;
+
+/**
+ * 按 `version` 判别 AppSpec 版本。只看判别字段，不做完整校验：
+ * 完整的 v2 契约由 Gate 0 用 `GeneratedAppSpecV2Schema.safeParse` 复核。
+ */
+export function isAppSpecV2(
+  appSpec: GeneratedAppSpec | null | undefined,
+): appSpec is GeneratedAppSpecV2 {
+  return appSpec?.version === 2;
 }
 
 export interface GeneratedAppGateEvidence {

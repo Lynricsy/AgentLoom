@@ -5,7 +5,7 @@ import type {
   GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationPlan,
   GeneratedAppIntegrationPlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../../database/schema';
 import {
@@ -38,7 +38,7 @@ function createConfigService(
   } as unknown as ConfigService;
 }
 
-function createAppSpec(): GeneratedAppSpec {
+function createAppSpec(): GeneratedAppSpecV1 {
   return {
     version: 1,
     appName: '自动化中医问诊系统',
@@ -80,7 +80,7 @@ function createAppSpec(): GeneratedAppSpec {
 }
 
 function buildBuildUnitPlanForTest(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   gate3Runner: GeneratedAppGate3WorkspaceRunner,
@@ -580,7 +580,7 @@ describe('GeneratedAppGate4IntegrationRunner', () => {
   });
 
   it('builder 应为私有插件与缺省 workspace/traceability 生成完整的集成引用', () => {
-    const appSpec: GeneratedAppSpec = {
+    const appSpec: GeneratedAppSpecV1 = {
       ...createAppSpec(),
       traceability: [],
     };

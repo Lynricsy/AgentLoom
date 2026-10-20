@@ -1,5 +1,8 @@
 import * as schema from '../../database/schema';
-import type { GeneratedAppGenerationPlan } from '../../database/schema';
+import type {
+  GeneratedAppGenerationPlan,
+  GeneratedAppSpec,
+} from '../../database/schema';
 import type { GeneratedAppResponseDto } from './dto';
 import type { WorkflowInputSchema } from '../workflow/dto/workflow-input-schema.dto';
 import {
@@ -29,8 +32,13 @@ export interface GeneratedAppPrivatePluginBuildReport {
   passed: boolean;
 }
 
+/** Gate 7 运行时绑定只处理已有 AppSpec 的应用；调用方在门禁通过后传入已确认的规格 */
+export type GeneratedAppWithAppSpec = GeneratedAppResponseDto & {
+  appSpec: GeneratedAppSpec;
+};
+
 export function buildGeneratedWorkflowRuntimeNodes(
-  app: GeneratedAppResponseDto,
+  app: GeneratedAppWithAppSpec,
 ): schema.ReactFlowNode[] {
   const pluginTools = getGeneratedPrivatePluginRuntimeBindings(app);
   const promptText = [
@@ -262,7 +270,7 @@ export function createWorkflowPort(
 }
 
 export function buildGeneratedPrivatePluginRegistrationManifest(params: {
-  app: GeneratedAppResponseDto;
+  app: GeneratedAppWithAppSpec;
   toolId: string;
   pluginBundle: {
     manifest: Record<string, unknown>;

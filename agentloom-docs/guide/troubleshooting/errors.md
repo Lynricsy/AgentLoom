@@ -257,6 +257,8 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `generated-app-not-found` | 404 | 生成应用不存在或不属于当前组织 | 确认链接与当前组织 |
 | `generated-app-artifact-not-found` | 404 | 生成应用的交付物不存在 | 重新生成 |
 | `generated-app-submission-not-found` | 404 | 生成应用的提交记录不存在 | 确认提交 ID |
+| `generated-app-binding-target-not-found` | 422 | 创建应用时指定的工作流或 Agent 不存在、不属于当前组织或尚未发布 | 先发布该工作流或 Agent，或不指定绑定目标、由生成过程从已发布的工作流与 Agent 中选择 |
+| `generated-app-generation-run-in-progress` | 409 | 该应用已有排队中或运行中的生成运行 | 等当前运行结束后再启动 |
 | `share-not-found` | 404 | 分享链接不存在或无权访问 | 确认链接完整 |
 | `share-copy-not-allowed` | 409 | 该分享链接不允许导入副本 | 请分享者改为可复制的分享 |
 | `share-agent-not-published` | 409 | 被分享的 Agent 尚未发布，无法导入 | 请分享者发布 Agent |

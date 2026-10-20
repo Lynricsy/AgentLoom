@@ -8,7 +8,7 @@ import type {
   GeneratedAppGenerationPlan,
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../../database/schema';
 import {
@@ -43,7 +43,7 @@ function createConfigService(
   } as unknown as ConfigService;
 }
 
-function createAppSpec(): GeneratedAppSpec {
+function createAppSpec(): GeneratedAppSpecV1 {
   return {
     version: 1,
     appName: '自动化中医问诊系统',
@@ -107,7 +107,7 @@ function createGateResults(withEvidence = true): GeneratedAppGateResult[] {
 }
 
 function buildBuildUnitPlanForTest(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   gate3Runner: GeneratedAppGate3WorkspaceRunner,

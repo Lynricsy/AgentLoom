@@ -36,7 +36,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,
@@ -220,6 +220,7 @@ import {
 import { GeneratedAppRepository } from './generated-app.repository';
 import { GeneratedAppGenerationRepairService } from './generated-app-generation-repair.service';
 import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-binding.service';
+import { isAppSpecV2 } from './types/generated-app.types';
 
 export async function runGenerationToTerminal<T>(
   runGates: (markTerminalPersisted: () => void) => Promise<T>,
@@ -314,7 +315,9 @@ export class GeneratedAppGenerationOrchestratorService {
               )
             : null;
 
-        const gate0Evaluation = evaluateGate0AppSpec(app.appSpec);
+        // v2 门禁接入前的过渡：Gate 1–7 只认 v1 规格；尚未生成（null）或 v2 规格由 Gate 0 判失败
+        const appSpecV1 = isAppSpecV2(app.appSpec) ? null : app.appSpec;
+        const gate0Evaluation = evaluateGate0AppSpec(appSpecV1);
         const gateCompletedAt = new Date();
         const gateRunResult = await this.repository.createGateRunAndUpdateApp(
           tenantId,
@@ -350,13 +353,13 @@ export class GeneratedAppGenerationOrchestratorService {
         let completedAt = gateCompletedAt;
         let completedStatus: schema.GeneratedAppGenerationRunStatus = 'failed';
 
-        if (gate0Evaluation.status === 'passed') {
+        if (gate0Evaluation.status === 'passed' && appSpecV1) {
           const generationPlan = buildGenerationPlan(
-            app.appSpec,
+            appSpecV1,
             retryRepairContext,
           );
           const gate1Evaluation = evaluateGate1GenerationPlan(
-            app.appSpec,
+            appSpecV1,
             generationPlan,
           );
           const gate0Result = latestApp.gateResults.find(
@@ -409,7 +412,7 @@ export class GeneratedAppGenerationOrchestratorService {
               '门禁运行器骨架完成 Gate 0，但 Gate 1 架构计划门禁失败；当前应用保持不可发布。';
           } else {
             const staticContracts = buildStaticContracts(
-              app.appSpec,
+              appSpecV1,
               generationPlan,
             );
             const generationPlanWithStaticContracts: GeneratedAppGenerationPlan =
@@ -418,7 +421,7 @@ export class GeneratedAppGenerationOrchestratorService {
                 staticContracts,
               };
             const gate2Evaluation = evaluateGate2StaticContracts(
-              app.appSpec,
+              appSpecV1,
               generationPlan,
               staticContracts,
             );
@@ -480,21 +483,21 @@ export class GeneratedAppGenerationOrchestratorService {
                   tenantId,
                   appId,
                   generationRunId: run.id,
-                  appSpec: app.appSpec,
+                  appSpec: appSpecV1,
                   staticContracts,
                 });
               const gate3CommandPlan =
                 this.gate3WorkspaceRunner.buildCommandPlan({
                   workspace: gate3Workspace,
-                  requirementIds: app.appSpec.coreRequirements.map(
+                  requirementIds: appSpecV1.coreRequirements.map(
                     (requirement) => requirement.id,
                   ),
-                  scenarioIds: app.appSpec.acceptanceScenarios.map(
+                  scenarioIds: appSpecV1.acceptanceScenarios.map(
                     (scenario) => scenario.id,
                   ),
                 });
               const buildUnitPlan = buildBuildUnitPlan(
-                app.appSpec,
+                appSpecV1,
                 generationPlan,
                 staticContracts,
                 gate3Workspace,
@@ -507,7 +510,7 @@ export class GeneratedAppGenerationOrchestratorService {
                   buildUnitPlan,
                 };
               let gate3Evaluation = evaluateGate3BuildUnitPlan(
-                app.appSpec,
+                appSpecV1,
                 generationPlan,
                 staticContracts,
                 buildUnitPlan,
@@ -518,7 +521,7 @@ export class GeneratedAppGenerationOrchestratorService {
                     tenantId,
                     appId,
                     generationRunId: run.id,
-                    appSpec: app.appSpec,
+                    appSpec: appSpecV1,
                     generationPlan,
                     staticContracts,
                     buildUnitPlan,
@@ -591,7 +594,7 @@ export class GeneratedAppGenerationOrchestratorService {
                     tenantId,
                     appId,
                     generationRunId: run.id,
-                    appSpec: app.appSpec,
+                    appSpec: appSpecV1,
                     generationPlan,
                     staticContracts,
                     buildUnitPlan,
@@ -670,7 +673,7 @@ export class GeneratedAppGenerationOrchestratorService {
                   : '门禁运行器完成 Gate 0、Gate 1 和 Gate 2，但 Gate 3 Generation Workspace、构建/单元执行或 buildUnitPlan 检查失败；Gate 4-7 未执行，当前应用保持不可发布。';
               } else {
                 const integrationPlan = buildIntegrationPlan(
-                  app.appSpec,
+                  appSpecV1,
                   generationPlan,
                   staticContracts,
                   buildUnitPlan,
@@ -682,7 +685,7 @@ export class GeneratedAppGenerationOrchestratorService {
                     integrationPlan,
                   };
                 let gate4Evaluation = evaluateGate4IntegrationPlan(
-                  app.appSpec,
+                  appSpecV1,
                   generationPlan,
                   staticContracts,
                   buildUnitPlan,
@@ -690,7 +693,7 @@ export class GeneratedAppGenerationOrchestratorService {
                 );
                 if (gate4Evaluation.status === 'passed') {
                   gate4Evaluation = this.gate4IntegrationRunner.run({
-                    appSpec: app.appSpec,
+                    appSpec: appSpecV1,
                     generationPlan,
                     staticContracts,
                     buildUnitPlan,
@@ -753,7 +756,7 @@ export class GeneratedAppGenerationOrchestratorService {
                     '门禁运行器完成 Gate 0、Gate 1、Gate 2 和 Gate 3，但 Gate 4 integration runner 或 integrationPlan 检查失败；Gate 5-7 未执行，当前应用保持不可发布。';
                 } else {
                   const browserAcceptancePlan = buildBrowserAcceptancePlan(
-                    app.appSpec,
+                    appSpecV1,
                     generationPlan,
                     staticContracts,
                     buildUnitPlan,
@@ -766,7 +769,7 @@ export class GeneratedAppGenerationOrchestratorService {
                       browserAcceptancePlan,
                     };
                   let gate5Evaluation = evaluateGate5BrowserAcceptancePlan(
-                    app.appSpec,
+                    appSpecV1,
                     generationPlan,
                     staticContracts,
                     buildUnitPlan,
@@ -775,7 +778,7 @@ export class GeneratedAppGenerationOrchestratorService {
                   );
                   if (gate5Evaluation.status === 'passed') {
                     gate5Evaluation = this.gate5BrowserAcceptanceRunner.run({
-                      appSpec: app.appSpec,
+                      appSpec: appSpecV1,
                       generationPlan,
                       staticContracts,
                       buildUnitPlan,
@@ -841,7 +844,7 @@ export class GeneratedAppGenerationOrchestratorService {
                   } else {
                     const independentVerificationPlan =
                       buildIndependentVerificationPlan(
-                        app.appSpec,
+                        appSpecV1,
                         generationPlan,
                         staticContracts,
                         buildUnitPlan,
@@ -857,7 +860,7 @@ export class GeneratedAppGenerationOrchestratorService {
                       };
                     let gate6Evaluation =
                       evaluateGate6IndependentVerificationPlan(
-                        app.appSpec,
+                        appSpecV1,
                         generationPlan,
                         staticContracts,
                         buildUnitPlan,
@@ -869,7 +872,7 @@ export class GeneratedAppGenerationOrchestratorService {
                     if (gate6Evaluation.status === 'passed') {
                       gate6Evaluation = this.gate6IndependentVerifierRunner.run(
                         {
-                          appSpec: app.appSpec,
+                          appSpec: appSpecV1,
                           generationPlan,
                           staticContracts,
                           buildUnitPlan,
@@ -940,7 +943,7 @@ export class GeneratedAppGenerationOrchestratorService {
                         '门禁运行器完成 Gate 0、Gate 1、Gate 2、Gate 3、Gate 4 和 Gate 5，但 Gate 6 independent verifier 计划或执行器失败；当前应用保持不可发布。';
                     } else {
                       const publishCandidatePlan = buildPublishCandidatePlan(
-                        app.appSpec,
+                        appSpecV1,
                         generationPlan,
                         staticContracts,
                         buildUnitPlan,
@@ -956,7 +959,7 @@ export class GeneratedAppGenerationOrchestratorService {
                           publishCandidatePlan,
                         };
                       let gate7Evaluation = evaluateGate7PublishCandidatePlan(
-                        app.appSpec,
+                        appSpecV1,
                         generationPlan,
                         staticContracts,
                         buildUnitPlan,
@@ -968,7 +971,7 @@ export class GeneratedAppGenerationOrchestratorService {
                       );
                       if (gate7Evaluation.status === 'passed') {
                         gate7Evaluation = this.gate7PublishCandidateRunner.run({
-                          appSpec: app.appSpec,
+                          appSpec: appSpecV1,
                           generationPlan,
                           staticContracts,
                           buildUnitPlan,
@@ -1036,13 +1039,13 @@ export class GeneratedAppGenerationOrchestratorService {
                           await this.runtimeBindingService.ensureGeneratedPrivatePluginBindings(
                             tenantId,
                             userId,
-                            latestApp,
+                            { ...latestApp, appSpec: appSpecV1 },
                           );
                         latestApp =
                           await this.runtimeBindingService.ensureGeneratedWorkflowRuntimeBinding(
                             tenantId,
                             userId,
-                            latestApp,
+                            { ...latestApp, appSpec: appSpecV1 },
                             run.id,
                           );
                         completedStatus = 'passed';

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   computeContentHash as computePluginArchiveContentHash,
   readArchiveManifest,
@@ -37,7 +37,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,
@@ -95,6 +95,7 @@ import {
   normalizeGeneratedAppGateResults,
 } from './generated-app.gates';
 import {
+  GeneratedAppBindingTargetNotFoundException,
   GeneratedAppGateDefinitionNotFoundException,
   GeneratedAppGenerationRunNotFoundException,
   GeneratedAppNotFoundException,
@@ -104,6 +105,10 @@ import {
   GeneratedAppArtifactTooLargeException,
   GeneratedAppSubmissionNotFoundException,
 } from './generated-app.exceptions';
+import {
+  LlmModelConfigNotFoundException,
+  LlmModelConfigValidationException,
+} from '../llm/llm.exceptions';
 import {
   GeneratedAppGate3WorkspaceRunner,
   type GeneratedAppGate3CommandPlan,
@@ -221,6 +226,8 @@ import {
 } from '../workflow/dto/workflow-input-schema.dto';
 
 import { DEFAULT_PREVIEW } from './generated-app.internal';
+import type { GeneratedAppRecordV1 } from './generated-app.internal';
+import { isAppSpecV2 } from './types/generated-app.types';
 
 @Injectable()
 export class GeneratedAppRepository {
@@ -243,6 +250,7 @@ export class GeneratedAppRepository {
     dto: CreateGeneratedAppDtoType,
   ): Promise<GeneratedAppResponseDto> {
     const prompt = dto.prompt.trim();
+    await this.assertCreateReferencesInTenant(tenantId, dto);
     const appSpec = buildInitialAppSpec(prompt);
     // 初始 Gate 0 按 AppSpec 实际评估，不再无条件写 passed
     const gate0 = evaluateGate0AppSpec(appSpec);
@@ -273,12 +281,89 @@ export class GeneratedAppRepository {
         readiness,
         preview: DEFAULT_PREVIEW,
         pluginIds: [],
+        generationModelConfigId: dto.modelConfigId ?? null,
+        bindingTarget: dto.bindingTarget ?? null,
         createdBy: userId,
         updatedBy: userId,
       })
       .returning();
 
     return this.toResponseDto(created);
+  }
+
+  /**
+   * FK 不受 RLS 约束：创建时指定的模型与绑定目标必须先在当前租户内确认，避免存下跨租户引用。
+   * 模型须是已启用的 chat 模型；绑定目标须已发布（有已发布版本），否则生成运行无法固定版本。
+   */
+  private async assertCreateReferencesInTenant(
+    tenantId: string,
+    dto: CreateGeneratedAppDtoType,
+  ): Promise<void> {
+    if (dto.modelConfigId) {
+      const [model] = await this.tenantDb
+        .select({
+          modelType: schema.llmModelConfigs.modelType,
+          isEnabled: schema.llmModelConfigs.isEnabled,
+        })
+        .from(schema.llmModelConfigs)
+        .where(
+          and(
+            eq(schema.llmModelConfigs.id, dto.modelConfigId),
+            eq(schema.llmModelConfigs.tenantId, tenantId),
+          ),
+        )
+        .limit(1);
+
+      if (!model) {
+        throw new LlmModelConfigNotFoundException(dto.modelConfigId);
+      }
+      if (model.modelType !== 'chat' || !model.isEnabled) {
+        throw new LlmModelConfigValidationException(
+          `模型配置 ${dto.modelConfigId} 不是已启用的 chat 模型，不能用于生成 AppSpec`,
+        );
+      }
+    }
+
+    const target = dto.bindingTarget;
+    if (!target) {
+      return;
+    }
+
+    const [published] =
+      target.kind === 'workflow'
+        ? await this.tenantDb
+            .select({ id: schema.workflowDefinitions.id })
+            .from(schema.workflowDefinitions)
+            .where(
+              and(
+                eq(schema.workflowDefinitions.id, target.workflowDefinitionId),
+                eq(schema.workflowDefinitions.tenantId, tenantId),
+                eq(schema.workflowDefinitions.status, 'published'),
+                isNotNull(schema.workflowDefinitions.publishedVersionId),
+              ),
+            )
+            .limit(1)
+        : await this.tenantDb
+            .select({ id: schema.agentDefinitions.id })
+            .from(schema.agentDefinitions)
+            .where(
+              and(
+                eq(schema.agentDefinitions.id, target.agentDefinitionId),
+                eq(schema.agentDefinitions.tenantId, tenantId),
+                eq(schema.agentDefinitions.status, 'published'),
+                isNotNull(schema.agentDefinitions.publishedVersionId),
+              ),
+            )
+            .limit(1);
+
+    if (!published) {
+      throw new GeneratedAppBindingTargetNotFoundException(
+        target.kind,
+        target.kind === 'workflow'
+          ? target.workflowDefinitionId
+          : target.agentDefinitionId,
+      );
+    }
   }
 
   async list(
@@ -1277,7 +1362,7 @@ export class GeneratedAppRepository {
 
   public async findPublicGeneratedAppRecord(
     token: string,
-  ): Promise<GeneratedApp> {
+  ): Promise<GeneratedAppRecordV1> {
     const [app] = await this.db
       .select()
       .from(schema.generatedApps)
@@ -1290,13 +1375,14 @@ export class GeneratedAppRepository {
       )
       .limit(1);
 
-    if (!app) {
+    // v1 公开运行时不能渲染 v2 规格；v2 公开运行时接入前按不存在处理
+    if (!app || !app.appSpec || isAppSpecV2(app.appSpec)) {
       throw new GeneratedAppNotFoundException('公开链接');
     }
 
     this.assertCanEnablePublicShare(app);
 
-    return app;
+    return { ...app, appSpec: app.appSpec };
   }
 
   public async findSubmissionRecord(
@@ -1338,6 +1424,8 @@ export class GeneratedAppRepository {
       description: app.description,
       status: app.status,
       appSpec: app.appSpec,
+      generationModelConfigId: app.generationModelConfigId,
+      bindingTarget: app.bindingTarget,
       generationPlan: app.generationPlan,
       gateResults: app.gateResults,
       readiness: app.readiness,
@@ -1365,6 +1453,8 @@ export class GeneratedAppRepository {
       appId: submission.generatedAppId,
       appSpecVersion: submission.appSpecVersion,
       publicShareToken: submission.publicShareToken,
+      origin: submission.origin,
+      generationRunId: submission.generationRunId,
       anonymousSessionId: submission.anonymousSessionId,
       status: submission.status,
       input: submission.input,

@@ -6,7 +6,7 @@ import type {
   GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationPlan,
   GeneratedAppIntegrationPlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../../database/schema';
 import {
@@ -40,8 +40,8 @@ function createConfigService(
 }
 
 function createAppSpec(
-  overrides: Partial<GeneratedAppSpec> = {},
-): GeneratedAppSpec {
+  overrides: Partial<GeneratedAppSpecV1> = {},
+): GeneratedAppSpecV1 {
   return {
     version: 1,
     appName: '自动化中医问诊系统',
@@ -84,7 +84,7 @@ function createAppSpec(
 }
 
 function buildBuildUnitPlanForTest(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   gate3Runner: GeneratedAppGate3WorkspaceRunner,
@@ -117,7 +117,7 @@ function buildBuildUnitPlanForTest(
 
 function buildGate5Plans(
   executionLevel: GeneratedAppBrowserAcceptanceExecutionLevel,
-  appSpec: GeneratedAppSpec = createAppSpec(),
+  appSpec: GeneratedAppSpecV1 = createAppSpec(),
 ) {
   const gate3Runner = new GeneratedAppGate3WorkspaceRunner(
     createConfigService(),

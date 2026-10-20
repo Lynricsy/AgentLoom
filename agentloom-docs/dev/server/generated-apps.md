@@ -23,11 +23,13 @@ stateDiagram-v2
     published --> publish_candidate: DELETE /:appId/public-share
 ```
 
-应用状态枚举 `generated_app_status` 为 `app_spec_ready`、`preview_ready`、`trial_ready`、`publish_candidate`、`published`、`failed`（`agentloom-server/src/database/schema/generated-apps.schema.ts`）。除 `published` 外，状态都由门禁结果计算得出（见下文「就绪度」）。
+应用状态枚举 `generated_app_status` 为 `app_spec_generating`、`app_spec_ready`、`preview_ready`、`trial_ready`、`publish_candidate`、`published`、`failed`（`agentloom-server/src/database/schema/generated-apps.schema.ts`）。`app_spec_generating` 留给 v2 异步生成（[ADR-0007](/dev/decisions/0007-generated-app-spec-generation)）：应用已创建、`app_spec` 仍为 `null`。除 `published` 外，状态都由门禁结果计算得出（见下文「就绪度」）。
+
+`app_spec` 列存 `GeneratedAppSpec = GeneratedAppSpecV1 | GeneratedAppSpecV2`（`types/generated-app.types.ts`，按 `version` 用 `isAppSpecV2()` 区分），v2 契约见 `types/app-spec-v2.schema.ts`。v1 只为 v2 落地期间的旧门禁过渡：生成运行只把 v1 规格交给 Gate 1–7，`null` 或 v2 规格在 Gate 0 失败；v1 公开运行时只服务 v1 规格的应用。迁移 `0089_generated_app_v2` 把存量 v1 应用的公开分享关闭、状态回到 `app_spec_ready`、`readiness` 置为 `blocked`。
 
 ### 1. 创建：AppSpec 初稿
 
-`POST /api/v1/generated-apps` 只接收 `prompt`。`buildInitialAppSpec(prompt)`（`agentloom-server/src/modules/generated-app/generated-app.app-spec.util.ts`）按固定模板确定性地构造 AppSpec 初稿：应用名、目标、核心需求（`req-1` 原样取 prompt，`source: 'prompt'`；`req-2` 为提交持久化约束，`source: 'platform'`）、页面（创建者工作台、公开运行页）、两条 `scope: 'platform'` 的平台流程验收场景，不调用模型。创建时即按 `evaluateGate0AppSpec` 写入 Gate 0 结果，应用以 `app_spec_ready` 状态写入 `generated_apps`。
+`POST /api/v1/generated-apps` 接收 `prompt`，以及可选的 `modelConfigId`（本组织已启用的 chat 模型）与 `bindingTarget`（本组织已发布的工作流或 Agent）。两者在写入前按当前租户校验（外键不受 RLS 约束），分别存入 `generation_model_config_id` 与 `binding_target`，供生成运行解析模型与绑定目标。`buildInitialAppSpec(prompt)`（`agentloom-server/src/modules/generated-app/generated-app.app-spec.util.ts`）按固定模板确定性地构造 AppSpec 初稿：应用名、目标、核心需求（`req-1` 原样取 prompt，`source: 'prompt'`；`req-2` 为提交持久化约束，`source: 'platform'`）、页面（创建者工作台、公开运行页）、两条 `scope: 'platform'` 的平台流程验收场景，不调用模型。创建时即按 `evaluateGate0AppSpec` 写入 Gate 0 结果，应用以 `app_spec_ready` 状态写入 `generated_apps`。
 
 Gate 0 的 `prompt-requirement-verification` 检查要求每条 `source: 'prompt'` 的需求至少被一条非 `platform` 场景引用；模板初稿不满足，Gate 0 失败（`app-spec-incomplete`）。公开运行表单（`generated-app.runtime.ts` 的 8 个固定字段）与 Gate 7 创建的运行时工作流（`generated-app.runtime-binding.util.ts`：manual-trigger → text-output 回显）同样是模板，不随需求变化。从需求推导 AppSpec、表单与工作流绑定尚未实现。
 
@@ -96,6 +98,7 @@ Gate 5 的 `real` 模式（`real-local-browser-contract`）只在服务端执行
 - `POST /api/v1/generated-apps/:appId/public-share` 要求 `readiness.state = 'publish_candidate'`，生成 32 字节随机 hex token，把应用置为 `published`；`/public-share/regenerate` 换新 token，`DELETE` 停用并把状态退回由就绪度决定的值。
 - 公开控制器 `GeneratedAppPublicController` 挂在 `/api/v1/generated-apps/public`，整体 `@Public()`，且该路径被排除在 `TenantMiddleware` 之外。按 token 查找应用时同时要求 `publicShareEnabled`、`status = 'published'` 且仍满足发布条件，任一不满足返回 404。
 - 终端用户提交（`POST /public/:token/submissions`）的处理顺序：先按 AppSpec 生成的运行表单严格校验输入（不合法直接拒绝，而不是截断后接受）→ 本地运行时评估 → 评估完成且绑定了已发布工作流时，经 `ExecutionService.runWorkflow` 触发一次工作流执行 → 写入 `generated_app_submissions`（状态 `received` / `running` / `completed` / `failed`），记录匿名会话 id。创建者在 `/:appId/submissions` 查看提交。
+- `generated_apps` 另有 Gate 5 验收令牌三列 `acceptance_token_hash`（只存 sha256，唯一索引）、`acceptance_token_expires_at`、`acceptance_generation_run_id`；`generated_app_submissions` 有 `origin`（`public` / `gate-acceptance`，默认 `public`）与 `generation_run_id`，`public_share_token` 对验收提交为 `null`。签发、按令牌取应用与验收提交的写入见 ADR-0007 §6。
 
 ## 代码分层
 

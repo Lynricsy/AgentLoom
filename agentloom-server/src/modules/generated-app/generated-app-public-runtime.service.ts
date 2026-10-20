@@ -36,7 +36,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,
@@ -233,6 +233,7 @@ import {
   GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID,
   GeneratedAppWorkflowExecutionNotStartedReason,
   GeneratedAppWorkflowExecutionHandoff,
+  type GeneratedAppRecordV1,
 } from './generated-app.internal';
 
 import { GeneratedAppRepository } from './generated-app.repository';
@@ -991,7 +992,7 @@ export class GeneratedAppPublicRuntimeService {
   }
 
   public async createPublicWorkflowExecutionHandoff(params: {
-    app: GeneratedApp;
+    app: GeneratedAppRecordV1;
     input: Record<string, unknown>;
     anonymousSessionId: string;
     submittedAt: Date;
@@ -1100,7 +1101,7 @@ export class GeneratedAppPublicRuntimeService {
   }
 
   public buildGeneratedAppPublicRunRequest(params: {
-    app: GeneratedApp;
+    app: GeneratedAppRecordV1;
     input: Record<string, unknown>;
     anonymousSessionId: string;
     submittedAt: Date;

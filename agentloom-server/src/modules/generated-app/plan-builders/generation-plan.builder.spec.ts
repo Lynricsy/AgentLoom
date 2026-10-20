@@ -5,7 +5,7 @@ import type {
   GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationPlan,
   GeneratedAppGenerationRepairContext,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../../database/schema';
 import { GeneratedAppGate3WorkspaceRunner } from '../generated-app.workspace';
@@ -24,8 +24,8 @@ import {
 } from './generation-plan.builder';
 
 function createAppSpec(
-  overrides: Partial<GeneratedAppSpec> = {},
-): GeneratedAppSpec {
+  overrides: Partial<GeneratedAppSpecV1> = {},
+): GeneratedAppSpecV1 {
   return {
     version: 1,
     appName: '表单应用',

@@ -7,7 +7,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGenerationPlan,
   GeneratedAppIntegrationPlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
 import { buildGeneratedAppRuntimeForm } from './generated-app.runtime';
@@ -49,7 +49,7 @@ export interface GeneratedAppGate4RunnerResult {
 }
 
 interface Gate4RunParams {
-  appSpec: GeneratedAppSpec;
+  appSpec: GeneratedAppSpecV1;
   generationPlan: GeneratedAppGenerationPlan;
   staticContracts: GeneratedAppStaticContracts;
   buildUnitPlan: GeneratedAppBuildUnitPlan;

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   index,
   integer,
@@ -14,9 +15,11 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { agentDefinitions } from './agent-definitions.schema';
+import { llmModelConfigs } from './llm-model-configs.schema';
 import { createDirectTenantPolicies } from './rls-policies';
 import { users } from './users.schema';
 import { workflowDefinitions } from './workflow-definitions.schema';
+import type { GeneratedAppBindingTargetRef } from '../../modules/generated-app/types/generation-v2.ports';
 import type {
   GeneratedAppGenerationPlan,
   GeneratedAppGateEvidence,
@@ -30,6 +33,8 @@ import type {
 } from '../../modules/generated-app/types/generated-app.types';
 
 export const generatedAppStatusEnum = pgEnum('generated_app_status', [
+  // v2：应用已创建、生成运行尚未产出 AppSpec（app_spec 为 null）
+  'app_spec_generating',
   'app_spec_ready',
   'preview_ready',
   'trial_ready',
@@ -48,6 +53,15 @@ export const generatedAppSubmissionStatusEnum = pgEnum(
 
 export type GeneratedAppSubmissionStatus =
   (typeof generatedAppSubmissionStatusEnum.enumValues)[number];
+
+/** public：公开分享链接的真实用户；gate-acceptance：Gate 5 用验收令牌发起的提交 */
+export const generatedAppSubmissionOriginEnum = pgEnum(
+  'generated_app_submission_origin',
+  ['public', 'gate-acceptance'],
+);
+
+export type GeneratedAppSubmissionOrigin =
+  (typeof generatedAppSubmissionOriginEnum.enumValues)[number];
 
 export const generatedAppGateRunStatusEnum = pgEnum(
   'generated_app_gate_run_status',
@@ -100,7 +114,32 @@ export const generatedApps = pgTable(
       .notNull()
       .default('app_spec_ready'),
 
-    appSpec: jsonb('app_spec').$type<GeneratedAppSpec>().notNull(),
+    /** v1 模板或 v2 生成结果；v2 应用在生成运行产出 AppSpec 前为 null */
+    appSpec: jsonb('app_spec').$type<GeneratedAppSpec | null>(),
+
+    /** 生成 AppSpec 所用的 chat 模型；创建时指定或 Gate 0 解析出的默认模型，repair 复用 */
+    generationModelConfigId: uuid('generation_model_config_id').references(
+      () => llmModelConfigs.id,
+      { onDelete: 'set null' },
+    ),
+
+    /** 创建时指定的绑定目标；null 时由模型在租户候选中选择 */
+    bindingTarget: jsonb(
+      'binding_target',
+    ).$type<GeneratedAppBindingTargetRef | null>(),
+
+    /** Gate 5 验收令牌的 sha256（不存明文），撤销或过期后失效 */
+    acceptanceTokenHash: text('acceptance_token_hash'),
+
+    acceptanceTokenExpiresAt: timestamp('acceptance_token_expires_at', {
+      withTimezone: true,
+    }),
+
+    /** 签发验收令牌的生成运行；验收令牌创建的提交记到该运行 */
+    acceptanceGenerationRunId: uuid('acceptance_generation_run_id').references(
+      (): AnyPgColumn => generatedAppGenerationRuns.id,
+      { onDelete: 'set null' },
+    ),
 
     generationPlan: jsonb('generation_plan')
       .$type<GeneratedAppGenerationPlan | Record<string, unknown> | null>()
@@ -163,6 +202,9 @@ export const generatedApps = pgTable(
     uniqueIndex('uq_generated_apps_public_share_token').on(
       table.publicShareToken,
     ),
+    uniqueIndex('uq_generated_apps_acceptance_token_hash').on(
+      table.acceptanceTokenHash,
+    ),
     index('idx_generated_apps_tenant_updated').on(
       table.tenantId,
       table.updatedAt,
@@ -191,7 +233,8 @@ export const generatedAppSubmissions = pgTable(
 
     appSpecVersion: integer('app_spec_version').notNull(),
 
-    publicShareToken: text('public_share_token').notNull(),
+    /** 公开提交时的分享令牌；gate-acceptance 提交不落验收令牌，为 null */
+    publicShareToken: text('public_share_token'),
 
     anonymousSessionId: varchar('anonymous_session_id', {
       length: 128,
@@ -211,6 +254,16 @@ export const generatedAppSubmissions = pgTable(
     report: jsonb('report').$type<Record<string, unknown> | null>(),
 
     errorMessage: text('error_message'),
+
+    origin: generatedAppSubmissionOriginEnum('origin')
+      .notNull()
+      .default('public'),
+
+    /** gate-acceptance 提交所属的生成运行；public 提交为 null */
+    generationRunId: uuid('generation_run_id').references(
+      () => generatedAppGenerationRuns.id,
+      { onDelete: 'set null' },
+    ),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

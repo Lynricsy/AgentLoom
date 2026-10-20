@@ -10,7 +10,7 @@ import type {
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppReadiness,
   GeneratedAppStatus,
@@ -187,7 +187,7 @@ export const GATE_4_ALLOWED_PAYLOAD_CONTRACT_REFS = [
 ] as const;
 
 export function buildIntegrationPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,
@@ -463,7 +463,7 @@ export function buildIntegrationPlan(
 }
 
 export function evaluateGate4IntegrationPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,
@@ -530,7 +530,7 @@ export function evaluateGate4IntegrationPlan(
 }
 
 export function buildGate4Checks(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,

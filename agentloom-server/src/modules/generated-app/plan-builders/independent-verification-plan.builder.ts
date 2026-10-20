@@ -10,7 +10,7 @@ import type {
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppReadiness,
   GeneratedAppStatus,
@@ -162,7 +162,7 @@ export const GATE_6_ALLOWED_COVERAGE_MATRIX_SOURCE_PLANS = [
 ] as const;
 
 export function buildIndependentVerificationPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,
@@ -393,7 +393,7 @@ export function buildGate6RubricLabel(
 }
 
 export function evaluateGate6IndependentVerificationPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,
@@ -466,7 +466,7 @@ export function evaluateGate6IndependentVerificationPlan(
 }
 
 export function buildGate6Checks(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,

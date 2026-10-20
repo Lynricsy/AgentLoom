@@ -91,6 +91,31 @@ export class GeneratedAppArtifactTooLargeException extends DomainException {
   }
 }
 
+/** 创建时指定的 bindingTarget 不在本租户、不存在或尚未发布，无法作为生成应用的运行目标 */
+export class GeneratedAppBindingTargetNotFoundException extends DomainException {
+  constructor(kind: 'workflow' | 'agent', id: string) {
+    const label = kind === 'workflow' ? '工作流' : 'Agent';
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-binding-target-not-found',
+      title: '生成应用绑定目标不可用',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `${label} ${id} 不存在、无权访问或尚未发布，不能作为生成应用的绑定目标`,
+    });
+  }
+}
+
+/** 同一应用已有排队中或运行中的生成运行，不能再启动新的运行 */
+export class GeneratedAppGenerationRunInProgressException extends DomainException {
+  constructor(appId: string, runId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-generation-run-in-progress',
+      title: '生成运行进行中',
+      status: HttpStatus.CONFLICT,
+      detail: `生成应用 ${appId} 已有进行中的生成运行 ${runId}，请等待其结束后再启动`,
+    });
+  }
+}
+
 /**
  * 公开提交入参未通过运行时表单契约校验。
  *

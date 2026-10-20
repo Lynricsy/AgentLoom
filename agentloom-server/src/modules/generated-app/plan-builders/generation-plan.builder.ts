@@ -10,7 +10,7 @@ import type {
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppReadiness,
   GeneratedAppStatus,
@@ -205,7 +205,7 @@ export const GATE_3_SKELETON_EVIDENCE_NOTE =
   'Gate 3 contract-skeleton 只检查计划完整性；fixture-execution 不执行真实命令；real-local-command-plan 才表示受控本地命令已执行。';
 
 export function buildGenerationPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   repairContext: GeneratedAppGenerationRepairContext | null = null,
 ): GeneratedAppGenerationPlan {
   const allRequirementIds = appSpec.coreRequirements.map(
@@ -372,7 +372,7 @@ export function buildGenerationPlan(
 }
 
 export function buildPluginToolPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   scenarioIdsByRequirementId: Map<string, string[]>,
 ): GeneratedAppGenerationPlan['pluginTools']['tools'] {
   const requiresPrivateTool = appSpec.coreRequirements.some((requirement) =>
@@ -430,7 +430,7 @@ export function requirementNeedsPrivatePluginTool(text: string): boolean {
 }
 
 export function buildPrivatePluginToolPurpose(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
 ): string {
   if (/问诊|中医|医疗|症状|患者|分诊|风险|筛查/.test(appSpec.userGoal)) {
     return '对问诊输入做租户私有的结构化整理、风险提示和下一步追问候选生成，不输出诊断、处方、剂量或治疗指令。';
@@ -444,7 +444,7 @@ export function buildPrivatePluginToolPurpose(
 }
 
 export function buildStaticContracts(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
 ): GeneratedAppStaticContracts {
   const orchestrationNodes = generationPlan.orchestration.steps.map((step) => ({
@@ -548,7 +548,7 @@ export function buildStaticContracts(
 }
 
 export function evaluateGate2StaticContracts(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: unknown,
 ): Gate2Evaluation {
@@ -603,7 +603,7 @@ export function evaluateGate2StaticContracts(
 }
 
 export function buildBuildUnitPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   generationWorkspace: GeneratedAppGenerationWorkspaceContract,
@@ -763,7 +763,7 @@ export function buildBuildUnitPlan(
 }
 
 export function evaluateGate3BuildUnitPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: unknown,
@@ -828,7 +828,7 @@ export function evaluateGate3BuildUnitPlan(
 }
 
 export function evaluateGate1GenerationPlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
 ): Gate1Evaluation {
   const checks = buildGate1Checks(appSpec, generationPlan);
@@ -882,7 +882,7 @@ export function evaluateGate1GenerationPlan(
 }
 
 export function buildGate1Checks(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
 ): Gate1Check[] {
   const requirementIds = appSpec.coreRequirements.map(
@@ -1228,7 +1228,7 @@ export function buildGate1Checks(
 }
 
 export function buildGate3Checks(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: unknown,
@@ -2020,7 +2020,7 @@ export function buildGate3Checks(
 }
 
 export function buildGate2Checks(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: unknown,
 ): Gate2Check[] {

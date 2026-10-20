@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { GeneratedApp, GeneratedAppSpec } from '../../../database/schema';
+import type {
+  GeneratedApp,
+  GeneratedAppSpecV1,
+} from '../../../database/schema';
+import type { GeneratedAppRecordV1 } from '../generated-app.internal';
 import {
   buildGeneratedAppRuntimeForm,
   buildPublicGeneratedAppRuntimeDescription,
@@ -11,7 +15,7 @@ import {
 function createRuntimeApp(
   generationPlan: GeneratedApp['generationPlan'] = null,
 ): Pick<
-  GeneratedApp,
+  GeneratedAppRecordV1,
   'appName' | 'description' | 'appSpec' | 'generationPlan'
 > {
   return {
@@ -59,7 +63,7 @@ function createRuntimeApp(
   };
 }
 
-function createGeneralAppSpec(): GeneratedAppSpec {
+function createGeneralAppSpec(): GeneratedAppSpecV1 {
   return {
     version: 1,
     appName: '客户线索分级助手',
@@ -114,7 +118,7 @@ function createGeneralAppSpec(): GeneratedAppSpec {
 }
 
 function createGenerationPlanWithRequiredFields(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   requiredFields: string[],
 ): GeneratedApp['generationPlan'] {
   return {
@@ -744,7 +748,7 @@ describe('Generated App local runtime evaluator', () => {
   });
 
   it('应在无静态合约时使用 runtime 默认输出，并区分部分覆盖和待补充场景', () => {
-    const appSpec: GeneratedAppSpec = {
+    const appSpec: GeneratedAppSpecV1 = {
       ...createGeneralAppSpec(),
       pages: [],
       coreRequirements: [

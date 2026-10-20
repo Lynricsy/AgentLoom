@@ -2,7 +2,7 @@ import type {
   GeneratedAppGateEvidence,
   GeneratedAppGateRunFailure,
   GeneratedAppReadiness,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStatus,
 } from '../../database/schema';
 import {
@@ -29,7 +29,7 @@ export interface Gate0Evaluation {
   repairInstructions: string | null;
 }
 
-export function buildInitialAppSpec(prompt: string): GeneratedAppSpec {
+export function buildInitialAppSpec(prompt: string): GeneratedAppSpecV1 {
   const appName = buildAppName(prompt);
 
   return {
@@ -133,8 +133,8 @@ export function buildPlanSegment(value: string): string {
 }
 
 export function getPublicRuntimePages(
-  appSpec: GeneratedAppSpec,
-): GeneratedAppSpec['pages'] {
+  appSpec: GeneratedAppSpecV1,
+): GeneratedAppSpecV1['pages'] {
   return appSpec.pages.filter((page) => {
     const id = page.id.toLowerCase();
     const name = page.name.toLowerCase();
@@ -398,7 +398,7 @@ export function buildGate0Checks(appSpec: unknown): Gate0Check[] {
 }
 
 export function evaluateGate0AppSpec(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1 | null,
 ): Gate0Evaluation {
   const checks = buildGate0Checks(appSpec);
   const failedChecks = checks.filter((check) => !check.passed);

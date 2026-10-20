@@ -10,7 +10,7 @@ import type {
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppReadiness,
   GeneratedAppStatus,
@@ -182,7 +182,7 @@ export const GATE_7_REQUIRED_FAILURE_CAPTURE_FIELDS = [
 ] as const;
 
 export function buildPublishCandidatePlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,
@@ -704,7 +704,7 @@ export function resolveGate5RequiredRealRunnerId(
 }
 
 export function evaluateGate7PublishCandidatePlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,
@@ -968,7 +968,7 @@ export function buildGate7RepairInstructions(
 }
 
 export function buildGate7Checks(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,

@@ -21,7 +21,11 @@ docType: howto
 
 ## 调用流程
 
-1. `POST /generated-apps`，请求体 `{ "prompt": "…" }`（1–4000 字符）创建应用。
+1. `POST /generated-apps`，请求体 `{ "prompt": "…" }`（1–4000 字符）创建应用。可选字段：
+   - `modelConfigId`：生成规格用的模型配置 ID，必须是当前组织已启用的 chat 模型；不存在时 404 `llm/config-not-found`，不是 chat 模型或已停用时 400 `llm/config-validation`。
+   - `bindingTarget`：应用提交时调用的目标，`{ "kind": "workflow", "workflowDefinitionId": "…" }` 或 `{ "kind": "agent", "agentDefinitionId": "…" }`，必须已发布；否则 422 `generated-app-binding-target-not-found`。
+
+   响应的 `generationModelConfigId`、`bindingTarget` 回显这两个选择，未指定时为 `null`。
 2. `POST /generated-apps/:appId/generation-runs/start` 启动生成与门禁校验。
 3. 当 `app.readiness.state === "publish_candidate"` 且 `app.readiness.canCreatePublicShare === true` 时，`POST /generated-apps/:appId/public-share` 开启公开链接，响应中的 `publicShareUrl` 末段即公开 token。未达到条件时返回 409：
 

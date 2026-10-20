@@ -11,7 +11,7 @@ import type {
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
 
@@ -30,7 +30,7 @@ export interface GeneratedAppGate7RunnerResult {
 }
 
 export interface GeneratedAppGate7RunParams {
-  appSpec: GeneratedAppSpec;
+  appSpec: GeneratedAppSpecV1;
   generationPlan: GeneratedAppGenerationPlan;
   staticContracts: GeneratedAppStaticContracts;
   buildUnitPlan: GeneratedAppBuildUnitPlan;

@@ -27,10 +27,12 @@ import type {
   GeneratedAppRepairPlan,
   GeneratedAppRepairAttempt,
   GeneratedAppReverificationPlan,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppSubmission,
   WorkflowDefinition,
 } from '../../../database/schema';
+import type { GeneratedAppRecordV1 } from '../generated-app.internal';
 import {
   GeneratedAppArtifactNotFoundException,
   GeneratedAppArtifactTooLargeException,
@@ -578,6 +580,8 @@ function createGeneratedAppSubmission(
     result: null,
     report: null,
     errorMessage: null,
+    origin: 'public',
+    generationRunId: null,
     createdAt: NOW,
     updatedAt: NOW,
     deletedAt: null,
@@ -814,7 +818,7 @@ const planGate7Runner = new GeneratedAppGate7PublishCandidateRunner(
 );
 
 function buildBuildUnitPlanForTest(
-  appSpec: GeneratedApp['appSpec'],
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   generationWorkspace?: Parameters<typeof buildBuildUnitPlan>[3],
@@ -850,9 +854,13 @@ function buildBuildUnitPlanForTest(
   );
 }
 
+/**
+ * v1 过渡期的旧门禁用例都以 v1 规格为基线；覆盖项可换掉 appSpec（含非法 v1 结构），
+ * 返回值按 v1 记录使用，v2 用例请用 v2 fixture。
+ */
 function createGeneratedApp(
   overrides: Partial<GeneratedApp> = {},
-): GeneratedApp {
+): GeneratedAppRecordV1 {
   return {
     id: APP_ID,
     tenantId: TENANT_ID,
@@ -898,6 +906,11 @@ function createGeneratedApp(
         },
       ],
     },
+    generationModelConfigId: null,
+    bindingTarget: null,
+    acceptanceTokenHash: null,
+    acceptanceTokenExpiresAt: null,
+    acceptanceGenerationRunId: null,
     generationPlan: null,
     gateResults: createInitialGeneratedAppGateResults(NOW.toISOString()),
     readiness: createReadiness(),
@@ -919,7 +932,7 @@ function createGeneratedApp(
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
-  };
+  } as GeneratedAppRecordV1;
 }
 
 function createWorkflowDefinitionReadinessRow(
@@ -942,7 +955,7 @@ function createWorkflowDefinitionReadinessRow(
 
 function createGeneratedAppWithGate3Workspace(
   overrides: Partial<GeneratedApp> = {},
-): GeneratedApp & { generationPlan: GeneratedAppGenerationPlan } {
+): GeneratedAppRecordV1 & { generationPlan: GeneratedAppGenerationPlan } {
   const baseApp = createGeneratedApp();
   const gate3Runner = new GeneratedAppGate3WorkspaceRunner(
     createConfigService(),
@@ -981,7 +994,7 @@ function createGeneratedAppWithGate3Workspace(
       staticContracts,
       buildUnitPlan,
     },
-  }) as GeneratedApp & { generationPlan: GeneratedAppGenerationPlan };
+  }) as GeneratedAppRecordV1 & { generationPlan: GeneratedAppGenerationPlan };
 }
 
 export {

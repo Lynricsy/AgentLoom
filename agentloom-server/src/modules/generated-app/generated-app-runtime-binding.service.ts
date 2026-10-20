@@ -36,7 +36,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,
@@ -185,7 +185,10 @@ import {
   buildGeneratedPrivatePluginRegistrationManifest,
   buildGeneratedWorkflowRuntimeInputSchema,
 } from './generated-app.runtime-binding.util';
-import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
+import type {
+  GeneratedAppPrivatePluginBuildReport,
+  GeneratedAppWithAppSpec,
+} from './generated-app.runtime-binding.util';
 import {
   buildInitialAppSpec,
   getPublicRuntimePages,
@@ -335,7 +338,7 @@ export class GeneratedAppRuntimeBindingService {
   public async ensureGeneratedWorkflowRuntimeBinding(
     tenantId: string,
     userId: string,
-    app: GeneratedAppResponseDto,
+    app: GeneratedAppWithAppSpec,
     generationRunId: string,
   ): Promise<GeneratedAppResponseDto> {
     if (app.workflowDefinitionId) {
@@ -401,7 +404,7 @@ export class GeneratedAppRuntimeBindingService {
   public async ensureGeneratedPrivatePluginBindings(
     tenantId: string,
     userId: string,
-    app: GeneratedAppResponseDto,
+    app: GeneratedAppWithAppSpec,
   ): Promise<GeneratedAppResponseDto> {
     const generationPlan =
       app.generationPlan as GeneratedAppGenerationPlan | null;
@@ -654,7 +657,7 @@ export class GeneratedAppRuntimeBindingService {
   public async createGeneratedWorkflowRuntimeBinding(
     tenantId: string,
     userId: string,
-    app: GeneratedAppResponseDto,
+    app: GeneratedAppWithAppSpec,
     generationRunId: string,
   ): Promise<string> {
     const nodes = buildGeneratedWorkflowRuntimeNodes(app);

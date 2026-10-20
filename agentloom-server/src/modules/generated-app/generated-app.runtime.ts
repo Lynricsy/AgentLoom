@@ -1,8 +1,8 @@
 import type {
-  GeneratedApp,
   GeneratedAppGenerationPlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
 } from '../../database/schema';
+import type { GeneratedAppRecordV1 } from './generated-app.internal';
 import type {
   PublicGeneratedAppRuntimeFieldDto,
   PublicGeneratedAppRuntimeFormDto,
@@ -111,12 +111,12 @@ interface RuntimeScenarioCoverage {
 }
 
 type RuntimeApp = Pick<
-  GeneratedApp,
+  GeneratedAppRecordV1,
   'appName' | 'description' | 'appSpec' | 'generationPlan'
 >;
 
 export function buildPublicGeneratedAppRuntimeDescription(params: {
-  appSpec: GeneratedAppSpec;
+  appSpec: GeneratedAppSpecV1;
   description: string;
 }): string {
   const medicalDomain = isMedicalAppSpec(params.appSpec);
@@ -131,8 +131,8 @@ export function buildPublicGeneratedAppRuntimeDescription(params: {
 }
 
 export function buildPublicGeneratedAppRuntimeSpec(params: {
-  appSpec: GeneratedAppSpec;
-  pages?: GeneratedAppSpec['pages'];
+  appSpec: GeneratedAppSpecV1;
+  pages?: GeneratedAppSpecV1['pages'];
 }): PublicGeneratedAppResponseDto['appSpec'] {
   const medicalDomain = isMedicalAppSpec(params.appSpec);
   const summaryFallback = medicalDomain
@@ -178,7 +178,7 @@ export function buildPublicGeneratedAppRuntimeSpec(params: {
 }
 
 export function buildGeneratedAppRuntimeForm(params: {
-  appSpec: GeneratedAppSpec;
+  appSpec: GeneratedAppSpecV1;
   generationPlan: RuntimeApp['generationPlan'];
   description: string;
 }): PublicGeneratedAppRuntimeFormDto {
@@ -457,7 +457,7 @@ function buildMedicalRuntimeFields(): PublicGeneratedAppRuntimeFieldDto[] {
 }
 
 function buildGeneralRuntimeFields(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
 ): PublicGeneratedAppRuntimeFieldDto[] {
   const runtimePage =
     appSpec.pages.find((page) => page.id.toLowerCase().includes('runtime')) ??
@@ -1044,7 +1044,7 @@ function buildInputSummary(inspection: RuntimeInputInspection) {
 }
 
 function buildMatchedRequirements(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   inspection: RuntimeInputInspection,
   medicalDomain: boolean,
 ): RuntimeRequirementMatch[] {
@@ -1088,7 +1088,7 @@ function buildMatchedRequirements(
 }
 
 function buildScenarioCoverage(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   matchedRequirements: RuntimeRequirementMatch[],
   medicalDomain: boolean,
 ): RuntimeScenarioCoverage[] {
@@ -1122,7 +1122,7 @@ function buildScenarioCoverage(
 }
 
 function buildNextStepQuestions(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   inspection: RuntimeInputInspection,
   contractSummary: RuntimeContractSummary,
   medicalDomain: boolean,
@@ -1180,7 +1180,7 @@ function buildNextStepQuestions(
 }
 
 function buildFollowUpPrompts(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   nextStepQuestions: string[],
   medicalDomain: boolean,
 ): string[] {
@@ -1206,7 +1206,7 @@ function buildFollowUpPrompts(
 }
 
 function buildReportSections(params: {
-  appSpec: GeneratedAppSpec;
+  appSpec: GeneratedAppSpecV1;
   inputSummary: ReturnType<typeof buildInputSummary>;
   matchedRequirements: RuntimeRequirementMatch[];
   scenarioCoverage: RuntimeScenarioCoverage[];
@@ -1284,7 +1284,7 @@ function buildDisclaimers(medicalDomain: boolean): string[] {
 }
 
 function isMedicalDomain(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   inspection: RuntimeInputInspection,
 ): boolean {
   const corpus = [
@@ -1298,7 +1298,7 @@ function isMedicalDomain(
   return MEDICAL_DOMAIN_PATTERN.test(corpus);
 }
 
-function isMedicalAppSpec(appSpec: GeneratedAppSpec): boolean {
+function isMedicalAppSpec(appSpec: GeneratedAppSpecV1): boolean {
   const corpus = [
     appSpec.appName,
     appSpec.summary,
@@ -1312,7 +1312,7 @@ function isMedicalAppSpec(appSpec: GeneratedAppSpec): boolean {
 }
 
 function buildScenarioCoverageSummary(
-  scenario: GeneratedAppSpec['acceptanceScenarios'][number],
+  scenario: GeneratedAppSpecV1['acceptanceScenarios'][number],
   coverage: RuntimeScenarioCoverage['coverage'],
   medicalDomain: boolean,
 ): string {

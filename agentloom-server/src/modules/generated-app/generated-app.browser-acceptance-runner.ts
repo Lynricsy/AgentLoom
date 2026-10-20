@@ -8,7 +8,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGenerationPlan,
   GeneratedAppIntegrationPlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
 
@@ -61,7 +61,7 @@ export interface GeneratedAppGate5RealBrowserAvailability {
 }
 
 interface Gate5RunParams {
-  appSpec: GeneratedAppSpec;
+  appSpec: GeneratedAppSpecV1;
   generationPlan: GeneratedAppGenerationPlan;
   staticContracts: GeneratedAppStaticContracts;
   buildUnitPlan: GeneratedAppBuildUnitPlan;

@@ -9,7 +9,7 @@ import type {
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../../database/schema';
 import {
@@ -36,7 +36,7 @@ function createConfigService(
   } as unknown as ConfigService;
 }
 
-function createAppSpec(): GeneratedAppSpec {
+function createAppSpec(): GeneratedAppSpecV1 {
   return {
     version: 1,
     appName: '问诊助手',
@@ -143,7 +143,7 @@ function withTrustedGate5Evidence(
 }
 
 function buildBuildUnitPlanForTest(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   gate3Runner: GeneratedAppGate3WorkspaceRunner,
@@ -722,7 +722,7 @@ describe('GeneratedAppGate7PublishCandidateRunner', () => {
       browserExecutionLevel: 'fixture-browser-acceptance',
       verifierExecutionLevel: 'fixture-independent-verifier',
     });
-    const appSpec: GeneratedAppSpec = {
+    const appSpec: GeneratedAppSpecV1 = {
       ...plans.appSpec,
       traceability: [],
     };

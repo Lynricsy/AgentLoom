@@ -624,6 +624,13 @@
       "when": 1792426113064,
       "tag": "0088_execution_definition_source",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1792468503504,
+      "tag": "0089_generated_app_v2",
+      "breakpoints": true
     }
   ]
 }

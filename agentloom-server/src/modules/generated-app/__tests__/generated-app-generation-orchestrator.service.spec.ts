@@ -2485,7 +2485,7 @@ describe('orchestrator migrated scenarios', () => {
       const response = await internals.ensureGeneratedPrivatePluginBindings(
         TENANT_ID,
         USER_ID,
-        internals.toResponseDto(appWithPlan),
+        { ...internals.toResponseDto(appWithPlan), appSpec: app.appSpec },
       );
 
       const archiveStorageKey = `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.alp`;
@@ -2704,12 +2704,15 @@ describe('orchestrator migrated scenarios', () => {
       const response = await internals.ensureGeneratedPrivatePluginBindings(
         TENANT_ID,
         USER_ID,
-        internals.toResponseDto(
-          createGeneratedApp({
-            ...appWithPlan,
-            pluginIds: [GENERATED_PRIVATE_PLUGIN_DB_ID],
-          }),
-        ),
+        {
+          ...internals.toResponseDto(
+            createGeneratedApp({
+              ...appWithPlan,
+              pluginIds: [GENERATED_PRIVATE_PLUGIN_DB_ID],
+            }),
+          ),
+          appSpec: app.appSpec,
+        },
       );
 
       const archiveStorageKey = `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.alp`;

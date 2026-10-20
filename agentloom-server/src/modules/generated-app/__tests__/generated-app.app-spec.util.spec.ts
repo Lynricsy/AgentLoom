@@ -5,11 +5,11 @@ import {
   buildInitialAppSpec,
   evaluateGate0AppSpec,
 } from '../generated-app.app-spec.util';
-import type { GeneratedAppSpec } from '../types/generated-app.types';
+import type { GeneratedAppSpecV1 } from '../types/generated-app.types';
 
 const PROMPT = '一个问答页面：输入问题，调用上述工作流返回答案与引用';
 
-function failedCheckIds(appSpec: GeneratedAppSpec): string[] {
+function failedCheckIds(appSpec: GeneratedAppSpecV1): string[] {
   return buildGate0Checks(appSpec)
     .filter((check) => !check.passed)
     .map((check) => check.id);
@@ -39,7 +39,7 @@ describe('evaluateGate0AppSpec：需求本身的验收场景', () => {
 
   it('prompt 需求有业务验收场景时通过', () => {
     const template = buildInitialAppSpec(PROMPT);
-    const appSpec: GeneratedAppSpec = {
+    const appSpec: GeneratedAppSpecV1 = {
       ...template,
       acceptanceScenarios: [
         ...template.acceptanceScenarios,

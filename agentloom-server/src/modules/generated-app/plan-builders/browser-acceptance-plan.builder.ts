@@ -10,7 +10,7 @@ import type {
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppReadiness,
   GeneratedAppStatus,
@@ -186,7 +186,7 @@ export const GATE_5_REQUIRED_SECRET_LEAK_PATTERNS = [
 ] as const;
 
 export function buildBrowserAcceptancePlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,
@@ -705,7 +705,7 @@ export function buildBrowserAcceptancePlan(
 }
 
 export function evaluateGate5BrowserAcceptancePlan(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,
@@ -787,7 +787,7 @@ export function evaluateGate5BrowserAcceptancePlan(
 }
 
 export function buildGate5Checks(
-  appSpec: GeneratedAppSpec,
+  appSpec: GeneratedAppSpecV1,
   generationPlan: GeneratedAppGenerationPlan,
   staticContracts: GeneratedAppStaticContracts,
   buildUnitPlan: GeneratedAppBuildUnitPlan,

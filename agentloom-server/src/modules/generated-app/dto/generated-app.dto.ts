@@ -19,6 +19,7 @@ import type {
 } from '../../../database/schema';
 
 export const GeneratedAppStatusSchema = z.enum([
+  'app_spec_generating',
   'app_spec_ready',
   'preview_ready',
   'trial_ready',
@@ -89,12 +90,28 @@ export type GeneratedAppRuntimeBindingReadinessState = z.infer<
   typeof GeneratedAppRuntimeBindingReadinessStateSchema
 >;
 
+/** 创建时可指定的绑定目标：必须是本租户已发布的工作流或 Agent */
+export const GeneratedAppBindingTargetSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('workflow'),
+    workflowDefinitionId: z.string().uuid(),
+  }),
+  z.object({
+    kind: z.literal('agent'),
+    agentDefinitionId: z.string().uuid(),
+  }),
+]);
+
 export const CreateGeneratedAppSchema = z.object({
   prompt: z
     .string()
     .trim()
     .min(1, '需求描述不能为空')
     .max(4000, '需求描述不能超过 4000 个字符'),
+  /** 生成 AppSpec 用的本租户 chat 模型；省略时用租户默认 chat 模型 */
+  modelConfigId: z.string().uuid().optional(),
+  /** 省略时由模型在本租户已发布的工作流与 Agent 中选择 */
+  bindingTarget: GeneratedAppBindingTargetSchema.optional(),
 });
 
 export class CreateGeneratedAppDto extends createZodDto(
@@ -334,6 +351,8 @@ export const StartGeneratedAppGenerationRunSchema = z.preprocess(
     triggerSource: GeneratedAppGenerationRunTriggerSchema.default('manual'),
     maxRepairAttempts: z.number().int().min(0).max(20).default(3),
     maxRuntimeSeconds: z.number().int().min(1).max(86400).default(1800),
+    /** true 时 Gate 0 丢弃已存 AppSpec 并重新生成（triggerSource 为 retry 时同样重新生成）；省略视为 false */
+    regenerateAppSpec: z.boolean().optional(),
   }),
 );
 
@@ -437,7 +456,10 @@ export interface GeneratedAppResponseDto {
   appName: string;
   description: string;
   status: GeneratedApp['status'];
-  appSpec: GeneratedAppSpec;
+  /** v2 应用在生成运行产出 AppSpec 前为 null */
+  appSpec: GeneratedAppSpec | null;
+  generationModelConfigId: string | null;
+  bindingTarget: GeneratedApp['bindingTarget'];
   generationPlan: GeneratedApp['generationPlan'];
   gateResults: GeneratedAppGateResult[];
   readiness: GeneratedAppReadiness;
@@ -656,7 +678,11 @@ export interface GeneratedAppSubmissionResponseDto {
   tenantId: string;
   appId: string;
   appSpecVersion: number;
-  publicShareToken: string;
+  /** gate-acceptance 提交没有公开分享令牌，为 null */
+  publicShareToken: string | null;
+  origin: GeneratedAppSubmission['origin'];
+  /** gate-acceptance 提交所属的生成运行；public 提交为 null */
+  generationRunId: string | null;
   anonymousSessionId: string;
   status: GeneratedAppSubmission['status'];
   input: Record<string, unknown>;

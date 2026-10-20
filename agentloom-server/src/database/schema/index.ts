@@ -506,6 +506,7 @@ export {
   generatedAppGateRunStatusEnum,
   generatedAppRepairAttemptStatusEnum,
   generatedAppSubmissionStatusEnum,
+  generatedAppSubmissionOriginEnum,
   generatedApps,
   generatedAppGenerationRuns,
   generatedAppGateRuns,
@@ -527,6 +528,7 @@ export {
   type GeneratedAppGateRunStatus,
   type GeneratedAppRepairAttemptStatus,
   type GeneratedAppSubmissionStatus,
+  type GeneratedAppSubmissionOrigin,
 } from './generated-apps.schema';
 
 export type {
@@ -534,6 +536,8 @@ export type {
   GeneratedAppGateStatus,
   GeneratedAppAcceptanceScenario,
   GeneratedAppSpec,
+  GeneratedAppSpecV1,
+  GeneratedAppSpecV2,
   GeneratedAppGenerationPlan,
   GeneratedAppGenerationRepairContext,
   GeneratedAppRepairPlan,

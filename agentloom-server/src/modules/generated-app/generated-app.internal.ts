@@ -36,7 +36,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppPublishCandidatePlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,
@@ -500,3 +500,8 @@ export interface GeneratedAppWorkflowExecutionHandoff {
   completedAt?: string | null;
   summary?: Record<string, unknown>;
 }
+
+/** v2 公开运行时接入前的过渡：v1 公开运行时只能服务持有 v1 规格的应用 */
+export type GeneratedAppRecordV1 = GeneratedApp & {
+  appSpec: GeneratedAppSpecV1;
+};

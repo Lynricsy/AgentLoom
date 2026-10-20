@@ -10,7 +10,7 @@ import type {
   GeneratedAppGenerationPlan,
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
-  GeneratedAppSpec,
+  GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
 
@@ -61,7 +61,7 @@ export interface GeneratedAppGate6RunnerResult {
 }
 
 interface Gate6RunParams {
-  appSpec: GeneratedAppSpec;
+  appSpec: GeneratedAppSpecV1;
   generationPlan: GeneratedAppGenerationPlan;
   staticContracts: GeneratedAppStaticContracts;
   buildUnitPlan: GeneratedAppBuildUnitPlan;
