@@ -41,6 +41,14 @@ GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token �
 
 `POST /api/v1/auth/oauth/:provider` 发起登录，`provider` 取值为 `google` 或 `github`（`agentloom-server/src/modules/auth/dto/oauth.dto.ts`）；回调为 `GET /api/v1/auth/oauth/callback`，部署时由 `APP_OAUTH_REDIRECT_URL` 指向它。请求带 `platform=mobile` 时，回调结果以深链 `agentloom://auth/callback?…` 交给移动端，失败时为 `agentloom://auth/callback?error=oauth_callback_failed`（`agentloom-server/src/modules/auth/oauth.service.ts`、`agentloom-server/src/modules/auth/oauth.controller.ts`）。
 
+### 服务端 GoTrue 调用不持有用户会话
+
+server 代用户调用 GoTrue（注册、登录、refresh、OAuth code 换会话、MFA、登出、按 JWT 查用户）时，**不得让任何跨请求共享的 Supabase/GoTrue client 持有用户会话**。`agentloom-server/src/modules/auth/supabase/supabase.service.ts` 的每次调用都新建一个 `persistSession: false`、`autoRefreshToken: false` 的 `GoTrueClient`，用完即弃；修改密码直接调 GoTrue REST（`PUT /auth/v1/user`）。
+
+原因是 auth-js client 带实例级可变状态：内存会话存储、refresh 单飞（并发 `refreshSession` 共享同一个在途 Promise，不比对传入的 refresh token）、refresh 落盘前的存储 commit guard、PKCE verifier。服务端单例 client 被多个用户并发使用时，B 的 refresh 会拿到 A 的会话（因此能以 A 的身份访问 A 的组织），A 的登录也会让 B 进行中的 refresh 以 `AuthRefreshDiscardedError` 失败。
+
+新增 GoTrue 调用时沿用 `SupabaseService` 内的工厂；本身无状态的 admin 端点（`auth.admin.*`）也走工厂，不另建单例。回归测试在 `agentloom-server/src/modules/auth/__tests__/supabase.service.spec.ts`，用真实 auth-js 与 fetch 桩模拟多账号并发。
+
 ## 平台 API Token
 
 `agentloom-server/src/modules/platform-api-token/platform-api-token.service.ts`：

@@ -1,10 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  AuthApiError,
-  createClient,
-  SupabaseClient,
-} from '@supabase/supabase-js';
+import { AuthApiError, GoTrueClient } from '@supabase/supabase-js';
 
 import { AuthUnavailableException } from '../../../common/exceptions/auth.exceptions';
 import type { OAuthProvider } from '../dto/oauth.dto';
@@ -12,19 +8,18 @@ import type { OAuthProvider } from '../dto/oauth.dto';
 @Injectable()
 export class SupabaseService {
   private readonly deploymentMode: 'saas' | 'private';
-  private readonly supabaseUrl?: string;
+  /** `<APP_SUPABASE_URL>/auth/v1`，仅在配置完整时有值 */
+  private readonly authUrl?: string;
   private readonly supabaseServiceKey?: string;
   private readonly supabaseAnonKey?: string;
   private readonly isSupabaseConfigured: boolean;
-  private adminClient?: SupabaseClient;
-  private oauthClient?: SupabaseClient;
   private readonly logger = new Logger(SupabaseService.name);
 
   constructor(private readonly configService: ConfigService) {
     this.deploymentMode =
       this.configService.get<'saas' | 'private'>('APP_DEPLOYMENT_MODE') ??
       'saas';
-    this.supabaseUrl = this.configService.get<string>('APP_SUPABASE_URL');
+    const supabaseUrl = this.configService.get<string>('APP_SUPABASE_URL');
     this.supabaseServiceKey = this.configService.get<string>(
       'APP_SUPABASE_SERVICE_KEY',
     );
@@ -32,16 +27,19 @@ export class SupabaseService {
       'APP_SUPABASE_ANON_KEY',
     );
     this.isSupabaseConfigured = [
-      this.supabaseUrl,
+      supabaseUrl,
       this.supabaseServiceKey,
       this.supabaseAnonKey,
     ].every((value) => typeof value === 'string' && value.trim().length > 0);
+    if (this.isSupabaseConfigured) {
+      this.authUrl = `${supabaseUrl!.replace(/\/+$/, '')}/auth/v1`;
+    }
   }
 
   // ─── 邮箱密码认证 ───────────────────────────────────────────
 
   async signUp(email: string, password: string) {
-    const { data, error } = await this.getAdminClient().auth.signUp({
+    const { data, error } = await this.createAuthClient('service').signUp({
       email,
       password,
     });
@@ -55,12 +53,12 @@ export class SupabaseService {
   }
 
   async signIn(email: string, password: string) {
-    const { data, error } = await this.getAdminClient().auth.signInWithPassword(
-      {
-        email,
-        password,
-      },
-    );
+    const { data, error } = await this.createAuthClient(
+      'service',
+    ).signInWithPassword({
+      email,
+      password,
+    });
 
     if (error) {
       this.logger.warn(`SignIn failed for ${email}: ${error.message}`);
@@ -71,7 +69,9 @@ export class SupabaseService {
   }
 
   async refreshToken(refreshToken: string) {
-    const { data, error } = await this.getAdminClient().auth.refreshSession({
+    const { data, error } = await this.createAuthClient(
+      'service',
+    ).refreshSession({
       refresh_token: refreshToken,
     });
 
@@ -85,7 +85,7 @@ export class SupabaseService {
 
   async signOut(accessToken: string) {
     const { error } =
-      await this.getAdminClient().auth.admin.signOut(accessToken);
+      await this.createAuthClient('service').admin.signOut(accessToken);
 
     if (error) {
       this.logger.warn(`SignOut failed: ${error.message}`);
@@ -95,7 +95,7 @@ export class SupabaseService {
 
   async getUser(accessToken: string) {
     const { data, error } =
-      await this.getAdminClient().auth.getUser(accessToken);
+      await this.createAuthClient('service').getUser(accessToken);
 
     if (error) {
       this.logger.warn(`GetUser failed: ${error.message}`);
@@ -113,18 +113,15 @@ export class SupabaseService {
   async updatePasswordForSession(accessToken: string, newPassword: string) {
     this.ensureAvailable();
 
-    const response = await fetch(
-      `${this.supabaseUrl!.replace(/\/+$/, '')}/auth/v1/user`,
-      {
-        method: 'PUT',
-        headers: {
-          apikey: this.supabaseAnonKey!,
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ password: newPassword }),
+    const response = await fetch(`${this.authUrl!}/user`, {
+      method: 'PUT',
+      headers: {
+        apikey: this.supabaseAnonKey!,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({ password: newPassword }),
+    });
 
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as {
@@ -159,10 +156,12 @@ export class SupabaseService {
       options.queryParams = { access_type: 'offline', prompt: 'consent' };
     }
 
-    const { data, error } = await this.getOauthClient().auth.signInWithOAuth({
-      provider,
-      options,
-    });
+    const { data, error } = await this.createAuthClient('anon').signInWithOAuth(
+      {
+        provider,
+        options,
+      },
+    );
 
     if (error) {
       this.logger.warn(
@@ -176,7 +175,7 @@ export class SupabaseService {
 
   async exchangeCodeForSession(code: string) {
     const { data, error } =
-      await this.getOauthClient().auth.exchangeCodeForSession(code);
+      await this.createAuthClient('anon').exchangeCodeForSession(code);
 
     if (error) {
       this.logger.warn(`OAuth code exchange failed: ${error.message}`);
@@ -188,26 +187,9 @@ export class SupabaseService {
 
   // ─── MFA (TOTP) ─────────────────────────────────────────────
 
-  createUserClient(accessToken: string): SupabaseClient {
-    this.ensureAvailable();
-
-    return createClient(this.supabaseUrl!, this.supabaseAnonKey!, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-    });
-  }
-
   async enrollTotp(accessToken: string) {
-    const userClient = this.createUserClient(accessToken);
-    const { data, error } = await userClient.auth.mfa.enroll({
+    const userClient = this.createAuthClient('anon', accessToken);
+    const { data, error } = await userClient.mfa.enroll({
       factorType: 'totp',
     });
 
@@ -224,17 +206,17 @@ export class SupabaseService {
     factorId: string,
     code: string,
   ) {
-    const userClient = this.createUserClient(accessToken);
+    const userClient = this.createAuthClient('anon', accessToken);
 
     const { data: challengeData, error: challengeError } =
-      await userClient.auth.mfa.challenge({ factorId });
+      await userClient.mfa.challenge({ factorId });
 
     if (challengeError) {
       this.logger.warn(`MFA challenge failed: ${challengeError.message}`);
       throw challengeError;
     }
 
-    const { data, error } = await userClient.auth.mfa.verify({
+    const { data, error } = await userClient.mfa.verify({
       factorId,
       challengeId: challengeData.id,
       code,
@@ -249,8 +231,8 @@ export class SupabaseService {
   }
 
   async unenrollFactor(accessToken: string, factorId: string) {
-    const userClient = this.createUserClient(accessToken);
-    const { data, error } = await userClient.auth.mfa.unenroll({ factorId });
+    const userClient = this.createAuthClient('anon', accessToken);
+    const { data, error } = await userClient.mfa.unenroll({ factorId });
 
     if (error) {
       this.logger.warn(`MFA unenroll failed: ${error.message}`);
@@ -261,8 +243,8 @@ export class SupabaseService {
   }
 
   async listFactors(accessToken: string) {
-    const userClient = this.createUserClient(accessToken);
-    const { data, error } = await userClient.auth.mfa.listFactors();
+    const userClient = this.createAuthClient('anon', accessToken);
+    const { data, error } = await userClient.mfa.listFactors();
 
     if (error) {
       this.logger.warn(`MFA list factors failed: ${error.message}`);
@@ -273,10 +255,10 @@ export class SupabaseService {
   }
 
   async getAuthenticatorAssuranceLevel(accessToken: string) {
-    const userClient = this.createUserClient(accessToken);
-    // user client 不持久化会话，必须显式传入 JWT；无参调用读本地会话，恒得 currentLevel=null
+    const userClient = this.createAuthClient('anon', accessToken);
+    // user client 不持有会话，必须显式传入 JWT；无参调用读本地会话，恒得 currentLevel=null
     const { data, error } =
-      await userClient.auth.mfa.getAuthenticatorAssuranceLevel(accessToken);
+      await userClient.mfa.getAuthenticatorAssuranceLevel(accessToken);
 
     if (error) {
       this.logger.warn(
@@ -299,47 +281,35 @@ export class SupabaseService {
     throw new AuthUnavailableException(this.deploymentMode);
   }
 
-  private getAdminClient() {
-    this.ensureClientsInitialized();
-
-    return this.adminClient!;
-  }
-
-  private getOauthClient() {
-    this.ensureClientsInitialized();
-
-    return this.oauthClient!;
-  }
-
-  private ensureClientsInitialized() {
+  /**
+   * 每次调用新建、用完即弃的 GoTrue client，不缓存、不持久化会话。
+   *
+   * auth-js client 带实例级可变状态：会话存储、refresh 单飞（`refreshingDeferred`：并发
+   * refresh 直接共享在途 Promise，不比对 refresh token）、refresh 落盘前的存储 commit guard、
+   * PKCE verifier。服务端单例 client 一旦承接多个用户的调用，B 的 refresh 会拿到 A 的会话，
+   * A 的登录也会让 B 进行中的 refresh 被丢弃。
+   *
+   * `accessToken` 给定时以用户 JWT 作 Authorization（MFA 等用户态接口）；
+   * `hasCustomAuthorizationHeader` 让 auth-js 在无本地会话时仍用该 header 发请求。
+   */
+  private createAuthClient(
+    key: 'service' | 'anon',
+    accessToken?: string,
+  ): GoTrueClient {
     this.ensureAvailable();
+    const apiKey =
+      key === 'service' ? this.supabaseServiceKey! : this.supabaseAnonKey!;
 
-    if (!this.adminClient) {
-      this.adminClient = createClient(
-        this.supabaseUrl!,
-        this.supabaseServiceKey!,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-            detectSessionInUrl: false,
-          },
-        },
-      );
-    }
-
-    if (!this.oauthClient) {
-      this.oauthClient = createClient(
-        this.supabaseUrl!,
-        this.supabaseAnonKey!,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-            detectSessionInUrl: false,
-          },
-        },
-      );
-    }
+    return new GoTrueClient({
+      url: this.authUrl!,
+      headers: {
+        apikey: apiKey,
+        Authorization: `Bearer ${accessToken ?? apiKey}`,
+      },
+      hasCustomAuthorizationHeader: accessToken !== undefined,
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    });
   }
 }
