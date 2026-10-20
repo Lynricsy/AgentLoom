@@ -10,6 +10,8 @@ import postgres from 'postgres';
 const SERVER_DIR = process.env.ACP_TEST_SERVER_DIR ?? process.cwd();
 const DATABASE_URL = process.env.ACP_TEST_DATABASE_URL;
 const REDIS_URL = process.env.ACP_TEST_REDIS_URL;
+// 子进程冷启动（Nest 装配 + 连库）在全量 e2e 并行时可超过 10s；首个响应单独放宽，单步仍用 10s
+const ACP_PROCESS_STARTUP_TIMEOUT_MS = 60_000;
 const TEST_JWT_SECRET =
   process.env.ACP_TEST_JWT_SECRET ?? 'test-e2e-jwt-secret';
 const TEST_TENANT_ID =
@@ -302,7 +304,9 @@ async function initializeAndAuthenticate(
       },
     }),
   );
-  const initializeResponse = await stdout.nextJson(10_000);
+  const initializeResponse = await stdout.nextJson(
+    ACP_PROCESS_STARTUP_TIMEOUT_MS,
+  );
 
   await writeJsonRpc(child, {
     jsonrpc: '2.0',
@@ -833,7 +837,9 @@ async function runScenario() {
         }),
       );
 
-      const unsupportedInitializeResponse = await stdout.nextJson(10_000);
+      const unsupportedInitializeResponse = await stdout.nextJson(
+        ACP_PROCESS_STARTUP_TIMEOUT_MS,
+      );
 
       const validToken = createAccessToken({
         org_id: TEST_ORG_ID,

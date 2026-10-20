@@ -218,7 +218,8 @@ function createAcpHelperEnv(databaseUrl: string): NodeJS.ProcessEnv {
 
 async function runAcpStdioScenario(
   databaseUrl: string,
-  timeoutMs = 20_000,
+  // 两次子进程冷启动各留 60s（见 helper 的 ACP_PROCESS_STARTUP_TIMEOUT_MS），协议步骤本身单独运行约十余秒
+  timeoutMs = 180_000,
 ): Promise<{
   exitCode: number | null;
   stdout: string;
@@ -1411,5 +1412,5 @@ describe('ACP stdio E2E', () => {
     for (const line of result.protocolLines) {
       expect(() => JSON.parse(line)).not.toThrow();
     }
-  }, 30_000);
+  }, 200_000);
 });
