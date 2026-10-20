@@ -120,8 +120,10 @@ const createJob = (
       tenantId: TENANT_ID,
       executionId: '22222222-2222-2222-2222-222222222222',
       stepId: '33333333-3333-3333-3333-333333333333',
+      nodeId: 'canvas-plugin-node-1',
       pluginId: 'com.example.test',
       nodeType: 'text-processor',
+      requestedPluginVersion: null,
       inputs: { text: 'hello' },
       config: {},
       ...overrides,
@@ -1000,6 +1002,88 @@ describe('PluginExecutionWorker', () => {
               runtime: 'wasm-extism',
             }),
           }),
+        );
+      });
+
+      it('插件自身报错时 errorMessage.nodeId 是画布节点 id，节点类型写进 detail', async () => {
+        pluginService.findActiveByPluginId.mockResolvedValue(
+          createPluginRecord(),
+        );
+        storageService.download.mockResolvedValue(Readable.from(['wasm']));
+        sandboxService.buildSandboxConfig.mockReturnValue({});
+        sandboxService.execute.mockResolvedValue({
+          success: false,
+          output: undefined,
+          error: 'text-processor 要求 inputs.text 为字符串',
+          executionTimeMs: 3,
+        });
+
+        await worker.process(createJob());
+
+        expect(stepStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+          TENANT_ID,
+          '33333333-3333-3333-3333-333333333333',
+          'failed',
+          expect.objectContaining({
+            errorMessage: expect.objectContaining({
+              nodeId: 'canvas-plugin-node-1',
+              detail: 'pluginId=com.example.test, pluginNodeType=text-processor',
+            }),
+          }),
+        );
+      });
+
+      it('插件解析失败的收口路径同样写画布节点 id', async () => {
+        pluginService.findActiveByPluginId.mockRejectedValue(
+          new PluginNotFoundException('com.example.test'),
+        );
+
+        await worker.process(createJob());
+
+        expect(stepStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+          TENANT_ID,
+          '33333333-3333-3333-3333-333333333333',
+          'failed',
+          expect.objectContaining({
+            errorMessage: expect.objectContaining({
+              nodeId: 'canvas-plugin-node-1',
+            }),
+          }),
+        );
+      });
+
+      it('检查点记录实际执行的版本与内容哈希，画布版本不一致时标记 mismatch', async () => {
+        const warnSpy = vi
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(() => {});
+        pluginService.findActiveByPluginId.mockResolvedValue(
+          createPluginRecord({ version: '1.0.1', contentHash: 'c'.repeat(64) }),
+        );
+        storageService.download.mockResolvedValue(Readable.from(['wasm']));
+        sandboxService.buildSandboxConfig.mockReturnValue({});
+        sandboxService.execute.mockResolvedValue({
+          success: true,
+          output: { ok: true },
+          executionTimeMs: 5,
+        });
+
+        await worker.process(createJob({ requestedPluginVersion: '1.0.0' }));
+
+        expect(stepStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+          TENANT_ID,
+          '33333333-3333-3333-3333-333333333333',
+          'completed',
+          expect.objectContaining({
+            checkpointData: expect.objectContaining({
+              pluginVersion: '1.0.1',
+              pluginContentHash: 'c'.repeat(64),
+              requestedPluginVersion: '1.0.0',
+              pluginVersionMismatch: true,
+            }),
+          }),
+        );
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('plugin_version_mismatch'),
         );
       });
 

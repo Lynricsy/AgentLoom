@@ -335,7 +335,7 @@ describe('extension migrated scenarios', () => {
   });
 
   describe('scheduleNode migrated', () => {
-    it('plugin 节点会校验插件激活态后投递到 plugin queue', async () => {
+    it('plugin 节点会校验插件激活态后投递到 plugin queue，并带上画布节点 id 与画布记录的版本', async () => {
       const snapshot = makeSnapshot([makeNode('P', 'plugin')], []);
       const steps = [
         makeStep({
@@ -348,6 +348,7 @@ describe('extension migrated scenarios', () => {
             pluginNodeType: 'review-analyzer',
             orgId: 'org-001',
             pluginConfig: { mode: 'safe' },
+            pluginVersion: '1.0.0',
           },
         }),
       ];
@@ -370,8 +371,10 @@ describe('extension migrated scenarios', () => {
         tenantId: TENANT_ID,
         executionId: EXECUTION_ID,
         stepId: 'step-p',
+        nodeId: 'P',
         pluginId: 'com.example.review',
         nodeType: 'review-analyzer',
+        requestedPluginVersion: '1.0.0',
         inputs: {},
         config: { mode: 'safe' },
       });

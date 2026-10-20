@@ -7,6 +7,7 @@ import type { Queue } from 'bullmq';
 import type { ExecutionStep } from '../../../database/schema';
 import { PluginService } from '../../plugin/plugin.service';
 import { PLUGIN_EXECUTION_QUEUE } from '../../plugin/plugin.constants';
+import type { PluginExecutionJobData } from '../../plugin/plugin-execution.worker';
 import { SkillResolverService } from '../../skill/skill-resolver.service';
 import type { NodeSchedulerService } from '../node-scheduler.service';
 import { NodeExecutionFailurePolicy } from '../node-execution-failure-policy';
@@ -95,11 +96,17 @@ export class ExtensionNodeExecutor implements NodeExecutor {
       tenantId,
       executionId,
       stepId: step.id,
+      nodeId: step.nodeId,
       pluginId: plugin.pluginId,
       nodeType: pluginNodeType,
+      // 插件节点总是执行组织内当前版本；画布记录的版本只用于审计比对。
+      requestedPluginVersion:
+        typeof nodeData.pluginVersion === 'string'
+          ? nodeData.pluginVersion
+          : null,
       inputs: input,
       config: isRecord(nodeData.pluginConfig) ? nodeData.pluginConfig : {},
-    });
+    } satisfies PluginExecutionJobData);
   }
 
   async executeSkillNode(

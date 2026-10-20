@@ -27,8 +27,13 @@ export interface PluginExecutionJobData {
   tenantId: string;
   executionId: string;
   stepId: string;
+  /** 画布节点 id，写入 step.errorMessage.nodeId */
+  nodeId: string;
   pluginId: string;
+  /** 插件导出的节点类型（manifest 节点定义的 type） */
   nodeType: string;
+  /** 画布节点 data 中记录的插件版本，仅用于与实际执行版本比对 */
+  requestedPluginVersion: string | null;
   inputs: Record<string, unknown>;
   config: Record<string, unknown>;
 }
@@ -87,6 +92,8 @@ export class PluginExecutionWorker extends WorkerHost {
       );
 
       const workerResult = await this.executePluginJob(job, plugin);
+      const checkpointData = this.buildCheckpointData(job.data, plugin);
+
       if (workerResult.status === 'completed') {
         await this.getStepStateMachineService().updateStepStatus(
           tenantId,
@@ -101,10 +108,8 @@ export class PluginExecutionWorker extends WorkerHost {
               'exec-out': { triggered: true },
             },
             checkpointData: {
-              pluginId: plugin.pluginId,
-              nodeType,
+              ...checkpointData,
               executionTimeMs: workerResult.executionTimeMs ?? null,
-              runtime: this.resolveCheckpointRuntime(plugin, nodeType),
             },
           },
         );
@@ -122,14 +127,12 @@ export class PluginExecutionWorker extends WorkerHost {
             result: workerResult.outputs,
             errorMessage: {
               message: workerResult.error ?? '插件执行失败',
-              nodeId: nodeType,
-              detail: `pluginId=${plugin.pluginId}`,
+              nodeId: job.data.nodeId,
+              detail: `pluginId=${job.data.pluginId}, pluginNodeType=${nodeType}`,
             },
             checkpointData: {
-              pluginId: plugin.pluginId,
-              nodeType,
+              ...checkpointData,
               executionTimeMs: workerResult.executionTimeMs ?? null,
-              runtime: this.resolveCheckpointRuntime(plugin, nodeType),
             },
           },
         );
@@ -150,6 +153,44 @@ export class PluginExecutionWorker extends WorkerHost {
 
       return this.markStepFailedBestEffort(job.data, error);
     }
+  }
+
+  /**
+   * 插件节点总是执行组织内当前版本（就地发布新版本后旧工作流直接用新版本），
+   * 因此检查点记录实际执行的版本与内容哈希；与画布记录的版本不一致时额外标记并告警，
+   * 审计时以检查点为准。
+   */
+  private buildCheckpointData(
+    jobData: PluginExecutionJobData,
+    plugin: PluginRecord,
+  ): Record<string, unknown> {
+    const versionMismatch =
+      jobData.requestedPluginVersion !== null &&
+      jobData.requestedPluginVersion !== plugin.version;
+
+    if (versionMismatch) {
+      this.logger.warn(
+        JSON.stringify({
+          action: 'plugin_version_mismatch',
+          executionId: jobData.executionId,
+          stepId: jobData.stepId,
+          nodeId: jobData.nodeId,
+          pluginId: plugin.pluginId,
+          requestedPluginVersion: jobData.requestedPluginVersion,
+          executedPluginVersion: plugin.version,
+        }),
+      );
+    }
+
+    return {
+      pluginId: plugin.pluginId,
+      nodeType: jobData.nodeType,
+      pluginVersion: plugin.version,
+      pluginContentHash: plugin.contentHash,
+      requestedPluginVersion: jobData.requestedPluginVersion,
+      ...(versionMismatch ? { pluginVersionMismatch: true } : {}),
+      runtime: this.resolveCheckpointRuntime(plugin, jobData.nodeType),
+    };
   }
 
   private async executePluginJob(
@@ -420,8 +461,8 @@ export class PluginExecutionWorker extends WorkerHost {
           errorMessage: {
             message,
             stack: err.stack,
-            nodeId: jobData.nodeType,
-            detail: `pluginId=${jobData.pluginId}`,
+            nodeId: jobData.nodeId,
+            detail: `pluginId=${jobData.pluginId}, pluginNodeType=${jobData.nodeType}`,
           },
         },
       );
