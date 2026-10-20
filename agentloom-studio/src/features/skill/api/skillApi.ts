@@ -1,5 +1,5 @@
 import { apiClient } from '@/shared/api/client';
-import type { PaginatedResponse } from '@/shared/types/api';
+import type { ApiResponse, PaginatedResponse } from '@/shared/types/api';
 import type { ResourceSourceKind } from '@/shared/lib/resourceSource';
 import type { Skill, SkillStatus } from '../types';
 
@@ -47,7 +47,10 @@ export async function fetchSkills(
 }
 
 export async function fetchSkillById(id: string): Promise<Skill> {
-  return apiClient.get(`${BASE_PATH}/${id}`).json<Skill>();
+  const response = await apiClient
+    .get(`${BASE_PATH}/${id}`)
+    .json<ApiResponse<Skill>>();
+  return response.data;
 }
 
 export async function createSkill(payload: CreateSkillPayload): Promise<Skill> {
@@ -60,9 +63,10 @@ export async function createSkill(payload: CreateSkillPayload): Promise<Skill> {
     }
   }
 
-  return apiClient
+  const response = await apiClient
     .post(BASE_PATH, { body: formData })
-    .json<Skill>();
+    .json<ApiResponse<Skill>>();
+  return response.data;
 }
 
 export async function updateSkill(
@@ -72,9 +76,10 @@ export async function updateSkill(
   const formData = new FormData();
   formData.append('metadata', JSON.stringify(payload));
 
-  return apiClient
+  const response = await apiClient
     .put(`${BASE_PATH}/${id}`, { body: formData })
-    .json<Skill>();
+    .json<ApiResponse<Skill>>();
+  return response.data;
 }
 
 export async function deleteSkill(id: string): Promise<void> {
@@ -82,9 +87,10 @@ export async function deleteSkill(id: string): Promise<void> {
 }
 
 export async function archiveSkill(id: string): Promise<Skill> {
-  return apiClient
+  const response = await apiClient
     .patch(`${BASE_PATH}/${id}/archive`)
-    .json<Skill>();
+    .json<ApiResponse<Skill>>();
+  return response.data;
 }
 
 // ---------- File Management ----------
@@ -95,7 +101,10 @@ export interface SkillFileInfo {
 }
 
 export async function fetchSkillFiles(id: string): Promise<SkillFileInfo[]> {
-  return apiClient.get(`${BASE_PATH}/${id}/files`).json<SkillFileInfo[]>();
+  const response = await apiClient
+    .get(`${BASE_PATH}/${id}/files`)
+    .json<ApiResponse<SkillFileInfo[]>>();
+  return response.data;
 }
 
 export async function uploadSkillFile(
@@ -104,9 +113,10 @@ export async function uploadSkillFile(
 ): Promise<SkillFileInfo> {
   const formData = new FormData();
   formData.append('file', file);
-  return apiClient
+  const response = await apiClient
     .post(`${BASE_PATH}/${id}/files`, { body: formData })
-    .json<SkillFileInfo>();
+    .json<ApiResponse<SkillFileInfo>>();
+  return response.data;
 }
 
 export async function downloadSkillFile(

@@ -100,7 +100,7 @@ export class SkillController {
       data: undefined,
     }) as CreateSkillDtoType;
 
-    return this.skillService.create(tenantId, userId, dto, files);
+    return { data: await this.skillService.create(tenantId, userId, dto, files) };
   }
 
   @Get()
@@ -124,7 +124,7 @@ export class SkillController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     const tenantId = this.requireTenantId(req);
-    return this.skillService.findById(tenantId, id);
+    return { data: await this.skillService.findById(tenantId, id) };
   }
 
   @Put(':id')
@@ -169,7 +169,9 @@ export class SkillController {
       data: undefined,
     }) as UpdateSkillDtoType;
 
-    return this.skillService.update(tenantId, userId, id, dto, files);
+    return {
+      data: await this.skillService.update(tenantId, userId, id, dto, files),
+    };
   }
 
   @Delete(':id')
@@ -203,7 +205,7 @@ export class SkillController {
   ) {
     const tenantId = this.requireTenantId(req);
     const userId = req.user.sub;
-    return this.skillService.archive(tenantId, userId, id);
+    return { data: await this.skillService.archive(tenantId, userId, id) };
   }
 
   @Get(':id/files')
@@ -217,7 +219,7 @@ export class SkillController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     const tenantId = this.requireTenantId(req);
-    return this.skillService.listFiles(tenantId, id);
+    return { data: await this.skillService.listFiles(tenantId, id) };
   }
 
   @Get(':id/files/:fileName')
@@ -261,7 +263,7 @@ export class SkillController {
       },
     },
   })
-  @ApiResponse({ status: 201, description: '文件上传成功' })
+  @ApiResponse({ status: 201, description: '文件上传成功，返回 { data: { name, size } }' })
   @ApiResponse({ status: 400, description: '缺少文件或文件名无效' })
   @ApiResponse({ status: 401, description: '认证失败' })
   @ApiResponse({ status: 403, description: '权限不足或内置 Skill 只读' })
@@ -282,7 +284,8 @@ export class SkillController {
 
     await this.skillService.uploadFile(tenantId, id, file);
 
-    return { message: '文件上传成功', fileName: file.filename };
+    // 与 GET :id/files 的列表项同形
+    return { data: { name: file.filename, size: file.buffer.length } };
   }
 
   @Delete(':id/files/:fileName')

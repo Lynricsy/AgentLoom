@@ -181,12 +181,12 @@ describe('SkillController', () => {
   });
 
   describe('findById', () => {
-    it('delegates to skillService.findById', async () => {
+    it('delegates to skillService.findById and wraps the result in { data }', async () => {
       const record = { id: SKILL_ID, name: 'Skill' };
       skillService.findById.mockResolvedValue(record);
 
       const result = await controller.findById(makeReq(), SKILL_ID);
-      expect(result).toEqual(record);
+      expect(result).toEqual({ data: record });
       expect(skillService.findById).toHaveBeenCalledWith(TENANT_ID, SKILL_ID);
     });
   });
@@ -201,12 +201,12 @@ describe('SkillController', () => {
   });
 
   describe('archive', () => {
-    it('delegates to skillService.archive', async () => {
+    it('delegates to skillService.archive and wraps the result in { data }', async () => {
       const record = { id: SKILL_ID, status: 'archived' };
       skillService.archive.mockResolvedValue(record);
 
       const result = await controller.archive(makeReq(), SKILL_ID);
-      expect(result).toEqual(record);
+      expect(result).toEqual({ data: record });
       expect(skillService.archive).toHaveBeenCalledWith(
         TENANT_ID,
         USER_ID,
@@ -216,12 +216,12 @@ describe('SkillController', () => {
   });
 
   describe('listFiles', () => {
-    it('delegates to skillService.listFiles (checks skill existence)', async () => {
+    it('delegates to skillService.listFiles (checks skill existence) and wraps the list in { data }', async () => {
       const files = [{ name: 'SKILL.md', size: 100 }];
       skillService.listFiles.mockResolvedValue(files);
 
       const result = await controller.listFiles(makeReq(), SKILL_ID);
-      expect(result).toEqual(files);
+      expect(result).toEqual({ data: files });
       expect(skillService.listFiles).toHaveBeenCalledWith(TENANT_ID, SKILL_ID);
     });
   });
@@ -295,8 +295,7 @@ describe('SkillController', () => {
         }),
       );
       expect(result).toEqual({
-        message: '文件上传成功',
-        fileName: 'scripts/run.sh',
+        data: { name: 'scripts/run.sh', size: Buffer.byteLength('example') },
       });
     });
 

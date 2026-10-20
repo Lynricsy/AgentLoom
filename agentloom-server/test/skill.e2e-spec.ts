@@ -359,8 +359,10 @@ describe('Skill E2E', () => {
   it('multipart 创建、多文件列表、详情、更新 OCC、归档与删除形成完整链路', async () => {
     const createResponse = await createSkill(owner);
     expect(createResponse.statusCode).toBe(201);
-    const created = createResponse.json();
-    expect(created).not.toHaveProperty('data');
+    const createBody = createResponse.json();
+    // 单个资源统一 { data } 包络（D-192）
+    expect(Object.keys(createBody)).toEqual(['data']);
+    const created = createBody.data;
     expect(created).toEqual(
       expect.objectContaining({
         tenantId: owner.tenantId,
@@ -399,10 +401,9 @@ describe('Skill E2E', () => {
       headers: owner.headers,
     });
     expect(detailResponse.statusCode).toBe(200);
-    expect(detailResponse.json()).not.toHaveProperty('data');
-    expect(detailResponse.json()).toEqual(
-      expect.objectContaining({ id: created.id }),
-    );
+    expect(detailResponse.json()).toEqual({
+      data: expect.objectContaining({ id: created.id }),
+    });
 
     const filesResponse = await app.inject({
       method: 'GET',
@@ -410,13 +411,27 @@ describe('Skill E2E', () => {
       headers: owner.headers,
     });
     expect(filesResponse.statusCode).toBe(200);
-    expect(filesResponse.json()).toEqual(
-      expect.arrayContaining([
+    expect(filesResponse.json()).toEqual({
+      data: expect.arrayContaining([
         expect.objectContaining({ name: 'SKILL.md' }),
         // 附件保留相对目录（D-042），不再被拍平为 input.txt
         expect.objectContaining({ name: 'examples/input.txt' }),
       ]),
-    );
+    });
+
+    const uploadBody = buildMultipart(undefined, [
+      { filename: 'examples/extra.txt', content: 'extra!', contentType: 'text/plain' },
+    ]);
+    const uploadResponse = await app.inject({
+      method: 'POST',
+      url: `/api/v1/skills/${created.id}/files`,
+      headers: { ...owner.headers, 'content-type': uploadBody.contentType },
+      payload: uploadBody.payload,
+    });
+    expect(uploadResponse.statusCode).toBe(201);
+    expect(uploadResponse.json()).toEqual({
+      data: { name: 'examples/extra.txt', size: 6 },
+    });
 
     const updateBody = buildMultipart({
       name: 'Updated Multipart Skill',
@@ -430,14 +445,13 @@ describe('Skill E2E', () => {
       payload: updateBody.payload,
     });
     expect(updateResponse.statusCode).toBe(200);
-    expect(updateResponse.json()).not.toHaveProperty('data');
-    expect(updateResponse.json()).toEqual(
-      expect.objectContaining({
+    expect(updateResponse.json()).toEqual({
+      data: expect.objectContaining({
         id: created.id,
         name: 'Updated Multipart Skill',
         version: created.version + 1,
       }),
-    );
+    });
 
     const staleResponse = await app.inject({
       method: 'PUT',
@@ -453,9 +467,9 @@ describe('Skill E2E', () => {
       headers: owner.headers,
     });
     expect(archiveResponse.statusCode).toBe(200);
-    expect(archiveResponse.json()).toEqual(
-      expect.objectContaining({ status: 'archived' }),
-    );
+    expect(archiveResponse.json()).toEqual({
+      data: expect.objectContaining({ status: 'archived' }),
+    });
 
     const deleteResponse = await app.inject({
       method: 'DELETE',
@@ -482,7 +496,7 @@ describe('Skill E2E', () => {
   it('GET files/<穿越名> 应返回 4xx 而非 500', async () => {
     const createResponse = await createSkill(owner);
     expect(createResponse.statusCode).toBe(201);
-    const created = createResponse.json();
+    const created = createResponse.json().data;
 
     const response = await app.inject({
       method: 'GET',
@@ -496,7 +510,7 @@ describe('Skill E2E', () => {
   it('跨租户详情 404，文件列表不泄露任何文件名', async () => {
     const createResponse = await createSkill(owner);
     expect(createResponse.statusCode).toBe(201);
-    const created = createResponse.json();
+    const created = createResponse.json().data;
 
     const detailResponse = await app.inject({
       method: 'GET',
@@ -522,7 +536,7 @@ describe('Skill E2E', () => {
   it('跨租户 GET files/SKILL.md 应返回 404 而非 500', async () => {
     const createResponse = await createSkill(owner);
     expect(createResponse.statusCode).toBe(201);
-    const created = createResponse.json();
+    const created = createResponse.json().data;
 
     const response = await app.inject({
       method: 'GET',
@@ -552,7 +566,7 @@ describe('Skill E2E', () => {
     expect(createResponse.statusCode).toBe(403);
 
     const ownerCreateResponse = await createSkill(owner);
-    const created = ownerCreateResponse.json();
+    const created = ownerCreateResponse.json().data;
     const updateBody = buildMultipart({
       description: 'viewer cannot update',
       occVersion: created.version,

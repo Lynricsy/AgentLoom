@@ -42,12 +42,8 @@ class SkillApi {
   /// 获取单个技能详情
   Future<SkillDto> getSkill(String id) async {
     final response = await _dio.get('/api/v1/skills/$id');
-    final body = response.data as Map<String, dynamic>;
-    // 服务端 findById 返回裸对象（无 data 包装）
-    final json = body.containsKey('data')
-        ? body['data'] as Map<String, dynamic>
-        : body;
-    return SkillDto.fromJson(json);
+    final data = response.data as Map<String, dynamic>;
+    return SkillDto.fromJson(data['data'] as Map<String, dynamic>);
   }
 
   /// 创建技能
