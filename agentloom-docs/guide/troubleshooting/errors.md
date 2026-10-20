@@ -107,6 +107,12 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `tool-permission-resolution-not-allowed` | 409 | 工具调用当前不在等待审批状态 | 刷新执行页查看最新状态 |
 | `dead-letter-job-not-found` | 404 | 死信任务不存在 | 刷新死信列表 |
 | `evidence-not-found` | 404 | 证据记录不存在 | 刷新执行证据页 |
+| `evidence-export-not-found` | 404 | 证据导出任务不存在或不属于当前组织 | 刷新导出列表 |
+| `evidence-export-artifact-not-ready` | 409 | 导出任务尚未完成，还没有可下载的文件（扩展字段 `status` 给出当前状态） | 等任务完成后再下载 |
+| `evidence-export-expired` | 410 | 导出文件已过期，不能再下载 | 重新发起导出 |
+| `evidence-export-artifact-not-found` | 404 | 导出任务已完成，但存储中没有对应文件 | 重新发起导出；持续出现时联系部署管理员 |
+| `evidence-export-artifact-unavailable` | 503 | 导出文件暂时无法从存储读取 | 稍后重试 |
+| `evidence-export-workload-limit-exceeded` | 422 | 导出条件匹配的执行数超过单次上限（扩展字段 `limit`、`actual`） | 缩小时间范围或筛选条件后重新导出 |
 | `intervention-policy-not-found` | 404 | 介入策略不存在或不属于路径中的工作流 | 刷新策略列表 |
 | `intervention-policy-conflict` | 409 | 该工作流或节点已存在介入策略 | 编辑已有策略 |
 | `intervention-policy-version-conflict` | 409 | 介入策略已被其他人修改 | 刷新后重新编辑 |
