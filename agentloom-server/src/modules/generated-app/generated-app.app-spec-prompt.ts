@@ -33,7 +33,7 @@ export const GENERATED_APP_SPEC_SYSTEM_PROMPT = `你是 AgentLoom 的生成应�
   - 类型兼容：工作流 text ← 表单 text 或 textarea；number ← number；single_select ← single_select；multi_select ← multi_select。选择字段的 options[].value 必须取自工作流该输入的 options（label 可以写得更友好）。工作流输入声明了 maxLength/min/max 时，表单字段的 maxLength/min/max 不能比它更宽。
   - 候选的 inputs 为 null 时，工作流没有声明输入契约，workflowInputFieldId 自定为 camelCase 键名。
   - outputMapping：每个结果分区恰好对应一个输出节点，nodeId 必须是候选 outputs 中的 nodeId。json-output 节点可以用 path 取结果对象中的一个键（如 answer、citations），text-output 节点不能带 path。
-- Agent 绑定（kind=agent）：结果视图只能有一个分区，replySectionId 指向它，用来承接 Agent 的回复。
+- Agent 绑定（kind=agent）：结果视图只能有一个分区，replySectionId 指向它，用来承接 Agent 的回复。Agent 回复是一段文本，这个分区的 format 只能是 markdown 或 text，不能是 citations 或 json（需求要求引用时写进回复正文）。
 
 ## 表单与结果
 - 表单字段 id 必须匹配 ${GENERATED_APP_FIELD_ID_PATTERN.source}（camelCase，如 question、targetAudience），类型只能是 text、textarea、number、single_select、multi_select；最多 ${L.fieldsMax} 个字段，只保留实现需求必需的字段，不要为了「完整」添加需求没有提到的字段。

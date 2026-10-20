@@ -285,6 +285,22 @@ describe('GeneratedAppSpecDraftSchema', () => {
     );
   });
 
+  it('Agent 回复分区只能是 text 或 markdown：citations 分区接不住文本回复', () => {
+    const draft = qaDraft();
+    draft.resultView.sections = [
+      { id: 'citations', label: '回答与来源', format: 'citations' },
+    ];
+    draft.binding = {
+      kind: 'agent',
+      agentDefinitionId: AGENT_ID,
+      replySectionId: 'citations',
+    };
+
+    expect(issueMessages(GeneratedAppSpecDraftSchema, draft)).toContain(
+      'Agent 回复是文本，回复分区 citations 的 format 必须是 text 或 markdown（当前 citations）；引用请写在回复正文里',
+    );
+  });
+
   it('模型不能产出 platform 需求或 platform 场景', () => {
     const draft = qaDraft();
     const tampered: unknown = {

@@ -552,10 +552,22 @@ export function collectAppSpecReferenceIssues(
       }
     }
   } else {
-    if (!sectionIds.has(binding.replySectionId)) {
+    const replySection = input.resultView.sections.find(
+      (section) => section.id === binding.replySectionId,
+    );
+    if (!replySection) {
       issues.push({
         path: ['binding', 'replySectionId'],
         message: `Agent 回复分区 ${binding.replySectionId} 不存在`,
+      });
+    } else if (
+      replySection.format !== 'text' &&
+      replySection.format !== 'markdown'
+    ) {
+      // Agent 回复是一段文本，按 citations/json 解析得不到结构化值，公开提交会判结果缺失
+      issues.push({
+        path: ['binding', 'replySectionId'],
+        message: `Agent 回复是文本，回复分区 ${replySection.id} 的 format 必须是 text 或 markdown（当前 ${replySection.format}）；引用请写在回复正文里`,
       });
     }
     if (sectionIds.size !== 1) {
