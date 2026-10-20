@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:agentloom_mobile/features/skills/api/skill_api.dart';
 import 'package:agentloom_mobile/features/skills/models/skill_dto.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
@@ -187,52 +189,61 @@ void main() {
       });
     });
 
+    /// 服务端 SkillController 的创建/更新只接受 multipart：metadata 字段放 JSON 字符串（D-202）
+    Map<String, dynamic> decodeMetadata(Object? data) {
+      expect(data, isA<FormData>());
+      final form = data! as FormData;
+      expect(form.files, isEmpty);
+      expect(form.fields.map((field) => field.key), ['metadata']);
+      return jsonDecode(form.fields.single.value) as Map<String, dynamic>;
+    }
+
     group('createSkill', () {
-      test('sends POST with correct body and parses response', () async {
+      test(
+        'sends POST multipart with metadata JSON and parses response',
+        () async {
+          when(
+            () => mockDio.post(any(), data: any(named: 'data')),
+          ).thenAnswer((_) async => okResponse({'data': sampleSkillJson()}));
+
+          final result = await api.createSkill(
+            name: 'New Skill',
+            description: 'desc',
+            content: 'content body',
+          );
+
+          final captured = verify(
+            () =>
+                mockDio.post('/api/v1/skills', data: captureAny(named: 'data')),
+          ).captured.single;
+          expect(decodeMetadata(captured), {
+            'name': 'New Skill',
+            'description': 'desc',
+            'content': 'content body',
+          });
+          expect(result, isA<SkillDto>());
+        },
+      );
+
+      test('omits null content from metadata', () async {
         when(
           () => mockDio.post(any(), data: any(named: 'data')),
         ).thenAnswer((_) async => okResponse({'data': sampleSkillJson()}));
 
-        final result = await api.createSkill(
-          name: 'New Skill',
-          description: 'desc',
-          content: 'content body',
-        );
+        await api.createSkill(name: 'Minimal', description: 'desc');
 
-        verify(
-          () => mockDio.post(
-            '/api/v1/skills',
-            data: {
-              'name': 'New Skill',
-              'description': 'desc',
-              'content': 'content body',
-            },
-          ),
-        ).called(1);
-        expect(result, isA<SkillDto>());
-      });
-
-      test('omits null optional fields from body', () async {
-        when(
-          () => mockDio.post(any(), data: any(named: 'data')),
-        ).thenAnswer((_) async => okResponse({'data': sampleSkillJson()}));
-
-        await api.createSkill(name: 'Minimal');
-
-        final captured =
-            verify(
-                  () => mockDio.post(any(), data: captureAny(named: 'data')),
-                ).captured.single
-                as Map<String, dynamic>;
-
-        expect(captured, {'name': 'Minimal'});
-        expect(captured.containsKey('description'), isFalse);
-        expect(captured.containsKey('content'), isFalse);
+        final captured = verify(
+          () => mockDio.post(any(), data: captureAny(named: 'data')),
+        ).captured.single;
+        expect(decodeMetadata(captured), {
+          'name': 'Minimal',
+          'description': 'desc',
+        });
       });
     });
 
     group('updateSkill', () {
-      test('sends PUT with occVersion and optional fields', () async {
+      test('sends PUT multipart with occVersion and optional fields', () async {
         when(
           () => mockDio.put(any(), data: any(named: 'data')),
         ).thenAnswer((_) async => okResponse({'data': sampleSkillJson()}));
@@ -244,16 +255,17 @@ void main() {
           occVersion: 2,
         );
 
-        verify(
+        final captured = verify(
           () => mockDio.put(
             '/api/v1/skills/skill-1',
-            data: {
-              'occVersion': 2,
-              'name': 'Updated',
-              'description': 'new desc',
-            },
+            data: captureAny(named: 'data'),
           ),
-        ).called(1);
+        ).captured.single;
+        expect(decodeMetadata(captured), {
+          'occVersion': 2,
+          'name': 'Updated',
+          'description': 'new desc',
+        });
         expect(result, isA<SkillDto>());
       });
 
@@ -264,13 +276,10 @@ void main() {
 
         await api.updateSkill('skill-1', occVersion: 1);
 
-        final captured =
-            verify(
-                  () => mockDio.put(any(), data: captureAny(named: 'data')),
-                ).captured.single
-                as Map<String, dynamic>;
-
-        expect(captured, {'occVersion': 1});
+        final captured = verify(
+          () => mockDio.put(any(), data: captureAny(named: 'data')),
+        ).captured.single;
+        expect(decodeMetadata(captured), {'occVersion': 1});
       });
     });
 

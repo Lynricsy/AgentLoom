@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -47,21 +49,29 @@ class SkillApi {
   }
 
   /// 创建技能
+  ///
+  /// 服务端只接受 multipart/form-data：元数据以 JSON 字符串放在 `metadata` 字段
+  /// （JSON 请求体返回 415），description 为必填。
   Future<SkillDto> createSkill({
     required String name,
-    String? description,
+    required String description,
     String? content,
   }) async {
-    final body = <String, dynamic>{'name': name};
-    if (description != null) body['description'] = description;
-    if (content != null) body['content'] = content;
+    final metadata = <String, dynamic>{
+      'name': name,
+      'description': description,
+    };
+    if (content != null) metadata['content'] = content;
 
-    final response = await _dio.post('/api/v1/skills', data: body);
+    final response = await _dio.post(
+      '/api/v1/skills',
+      data: _metadataForm(metadata),
+    );
     final data = response.data as Map<String, dynamic>;
     return SkillDto.fromJson(data['data'] as Map<String, dynamic>);
   }
 
-  /// 更新技能（含 OCC 版本）
+  /// 更新技能（含 OCC 版本），与创建一样以 multipart 的 `metadata` 字段提交
   Future<SkillDto> updateSkill(
     String id, {
     String? name,
@@ -69,15 +79,22 @@ class SkillApi {
     String? content,
     required int occVersion,
   }) async {
-    final body = <String, dynamic>{'occVersion': occVersion};
-    if (name != null) body['name'] = name;
-    if (description != null) body['description'] = description;
-    if (content != null) body['content'] = content;
+    final metadata = <String, dynamic>{'occVersion': occVersion};
+    if (name != null) metadata['name'] = name;
+    if (description != null) metadata['description'] = description;
+    if (content != null) metadata['content'] = content;
 
-    final response = await _dio.put('/api/v1/skills/$id', data: body);
+    final response = await _dio.put(
+      '/api/v1/skills/$id',
+      data: _metadataForm(metadata),
+    );
     final data = response.data as Map<String, dynamic>;
     return SkillDto.fromJson(data['data'] as Map<String, dynamic>);
   }
+
+  /// 组装 SkillController 要求的 multipart 表单：只含 JSON 编码的 `metadata` 字段
+  FormData _metadataForm(Map<String, dynamic> metadata) =>
+      FormData.fromMap({'metadata': jsonEncode(metadata)});
 
   /// 删除技能
   Future<void> deleteSkill(String id) async {
