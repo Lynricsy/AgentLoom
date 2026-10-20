@@ -37,6 +37,7 @@
 | `APP_MINIO_SECRET_KEY` | `change-me-minio-password` |  |
 | `APP_MINIO_USE_SSL` | `false` |  |
 | `APP_MINIO_BUCKET` | `agentloom-documents` |  |
+| `APP_MINIO_PUBLIC_URL` |  | 浏览器打开预签名下载链接（知识库原文、证据导出）的地址：reverse-proxy 把 /agentloom-documents/ 转给 MinIO。 留空时取 APP_FRONTEND_URL；只能是 协议://主机[:端口]，不能带路径。 |
 | `APP_QDRANT_URL` | `http://qdrant:6333` |  |
 | `APP_TYPESAFE_API_KEY` |  | TypeSafe Jev 决策 API Key；设置后以影子模式调用 Jev 并写入 decision_records，留空即不调用 |
 | `APP_TYPESAFE_BASE_URL` | `https://api.typesafe.ai` | TypeSafe API 基址 |
@@ -57,6 +58,7 @@
 | `APP_SANDBOX_ROLLBACK_HOURS` | `168` |  |
 | `APP_SANDBOX_NODE_ADMIN_TENANT_IDS` |  | 允许管理 /api/v1/sandbox-nodes 的租户 ID（逗号分隔）。 saas 模式留空即全部拒绝；private 模式无条件放行，可不填。 |
 | `APP_MCP_STDIO_ENABLED` | `false` | 允许在 server/worker 宿主容器内启动 stdio MCP 进程（等同任意命令执行）。 多租户（saas）部署必须保持 false；仅单租户自托管且信任全部 owner/admin 时开启。 |
+| `APP_AGENT_CONVERSATION_CONCURRENCY` | `10` | 每个 server/worker 进程同时执行的 Agent 对话数；server 与 worker 各自生效，总并发为两者之和。 同一对话始终串行。提高前按每个对话的内存占用与模型供应商并发配额估算。 |
 | `APP_JWT_SECRET` | `change-me-jwt-secret` | ⚠ 生产环境必须替换！运行 scripts/generate-secrets.sh 自动生成 |
 | `APP_MASTER_ENCRYPTION_KEY` | `REPLACE_WITH_BASE64_32_BYTES` | 必须是 32 字节 Base64；运行: openssl rand -base64 32 |
 | `APP_OAUTH_REDIRECT_URL` | `http://localhost:8080/api/v1/auth/oauth/callback` | 公网部署请改成实际 HTTPS 域名；保留 localhost 会导致 OAuth / 邮件跳转回本机地址。 |

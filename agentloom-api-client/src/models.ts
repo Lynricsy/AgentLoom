@@ -7797,19 +7797,19 @@ export interface RotateApiKeyDto {
  */
 export interface RunWorkflowDto {
     /**
-     * 
+     * 启动参数，键为输入参数的字段 ID；工作流定义了输入参数时，未声明的键返回 422
      * @type {{ [key: string]: any; }}
      * @memberof RunWorkflowDto
      */
     inputParams?: { [key: string]: any; };
     /**
-     * 
+     * 启动来源：web-studio 运行当前画布草稿，其余取值或缺省时运行当前发布版本
      * @type {string}
      * @memberof RunWorkflowDto
      */
     launchSource?: RunWorkflowDtoLaunchSourceEnum;
     /**
-     * 
+     * 调用方依据的输入参数契约版本，取 GET /workflow-definitions/:id/input-schema 返回的 version；工作流定义了输入参数时必填，与当前契约不一致时 409
      * @type {number}
      * @memberof RunWorkflowDto
      */
@@ -10941,7 +10941,7 @@ export interface UpdateWorkflowDefinitionDto {
  */
 export interface UpdateWorkflowDefinitionDtoInputSchema {
     /**
-     * 
+     * 服务端维护的输入契约修订号：更新工作流时忽略提交值，内容有变化就在已存值上加 1；启动执行时作为 schemaVersion 传入
      * @type {number}
      * @memberof UpdateWorkflowDefinitionDtoInputSchema
      */
