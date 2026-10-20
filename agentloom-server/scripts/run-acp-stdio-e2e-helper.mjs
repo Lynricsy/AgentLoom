@@ -973,9 +973,30 @@ async function runScenario() {
         );
       }
       const terminalId = terminalCreateResponse.result.terminalId;
-      await new Promise((resolve) => {
-        setTimeout(resolve, 50);
-      });
+      // terminal/create 在进程启动后立即返回、输出异步收集（D-198）：负载下固定等待不保证首段输出已到，
+      // 先用独立 id 轮询到有输出，再发断言用的 76 号请求
+      const outputReadyDeadline = Date.now() + 10_000;
+      for (let probeId = 7600; ; probeId += 1) {
+        await writeJsonRpc(
+          child,
+          createJsonRpcRequest(probeId, 'terminal/output', {
+            sessionId: terminalSessionId,
+            terminalId,
+          }),
+        );
+        const probe = await stdout.nextJson(10_000);
+        if ((probe?.result?.output ?? '').length > 0) {
+          break;
+        }
+        if (Date.now() > outputReadyDeadline) {
+          throw new Error(
+            `terminal output not ready within 10s: ${JSON.stringify(probe)}`,
+          );
+        }
+        await new Promise((resolve) => {
+          setTimeout(resolve, 50);
+        });
+      }
 
       await writeJsonRpc(
         child,
