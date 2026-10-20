@@ -39,11 +39,19 @@ export const FormatAttemptSchema = z.object({
 });
 export type FormatAttempt = z.infer<typeof FormatAttemptSchema>;
 
+/** 本次结构化输出所有级别尝试累计消耗的 token（含解析失败的尝试） */
+export const FormatUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+});
+export type FormatUsage = z.infer<typeof FormatUsageSchema>;
+
 export const FormatResultSchema = z.object({
   outputFormatLevel: OutputFormatLevelSchema,
   degraded: z.boolean(),
   data: z.unknown(),
   attempts: z.array(FormatAttemptSchema),
   rawText: z.string().optional(),
+  usage: FormatUsageSchema,
 });
 export type FormatResult = z.infer<typeof FormatResultSchema>;

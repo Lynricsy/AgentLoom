@@ -26,8 +26,10 @@ import {
   createInsertReturningChain,
   createPublishCandidateReadiness,
   createSelectChain,
+  createUpdateReturningChain,
   mockTenantDb,
 } from './generated-app-test-support';
+import { QA_MODEL_ID, qaAppSpecV2 } from './app-spec-v2.fixtures';
 
 const MODEL_ID = '01a154d7-8c8f-7c7b-87f3-a94220c05251';
 const WORKFLOW_ID = '01a15774-77fd-7887-9fcf-5ff62bfb97c2';
@@ -262,5 +264,89 @@ describe('GeneratedAppRepository 创建引用校验与 v1 公开路由', () => {
         repository.findPublicGeneratedAppRecord('a'.repeat(64)),
       ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
     }
+  });
+});
+
+describe('GeneratedAppRepository：AppSpec 由 Gate 0 生成后落库', () => {
+  let repository: GeneratedAppRepository;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockTenantDb.select.mockReset();
+    mockTenantDb.insert.mockReset();
+    mockTenantDb.update.mockReset();
+    repository = new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService(),
+    );
+  });
+
+  it('创建时不生成模板规格：app_spec 为空、状态 app_spec_generating、门禁全部待运行', async () => {
+    const insertChain = createInsertReturningChain([]);
+    insertChain.returning.mockImplementation(async () => [
+      createGeneratedApp(insertChain.values.mock.calls[0]?.[0]),
+    ]);
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await repository.create(TENANT_ID, USER_ID, {
+      prompt: '一个问答页面：输入问题，调用上述工作流返回答案与引用',
+    });
+
+    const values = insertChain.values.mock.calls[0]?.[0];
+    expect(values).toMatchObject({
+      appSpec: null,
+      status: 'app_spec_generating',
+      appName: '一个问答页面：输入问题，调用上述工作流返回答案与引用',
+      // 门禁都还没运行（没有失败），不能分享但不是 blocked
+      readiness: { state: 'preview', canCreatePublicShare: false },
+    });
+    expect(
+      values.gateResults.map((gate: { status: string }) => gate.status),
+    ).toEqual(Array(8).fill('pending'));
+    expect(response.appSpec).toBeNull();
+    expect(response.status).toBe('app_spec_generating');
+  });
+
+  it('saveGeneratedAppSpec 写入规格、名称、描述与生成模型，只把 app_spec_generating 推进到 app_spec_ready', async () => {
+    const updateChain = createUpdateReturningChain([{ id: 'app-1' }]);
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+    const appSpec = qaAppSpecV2();
+
+    await repository.saveGeneratedAppSpec({
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      appId: 'app-1',
+      appSpec,
+      generationModelConfigId: QA_MODEL_ID,
+    });
+
+    const payload = updateChain.set.mock.calls[0]?.[0];
+    expect(payload).toMatchObject({
+      appSpec,
+      appName: '文档问答',
+      description: appSpec.summary,
+      generationModelConfigId: QA_MODEL_ID,
+      updatedBy: USER_ID,
+    });
+    expect(dialect.sqlToQuery(payload.status as SQL).sql).toBe(
+      `CASE WHEN "generated_apps"."status" = 'app_spec_generating' THEN 'app_spec_ready'::generated_app_status ELSE "generated_apps"."status" END`,
+    );
+    const where = renderWhere(updateChain);
+    expect(where.sql).toContain('"generated_apps"."tenant_id" = $1');
+    expect(where.params).toEqual([TENANT_ID, 'app-1']);
+  });
+
+  it('saveGeneratedAppSpec 在应用已被删除时抛 404', async () => {
+    mockTenantDb.update.mockReturnValueOnce(createUpdateReturningChain([]));
+
+    await expect(
+      repository.saveGeneratedAppSpec({
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        appId: 'app-1',
+        appSpec: qaAppSpecV2(),
+        generationModelConfigId: QA_MODEL_ID,
+      }),
+    ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
   });
 });

@@ -25,13 +25,39 @@ stateDiagram-v2
 
 应用状态枚举 `generated_app_status` 为 `app_spec_generating`、`app_spec_ready`、`preview_ready`、`trial_ready`、`publish_candidate`、`published`、`failed`（`agentloom-server/src/database/schema/generated-apps.schema.ts`）。`app_spec_generating` 留给 v2 异步生成（[ADR-0007](/dev/decisions/0007-generated-app-spec-generation)）：应用已创建、`app_spec` 仍为 `null`。除 `published` 外，状态都由门禁结果计算得出（见下文「就绪度」）。
 
-`app_spec` 列存 `GeneratedAppSpec = GeneratedAppSpecV1 | GeneratedAppSpecV2`（`types/generated-app.types.ts`，按 `version` 用 `isAppSpecV2()` 区分），v2 契约见 `types/app-spec-v2.schema.ts`。v1 只为 v2 落地期间的旧门禁过渡：生成运行只把 v1 规格交给 Gate 1–7，`null` 或 v2 规格在 Gate 0 失败；v1 公开运行时只服务 v1 规格的应用。迁移 `0089_generated_app_v2` 把存量 v1 应用的公开分享关闭、状态回到 `app_spec_ready`、`readiness` 置为 `blocked`。
+`app_spec` 列存 `GeneratedAppSpec = GeneratedAppSpecV1 | GeneratedAppSpecV2`（`types/generated-app.types.ts`，按 `version` 用 `isAppSpecV2()` 区分），v2 契约见 `types/app-spec-v2.schema.ts`。v1 是 ADR-0007 之前的模板规格，只剩存量数据：Gate 0 判它 `app-spec-legacy-template`，下一次生成运行会按需求重新生成；v1 公开运行时只服务 v1 规格的应用。迁移 `0089_generated_app_v2` 把存量 v1 应用的公开分享关闭、状态回到 `app_spec_ready`、`readiness` 置为 `blocked`。
 
-### 1. 创建：AppSpec 初稿
+### 1. 创建
 
-`POST /api/v1/generated-apps` 接收 `prompt`，以及可选的 `modelConfigId`（本组织已启用的 chat 模型）与 `bindingTarget`（本组织已发布的工作流或 Agent）。两者在写入前按当前租户校验（外键不受 RLS 约束），分别存入 `generation_model_config_id` 与 `binding_target`，供生成运行解析模型与绑定目标。`buildInitialAppSpec(prompt)`（`agentloom-server/src/modules/generated-app/generated-app.app-spec.util.ts`）按固定模板确定性地构造 AppSpec 初稿：应用名、目标、核心需求（`req-1` 原样取 prompt，`source: 'prompt'`；`req-2` 为提交持久化约束，`source: 'platform'`）、页面（创建者工作台、公开运行页）、两条 `scope: 'platform'` 的平台流程验收场景，不调用模型。创建时即按 `evaluateGate0AppSpec` 写入 Gate 0 结果，应用以 `app_spec_ready` 状态写入 `generated_apps`。
+`POST /api/v1/generated-apps` 接收 `prompt`，以及可选的 `modelConfigId`（本组织已启用的 chat 模型）与 `bindingTarget`（本组织已发布的工作流或 Agent）。两者在写入前按当前租户校验（外键不受 RLS 约束），分别存入 `generation_model_config_id` 与 `binding_target`，供生成运行解析模型与绑定目标。创建时不生成 AppSpec：应用以 `app_spec_generating` 状态写入，`app_spec` 为 `null`，名称取 prompt 第一句，Gate 0–7 全部 `pending`（`readiness` 为 `preview`、不能分享）。
 
-Gate 0 的 `prompt-requirement-verification` 检查要求每条 `source: 'prompt'` 的需求至少被一条非 `platform` 场景引用；模板初稿不满足，Gate 0 失败（`app-spec-incomplete`）。公开运行表单（`generated-app.runtime.ts` 的 8 个固定字段）与 Gate 7 创建的运行时工作流（`generated-app.runtime-binding.util.ts`：manual-trigger → text-output 回显）同样是模板，不随需求变化。从需求推导 AppSpec、表单与工作流绑定尚未实现。
+### Gate 0：生成 AppSpec 与绑定解析
+
+Gate 0 由 `GeneratedAppGate0Service.evaluate`（`generated-app-gate0.service.ts`）完成。AppSpec 缺失、是 v1 规格，或调用方要求重新生成（`regenerateAppSpec` / `triggerSource: 'retry'`）时调用模型生成；否则用 `GeneratedAppSpecV2Schema` 复核已存规格并重新解析绑定。读写库各用一个短租户事务，模型调用期间不持有事务。
+
+生成由 `GeneratedAppSpecGeneratorService`（`generated-app-spec-generator.service.ts`）执行：
+
+1. 模型：应用的 `generation_model_config_id`，否则租户默认 chat 模型；必须是已启用的 chat 模型。经 `PiAiAdapter.getModel` 实例化。
+2. 候选：`GeneratedAppBindingResolverService.listCandidates`（`generated-app-binding-resolver.service.ts`）。指定了 `binding_target` 时只取该目标；否则取本租户最近更新的已发布工作流（排除 `metadata.generatedAppId` 非空的生成应用自建工作流）与已发布 Agent，合计最多 20 个。工作流候选带已发布版本快照的 `inputSchema` 与顶层 `text-output` / `json-output` 节点。
+3. 调用：`OutputFormatService.executeStructuredOutput`，输出 schema 为 `z.toJSONSchema(GeneratedAppSpecDraftSchema, { io: 'input' })`，strict、允许降级到 L2。提示词在 `generated-app.app-spec-prompt.ts`：系统提示规定只能使用候选 id、字段 id 格式、每条需求给出可执行的浏览器步骤与具体填写值、高风险领域不设诊断/建议类字段；用户消息为 prompt 原文、候选目录 JSON（不超过 20 个、16KB，不含版本 id）与上一次的问题列表。
+4. 校验：草稿 schema（含 `collectAppSpecReferenceIssues`）→ 绑定目标必须在候选目录中，固定为候选当前的已发布版本 → `resolve` 校验映射与固定版本快照兼容（见下）→ `buildAppSpecV2FromDraft`（`generated-app.app-spec.util.ts`）补平台需求 `req-platform-persist` 与平台场景、页面、数据策略、范围边界、traceability、生成元数据后整体用 `GeneratedAppSpecV2Schema` 复核。
+5. 任一步有问题就把问题列表作为反馈重试，同一次 Gate 0 最多 `GENERATED_APP_SPEC_MAX_ATTEMPTS`（3）次。总超时 `APP_GENERATED_APP_SPEC_TIMEOUT_MS`（默认 120000）经 AbortSignal 取消模型调用。
+
+通过后 `GeneratedAppRepository.saveGeneratedAppSpec` 写入 `app_spec`、名称、描述与实际使用的生成模型，`app_spec_generating` 进入 `app_spec_ready`。
+
+绑定解析（`resolve`，Gate 4 复用）：目标存在、已发布，固定版本存在且未归档（源工作流重新发布不影响固定版本）。工作流绑定还要求：映射的输入是快照 `inputSchema` 中声明的字段；类型兼容（text/textarea→text、number→number、选择→同类型且选项是工作流选项的子集）；表单的 `maxLength`、`min`/`max` 不比工作流宽；每个必填输入都由必填字段映射；输出映射指向快照中的顶层 `text-output` / `json-output` 节点，`path` 只用于 `json-output`。工作流没有声明 `inputSchema` 时，映射键写入顶层 `inputParams`，不比对类型。
+
+Gate 0 失败码写在 gate run 的 `failure.code`，`failure.details` 带问题列表；生成失败时另带模型配置 id、尝试次数、token 用量与模型输出前 2000 字符（去掉密钥形态的长串与宿主路径）：
+
+| 失败码 | 含义 |
+| --- | --- |
+| `app-spec-model-unavailable` | 应用没有指定模型且租户没有默认 chat 模型，或指定的模型已删除、停用、不是 chat 模型 |
+| `app-spec-binding-candidates-empty` | 没有可绑定的已发布工作流或 Agent，或创建时指定的目标已不可用 |
+| `app-spec-model-output-invalid` | 模型连续 3 次输出不符合草稿 schema 或跨字段规则；复核已存规格不符合 v2 schema 时也用此码 |
+| `app-spec-binding-invalid` | 绑定与目标不兼容（见上），或指定的工作流已发布版本没有输出节点 |
+| `app-spec-generation-timeout` | 超过 `APP_GENERATED_APP_SPEC_TIMEOUT_MS` |
+| `app-spec-legacy-template` | 已存规格是 v1 模板（复核已存规格时） |
+| `app-spec-missing` | 已存规格为空（复核已存规格时；生成运行遇到空规格会先生成） |
 
 ### 2. 生成运行：门禁序列
 
@@ -47,7 +73,7 @@ Gate 0 的 `prompt-requirement-verification` 检查要求每条 `source: 'prompt
 
 | 门禁 | 名称 | 实现 |
 | --- | --- | --- |
-| `gate-0` | 需求规格门禁 | `evaluateGate0AppSpec`，校验 AppSpec 完整性、风险分类与验收场景 |
+| `gate-0` | 需求规格门禁 | `GeneratedAppGate0Service`：按需生成 AppSpec v2，复核 schema 与绑定（见上文「Gate 0」） |
 | `gate-1` | 架构计划门禁 | `buildGenerationPlan` 生成实现计划，校验其覆盖 AppSpec |
 | `gate-2` | 静态合约门禁 | `buildStaticContracts`，校验 API 合约、图 schema、DAG、插件 manifest |
 | `gate-3` | 构建与单元门禁 | `GeneratedAppGate3WorkspaceRunner`（`agentloom-server/src/modules/generated-app/generated-app.workspace.ts`）在本地工作区物化代码并执行命令计划 |

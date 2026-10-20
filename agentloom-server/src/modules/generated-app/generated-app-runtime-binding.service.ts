@@ -190,7 +190,6 @@ import type {
   GeneratedAppWithAppSpec,
 } from './generated-app.runtime-binding.util';
 import {
-  buildInitialAppSpec,
   getPublicRuntimePages,
   resolveStatusForShareDisabled,
   evaluateGate0AppSpec,

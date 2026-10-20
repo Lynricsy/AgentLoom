@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { generateText, NoObjectGeneratedError, Output } from 'ai';
-import type { LanguageModel } from 'ai';
+import type { LanguageModel, LanguageModelUsage } from 'ai';
 import { jsonrepair } from 'jsonrepair';
 import { z } from 'zod';
 
@@ -8,6 +8,7 @@ import { supportsNativeStructuredOutput } from '../llm/llm-provider-catalog';
 import type {
   FormatAttempt,
   FormatResult,
+  FormatUsage,
   OutputFormatLevel,
   OutputFormatStrategy,
 } from './dto/output-format.dto';
@@ -33,16 +34,28 @@ interface LevelExecutionResult {
   data: unknown;
   rawOutput?: string;
   rawText?: string;
+  usage?: FormatUsage;
 }
 
 class FormatLevelError extends Error {
   constructor(
     message: string,
     readonly rawOutput?: string,
+    /** 模型已返回但解析/校验失败时，这次调用实际消耗的 token */
+    readonly usage?: FormatUsage,
   ) {
     super(message);
     this.name = 'FormatLevelError';
   }
+}
+
+function toFormatUsage(
+  usage: Partial<LanguageModelUsage> | undefined,
+): FormatUsage {
+  return {
+    inputTokens: usage?.inputTokens ?? 0,
+    outputTokens: usage?.outputTokens ?? 0,
+  };
 }
 
 const MAX_LEVEL_BY_STRICTNESS: Record<string, OutputFormatLevel> = {
@@ -68,11 +81,18 @@ export class OutputFormatService {
       ? levels.slice(startIdx, maxIdx + 1)
       : [startLevel];
 
+    const usage: FormatUsage = { inputTokens: 0, outputTokens: 0 };
+    const addUsage = (levelUsage: FormatUsage | undefined): void => {
+      usage.inputTokens += levelUsage?.inputTokens ?? 0;
+      usage.outputTokens += levelUsage?.outputTokens ?? 0;
+    };
+
     for (const level of allowedLevels) {
       const start = performance.now();
       try {
         const outcome = await this.executeLevel(level, request);
         const durationMs = Math.round(performance.now() - start);
+        addUsage(outcome.usage);
         attempts.push({
           level,
           durationMs,
@@ -85,10 +105,12 @@ export class OutputFormatService {
           data: outcome.data,
           attempts,
           rawText: outcome.rawText,
+          usage,
         };
       } catch (error) {
         const durationMs = Math.round(performance.now() - start);
         const formatError = this.toFormatLevelError(level, error);
+        addUsage(formatError.usage);
         attempts.push({
           level,
           durationMs,
@@ -96,6 +118,10 @@ export class OutputFormatService {
           error: formatError.message,
           rawOutput: formatError.rawOutput,
         });
+        // 调用方已取消（超时）时不再降级重试，后续级别只会立即失败
+        if (request.abortSignal?.aborted) {
+          break;
+        }
         this.logger.warn(
           `${level} failed (${durationMs}ms): ${formatError.message}, attempting next level`,
         );
@@ -109,6 +135,7 @@ export class OutputFormatService {
       data: null,
       attempts,
       rawText: lastAttempt?.rawOutput,
+      usage,
     };
   }
 
@@ -151,8 +178,9 @@ export class OutputFormatService {
         prompt: request.prompt,
         system: request.system,
         output: Output.object({ schema: zodSchema }),
+        ...this.buildCallSettings(request),
       });
-      return { data: result.output };
+      return { data: result.output, usage: toFormatUsage(result.usage) };
     } catch (error) {
       if (NoObjectGeneratedError.isInstance(error)) {
         const errorMessage =
@@ -160,6 +188,7 @@ export class OutputFormatService {
         throw new FormatLevelError(
           `L1 native structured output failed: ${errorMessage}`,
           this.extractNoObjectGeneratedText(error),
+          toFormatUsage(error.usage),
         );
       }
       throw error;
@@ -177,7 +206,9 @@ export class OutputFormatService {
       model: request.model,
       prompt: request.prompt + schemaHint,
       system: request.system,
+      ...this.buildCallSettings(request),
     });
+    const usage = toFormatUsage(result.usage);
 
     try {
       const parsed = this.repairAndParse(
@@ -191,9 +222,10 @@ export class OutputFormatService {
           'L2',
         ),
         rawOutput: result.text,
+        usage,
       };
     } catch (error) {
-      throw this.toFormatLevelError('L2', error, result.text);
+      throw this.toFormatLevelError('L2', error, result.text, usage);
     }
   }
 
@@ -205,7 +237,9 @@ export class OutputFormatService {
       prompt: request.prompt,
       system: request.system,
       output: Output.json(),
+      ...this.buildCallSettings(request),
     });
+    const usage = toFormatUsage(result.usage);
 
     const rawOutput =
       typeof result.text === 'string' && result.text.trim() !== ''
@@ -224,9 +258,10 @@ export class OutputFormatService {
           'L3',
         ),
         rawOutput,
+        usage,
       };
     } catch (error) {
-      throw this.toFormatLevelError('L3', error, rawOutput);
+      throw this.toFormatLevelError('L3', error, rawOutput, usage);
     }
   }
 
@@ -237,13 +272,16 @@ export class OutputFormatService {
       model: request.model,
       prompt: request.prompt,
       system: request.system,
+      ...this.buildCallSettings(request),
     });
+    const usage = toFormatUsage(result.usage);
 
     const extracted = this.extractJsonFromText(result.text);
     if (!extracted) {
       throw new FormatLevelError(
         'L4 failed: no JSON found in text output',
         result.text,
+        usage,
       );
     }
 
@@ -260,10 +298,18 @@ export class OutputFormatService {
         ),
         rawOutput: result.text,
         rawText: result.text,
+        usage,
       };
     } catch (error) {
-      throw this.toFormatLevelError('L4', error, result.text);
+      throw this.toFormatLevelError('L4', error, result.text, usage);
     }
+  }
+
+  /** 只在调用方传入 abortSignal 时才带上，未取消的调用参数保持不变 */
+  private buildCallSettings(
+    request: FormatRequest,
+  ): { abortSignal?: AbortSignal } {
+    return request.abortSignal ? { abortSignal: request.abortSignal } : {};
   }
 
   private validateStructuredData(
@@ -489,15 +535,25 @@ export class OutputFormatService {
     level: OutputFormatLevel,
     error: unknown,
     rawOutput?: string,
+    usage?: FormatUsage,
   ): FormatLevelError {
     if (error instanceof FormatLevelError) {
-      return error.rawOutput === undefined && rawOutput !== undefined
-        ? new FormatLevelError(error.message, rawOutput)
+      return (error.rawOutput === undefined && rawOutput !== undefined) ||
+        (error.usage === undefined && usage !== undefined)
+        ? new FormatLevelError(
+            error.message,
+            error.rawOutput ?? rawOutput,
+            error.usage ?? usage,
+          )
         : error;
     }
 
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return new FormatLevelError(`${level} failed: ${errorMessage}`, rawOutput);
+    return new FormatLevelError(
+      `${level} failed: ${errorMessage}`,
+      rawOutput,
+      usage,
+    );
   }
 
   private extractNoObjectGeneratedText(error: unknown): string | undefined {
@@ -520,4 +576,6 @@ export interface FormatRequest {
   prompt: string;
   system?: string;
   strategy: OutputFormatStrategy;
+  /** 调用方的取消信号（如超时）；取消后不再降级到下一级别 */
+  abortSignal?: AbortSignal;
 }

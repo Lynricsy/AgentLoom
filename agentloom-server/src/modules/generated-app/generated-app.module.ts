@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AgentModule } from '../agent/agent.module';
 import { ExecutionModule } from '../execution/execution.module';
+import { LlmModule } from '../llm/llm.module';
 import { PluginModule } from '../plugin/plugin.module';
 import { WorkflowDefinitionModule } from '../workflow-definition/workflow-definition.module';
 import {
@@ -20,11 +22,16 @@ import { GeneratedAppGenerationRepairService } from './generated-app-generation-
 import { GeneratedAppArtifactService } from './generated-app-artifact.service';
 import { GeneratedAppPublicRuntimeService } from './generated-app-public-runtime.service';
 import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-binding.service';
+import { GeneratedAppBindingResolverService } from './generated-app-binding-resolver.service';
+import { GeneratedAppGate0Service } from './generated-app-gate0.service';
+import { GeneratedAppSpecGeneratorService } from './generated-app-spec-generator.service';
 
 @Module({
   imports: [
     ConfigModule,
+    AgentModule,
     ExecutionModule,
+    LlmModule,
     PluginModule,
     WorkflowDefinitionModule,
   ],
@@ -42,6 +49,9 @@ import { GeneratedAppRuntimeBindingService } from './generated-app-runtime-bindi
     GeneratedAppGate5BrowserAcceptanceRunner,
     GeneratedAppGate6IndependentVerifierRunner,
     GeneratedAppGate7PublishCandidateRunner,
+    GeneratedAppBindingResolverService,
+    GeneratedAppSpecGeneratorService,
+    GeneratedAppGate0Service,
   ],
   exports: [GeneratedAppService],
 })

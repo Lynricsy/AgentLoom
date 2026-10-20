@@ -201,6 +201,11 @@ const baseEnvSchema = z.object({
   GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON: optionalStringFromEnv(),
   GENERATED_APP_GATE6_EXECUTOR_MODE: optionalStringFromEnv(),
   GENERATED_APP_GATE7_EXECUTOR_MODE: optionalStringFromEnv(),
+  /** Gate 0 生成 AppSpec 的总超时（含自我修复重试），到时经 AbortSignal 取消模型调用（ADR-0007 §1） */
+  APP_GENERATED_APP_SPEC_TIMEOUT_MS: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().positive().default(120_000),
+  ),
 });
 
 export const envSchema = baseEnvSchema.superRefine((env, ctx) => {

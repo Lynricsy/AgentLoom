@@ -187,7 +187,6 @@ import {
 } from './generated-app.runtime-binding.util';
 import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
 import {
-  buildInitialAppSpec,
   getPublicRuntimePages,
   resolveStatusForShareDisabled,
   evaluateGate0AppSpec,
@@ -315,9 +314,10 @@ export class GeneratedAppGenerationOrchestratorService {
               )
             : null;
 
-        // v2 门禁接入前的过渡：Gate 1–7 只认 v1 规格；尚未生成（null）或 v2 规格由 Gate 0 判失败
+        // v2 门禁接入前的过渡：Gate 1–7 只认 v1 规格，而 Gate 0 只放行绑定已复核的 v2 规格
+        // （v1 判 legacy、未生成判 missing），过渡期的运行都停在 Gate 0
         const appSpecV1 = isAppSpecV2(app.appSpec) ? null : app.appSpec;
-        const gate0Evaluation = evaluateGate0AppSpec(appSpecV1);
+        const gate0Evaluation = evaluateGate0AppSpec(app.appSpec, null);
         const gateCompletedAt = new Date();
         const gateRunResult = await this.repository.createGateRunAndUpdateApp(
           tenantId,

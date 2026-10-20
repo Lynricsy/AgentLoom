@@ -80,6 +80,7 @@ describe('输出格式 DTO', () => {
           },
         ],
         rawText: '回答如下：{"name":"fallback"}',
+        usage: { inputTokens: 320, outputTokens: 45 },
       };
 
       expect(FormatResultSchema.parse(result)).toEqual(result);

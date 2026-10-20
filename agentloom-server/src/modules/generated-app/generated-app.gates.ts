@@ -20,7 +20,7 @@ export const GENERATED_APP_GATE_DEFINITIONS = [
     name: '需求规格门禁',
     blocking: true,
     pendingSummary:
-      '等待 AppSpec 完整性、风险分类和 acceptance scenarios 校验。',
+      '等待生成运行按需求生成 AppSpec，并复核表单、结果分区、验收场景与绑定。',
   },
   {
     gateId: 'gate-1',
@@ -86,6 +86,7 @@ export function getGeneratedAppGateDefinition(
   return CANONICAL_GATES.get(gateId);
 }
 
+/** 创建应用时的门禁结果：全部待运行，Gate 0 由生成运行生成并复核 AppSpec 后写入 */
 export function createInitialGeneratedAppGateResults(
   nowIso = new Date().toISOString(),
 ): GeneratedAppGateResult[] {
@@ -94,23 +95,9 @@ export function createInitialGeneratedAppGateResults(
     order: gate.order,
     name: gate.name,
     blocking: gate.blocking,
-    status: gate.gateId === 'gate-0' ? 'passed' : 'pending',
-    summary:
-      gate.gateId === 'gate-0'
-        ? '初始 AppSpec 已生成，并包含至少一条可验证 acceptance scenario。'
-        : gate.pendingSummary,
-    evidence:
-      gate.gateId === 'gate-0'
-        ? [
-            {
-              id: 'app-spec-draft',
-              label: 'AppSpec 初稿',
-              kind: 'app_spec',
-              url: null,
-              summary: '由自然语言需求生成的结构化 AppSpec 初稿。',
-            },
-          ]
-        : [],
+    status: 'pending',
+    summary: gate.pendingSummary,
+    evidence: [],
     updatedAt: nowIso,
   }));
 }

@@ -192,7 +192,6 @@ import {
 } from './generated-app.runtime-binding.util';
 import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
 import {
-  buildInitialAppSpec,
   getPublicRuntimePages,
   resolveStatusForShareDisabled,
   evaluateGate0AppSpec,

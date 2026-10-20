@@ -295,6 +295,59 @@ describe('OutputFormatService', () => {
     });
   });
 
+  describe('用量与取消', () => {
+    it('累计所有级别的 token 用量，含解析失败的级别', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText)
+        .mockResolvedValueOnce(
+          createGenerateTextResponse({
+            text: '{"wrong":"shape"}',
+            usage: { inputTokens: 120, outputTokens: 30 },
+          } as Partial<GenerateTextResponse>),
+        )
+        .mockResolvedValueOnce(
+          createGenerateTextResponse({
+            output: { name: 'from-l3' },
+            text: '{"name":"from-l3"}',
+            usage: { inputTokens: 125, outputTokens: 12 },
+          } as Partial<GenerateTextResponse>),
+        );
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        providerId: 'deepseek',
+      });
+
+      expect(result.outputFormatLevel).toBe('L3');
+      expect(result.usage).toEqual({ inputTokens: 245, outputTokens: 42 });
+    });
+
+    it('把 abortSignal 传给模型调用；调用方取消后不再降级到下一级别', async () => {
+      const { generateText } = await import('ai');
+      const controller = new AbortController();
+      vi.mocked(generateText).mockImplementationOnce(async () => {
+        controller.abort();
+        throw new Error('This operation was aborted');
+      });
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        abortSignal: controller.signal,
+      });
+
+      expect(generateText).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(generateText).mock.calls[0]?.[0]).toMatchObject({
+        abortSignal: controller.signal,
+      });
+      expect(result).toMatchObject({
+        data: null,
+        degraded: true,
+        usage: { inputTokens: 0, outputTokens: 0 },
+      });
+      expect(result.attempts.map((attempt) => attempt.level)).toEqual(['L1']);
+    });
+  });
+
   describe('Provider 不支持原生输出', () => {
     it('deepseek 应从 L2 开始', async () => {
       const { generateText } = await import('ai');

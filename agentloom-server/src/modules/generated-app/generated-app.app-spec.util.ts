@@ -1,25 +1,25 @@
+import * as crypto from 'crypto';
+
+import type { z } from 'zod';
+
 import type {
   GeneratedAppGateEvidence,
   GeneratedAppGateRunFailure,
   GeneratedAppReadiness,
+  GeneratedAppSpec,
   GeneratedAppSpecV1,
   GeneratedAppStatus,
 } from '../../database/schema';
-import {
-  getNonEmptyString,
-  getRecordArray,
-  getStringArray,
-  isRecord,
-} from './generated-app.plan-validation.util';
 import { getGeneratedAppStatusForReadiness } from './generated-app.gates';
-
-export interface Gate0Check {
-  id: string;
-  label: string;
-  passed: boolean;
-  summary: string;
-  issues: string[];
-}
+import {
+  GeneratedAppSpecV2Schema,
+  type AppSpecReferenceIssue,
+  type GeneratedAppAcceptanceScenarioV2,
+  type GeneratedAppBinding,
+  type GeneratedAppSpecDraft,
+  type GeneratedAppSpecV2,
+} from './types/app-spec-v2.schema';
+import type { ResolvedGeneratedAppBinding } from './types/generation-v2.ports';
 
 export interface Gate0Evaluation {
   status: 'passed' | 'failed';
@@ -29,86 +29,46 @@ export interface Gate0Evaluation {
   repairInstructions: string | null;
 }
 
-export function buildInitialAppSpec(prompt: string): GeneratedAppSpecV1 {
-  const appName = buildAppName(prompt);
+/**
+ * Gate 0 失败码（Gate 内部，不是 HTTP 错误），见 ADR-0007 §4。
+ * `app-spec-missing` 只出现在直接复核已存规格时：生成运行遇到缺失的 AppSpec 会先生成。
+ */
+export type Gate0FailureCode =
+  | 'app-spec-model-unavailable'
+  | 'app-spec-binding-candidates-empty'
+  | 'app-spec-model-output-invalid'
+  | 'app-spec-binding-invalid'
+  | 'app-spec-generation-timeout'
+  | 'app-spec-legacy-template'
+  | 'app-spec-missing';
 
-  return {
-    version: 1,
-    appName,
-    summary: `围绕“${prompt}”生成的 AppSpec 初稿。`,
-    userGoal: prompt,
-    actors: ['创建者', '终端用户'],
-    coreRequirements: [
-      {
-        id: 'req-1',
-        text: prompt,
-        source: 'prompt',
-      },
-      {
-        id: 'req-2',
-        text: '公开应用提交内容默认持久化，并提供给创建者查看。',
-        source: 'platform',
-      },
-    ],
-    pages: [
-      {
-        id: 'page-creator-workbench',
-        name: '创建者工作台',
-        purpose: '查看生成记录、门禁结果、预览状态和发布状态。',
-      },
-      {
-        id: 'page-public-runtime',
-        name: '公开运行页',
-        purpose: '让终端用户在不登录的情况下使用通过门禁的定制业务界面。',
-      },
-    ],
-    dataPolicy: {
-      publicSubmissionsPersisted: true,
-      creatorCanDeleteSubmissions: true,
-      endUserLoginRequired: false,
-    },
-    nonGoals: [
-      '第一阶段不生成自定义后端服务、数据库 schema 或部署资产。',
-      '第一阶段不绕过 AgentLoom 鉴权、租户隔离、资源配额或 API 权限模型。',
-    ],
-    acceptanceScenarios: [
-      {
-        id: 'scenario-1',
-        title: '创建者可以从一句话进入可验证生成流程',
-        scope: 'platform',
-        requirementIds: ['req-1'],
-        given: ['创建者已登录 AgentLoom Studio'],
-        when: [`创建者提交需求“${prompt}”`],
-        then: [
-          '系统生成结构化 AppSpec 初稿',
-          '系统初始化 Gate 0-7 门禁结果',
-          '系统在阻断门禁未全绿时不允许创建正式公开链接',
-        ],
-      },
-      {
-        id: 'scenario-2',
-        title: '终端用户数据保存策略可追踪',
-        scope: 'platform',
-        requirementIds: ['req-2'],
-        given: ['生成应用进入公开运行面'],
-        when: ['终端用户提交业务输入'],
-        then: ['公开页面展示数据用途提示', '提交内容和运行结果归属创建者租户'],
-      },
-    ],
-    traceability: [
-      {
-        requirementId: 'req-1',
-        scenarioIds: ['scenario-1'],
-        evidenceIds: ['app-spec-draft'],
-      },
-      {
-        requirementId: 'req-2',
-        scenarioIds: ['scenario-2'],
-        evidenceIds: ['app-spec-draft'],
-      },
-    ],
-  };
-}
+/** 绑定复核结果：null 表示尚未复核（Gate 0 不放行未复核的绑定） */
+export type Gate0BindingCheck =
+  | { ok: true; resolved: ResolvedGeneratedAppBinding }
+  | { ok: false; issues: AppSpecReferenceIssue[] }
+  | null;
+
+/** 服务端补充的平台需求与对应的平台流程场景 */
+export const GENERATED_APP_PLATFORM_REQUIREMENT_ID = 'req-platform-persist';
+export const GENERATED_APP_PLATFORM_SCENARIO_ID = 'scenario-platform-persist';
+export const GENERATED_APP_PUBLIC_RUNTIME_PAGE_ID = 'page-public-runtime';
+export const GENERATED_APP_CREATOR_WORKBENCH_PAGE_ID = 'page-creator-workbench';
+
+const GATE_0_REPAIR_INSTRUCTIONS: Record<Gate0FailureCode, string> = {
+  'app-spec-model-unavailable':
+    '在「模型」中启用一个 chat 模型并设为默认，或创建应用时指定 modelConfigId，然后重新运行生成。',
+  'app-spec-binding-candidates-empty':
+    '生成应用需要调用已发布的工作流或 Agent：先发布一个工作流或 Agent（或修正创建时指定的绑定目标），然后重新运行生成。',
+  'app-spec-model-output-invalid':
+    '模型多次未产出符合契约的 AppSpec：换用能力更强的 chat 模型，或把需求写得更具体后重新运行生成。',
+  'app-spec-binding-invalid':
+    '检查绑定工作流的输入契约与输出节点是否能承接需求（必填输入、类型、选项、text-output/json-output 节点），修正后重新运行生成。',
+  'app-spec-generation-timeout':
+    '生成 AppSpec 超时：稍后重试，或换用响应更快的 chat 模型。',
+  'app-spec-legacy-template':
+    '该应用的 AppSpec 是 v1 固定模板，没有从需求推导表单、绑定与验收场景；重新运行生成会按需求重新生成 AppSpec。',
+  'app-spec-missing': '该应用还没有 AppSpec，运行生成会按需求生成。',
+};
 
 export function buildAppName(prompt: string): string {
   const compact = prompt.replace(/\s+/g, ' ').trim();
@@ -150,58 +110,6 @@ export function getPublicRuntimePages(
   });
 }
 
-export function buildDataPolicyIssues(
-  appSpec: Record<string, unknown>,
-): string[] {
-  const dataPolicy = appSpec.dataPolicy;
-  const issues: string[] = [];
-
-  if (!isRecord(dataPolicy)) {
-    issues.push('dataPolicy 缺失');
-  } else {
-    for (const field of [
-      'publicSubmissionsPersisted',
-      'creatorCanDeleteSubmissions',
-      'endUserLoginRequired',
-    ]) {
-      if (typeof dataPolicy[field] !== 'boolean') {
-        issues.push(`dataPolicy.${field} 必须是 boolean`);
-      }
-    }
-  }
-
-  if (getStringArray(appSpec.nonGoals).length === 0) {
-    issues.push('nonGoals 至少需要一条范围边界');
-  }
-
-  return issues;
-}
-
-export function buildScenarioIssues(
-  scenario: Record<string, unknown>,
-  index: number,
-): string[] {
-  const issues: string[] = [];
-
-  for (const field of ['id', 'title']) {
-    if (getNonEmptyString(scenario[field]) === null) {
-      issues.push(`acceptanceScenarios[${index}].${field} 缺失`);
-    }
-  }
-
-  if (getStringArray(scenario.requirementIds).length === 0) {
-    issues.push(`acceptanceScenarios[${index}].requirementIds 不能为空`);
-  }
-
-  for (const field of ['given', 'when', 'then']) {
-    if (getStringArray(scenario[field]).length === 0) {
-      issues.push(`acceptanceScenarios[${index}].${field} 不能为空`);
-    }
-  }
-
-  return issues;
-}
-
 export function resolveStatusForShareDisabled(
   readiness: GeneratedAppReadiness,
 ): GeneratedAppStatus {
@@ -212,245 +120,277 @@ export function resolveStatusForShareDisabled(
   return getGeneratedAppStatusForReadiness(readiness);
 }
 
-export function buildGate0Checks(appSpec: unknown): Gate0Check[] {
-  if (!isRecord(appSpec)) {
-    return [
-      {
-        id: 'app-spec-object',
-        label: 'AppSpec JSON 对象',
-        passed: false,
-        summary: 'AppSpec 必须是结构化 JSON 对象。',
-        issues: ['appSpec 不是对象'],
-      },
-    ];
-  }
-
-  const coreRequirements = getRecordArray(appSpec.coreRequirements);
-  const requirementIds = coreRequirements
-    .map((requirement) => getNonEmptyString(requirement.id))
-    .filter((id): id is string => id !== null);
-  const pages = getRecordArray(appSpec.pages);
-  const acceptanceScenarios = getRecordArray(appSpec.acceptanceScenarios);
-  const scenarioIds = new Set(
-    acceptanceScenarios
-      .map((scenario) => getNonEmptyString(scenario.id))
-      .filter((id): id is string => id !== null),
-  );
-  const coveredRequirementIds = new Set<string>();
-  // 只有 requirement 场景（scope 省略或为 requirement）才算验证了需求本身
-  const verifiedRequirementIds = new Set<string>();
-
-  for (const scenario of acceptanceScenarios) {
-    const verifiesRequirement = scenario.scope !== 'platform';
-    for (const requirementId of getStringArray(scenario.requirementIds)) {
-      coveredRequirementIds.add(requirementId);
-      if (verifiesRequirement) verifiedRequirementIds.add(requirementId);
-    }
-  }
-  const unverifiedPromptRequirementIds = coreRequirements
-    .filter((requirement) => requirement.source === 'prompt')
-    .map((requirement) => getNonEmptyString(requirement.id))
-    .filter(
-      (id): id is string => id !== null && !verifiedRequirementIds.has(id),
-    );
-
-  const traceability = getRecordArray(appSpec.traceability);
-  const traceabilityRequirementIds = new Set(
-    traceability
-      .filter((entry) => {
-        const scenarioRefs = getStringArray(entry.scenarioIds);
-        const evidenceRefs = getStringArray(entry.evidenceIds);
-        return (
-          scenarioRefs.length > 0 &&
-          scenarioRefs.every((scenarioId) => scenarioIds.has(scenarioId)) &&
-          evidenceRefs.length > 0
-        );
-      })
-      .map((entry) => getNonEmptyString(entry.requirementId))
-      .filter((id): id is string => id !== null),
-  );
-
-  const textIssues = ['appName', 'summary', 'userGoal'].filter(
-    (field) => getNonEmptyString(appSpec[field]) === null,
-  );
-  const actorIssues =
-    getStringArray(appSpec.actors).length === 0
-      ? ['actors 至少需要一个角色']
-      : [];
-  const requirementIssues = [
-    ...(coreRequirements.length === 0 ? ['coreRequirements 不能为空'] : []),
-    ...coreRequirements.flatMap((requirement, index) => {
-      const issues: string[] = [];
-
-      if (getNonEmptyString(requirement.id) === null) {
-        issues.push(`coreRequirements[${index}].id 缺失`);
-      }
-
-      if (getNonEmptyString(requirement.text) === null) {
-        issues.push(`coreRequirements[${index}].text 缺失`);
-      }
-
-      return issues;
-    }),
-  ];
-  const pageIssues = [
-    ...(pages.length === 0 ? ['pages 不能为空'] : []),
-    ...pages.flatMap((page, index) => {
-      const issues: string[] = [];
-
-      for (const field of ['id', 'name', 'purpose']) {
-        if (getNonEmptyString(page[field]) === null) {
-          issues.push(`pages[${index}].${field} 缺失`);
-        }
-      }
-
-      return issues;
-    }),
-  ];
-  const policyIssues = buildDataPolicyIssues(appSpec);
-  const scenarioIssues = [
-    ...(acceptanceScenarios.length === 0
-      ? ['acceptanceScenarios 不能为空']
-      : []),
-    ...acceptanceScenarios.flatMap((scenario, index) =>
-      buildScenarioIssues(scenario, index),
-    ),
-  ];
-  const uncoveredRequirementIds = requirementIds.filter(
-    (requirementId) => !coveredRequirementIds.has(requirementId),
-  );
-  const traceabilityIssues = [
-    ...(traceability.length === 0 ? ['traceability 不能为空'] : []),
-    ...requirementIds
-      .filter((requirementId) => !traceabilityRequirementIds.has(requirementId))
-      .map((requirementId) => `需求 ${requirementId} 缺少有效 traceability`),
-  ];
-
-  return [
-    {
-      id: 'identity',
-      label: 'AppSpec 基本摘要',
-      passed: textIssues.length === 0 && actorIssues.length === 0,
-      summary: '检查 appName、summary、userGoal 与 actors 是否完整。',
-      issues: [...textIssues.map((field) => `${field} 缺失`), ...actorIssues],
-    },
-    {
-      id: 'core-requirements',
-      label: '核心需求列表',
-      passed: requirementIssues.length === 0,
-      summary: `检查 ${coreRequirements.length} 条核心需求是否具备 id 和 text。`,
-      issues: requirementIssues,
-    },
-    {
-      id: 'pages',
-      label: '页面/流程定义',
-      passed: pageIssues.length === 0,
-      summary: `检查 ${pages.length} 个页面或流程是否具备 id、name 和 purpose。`,
-      issues: pageIssues,
-    },
-    {
-      id: 'risk-boundary',
-      label: '数据策略与范围边界',
-      passed: policyIssues.length === 0,
-      summary:
-        '检查 dataPolicy 和 nonGoals 是否能表达数据保存、登录要求与初始风险/范围边界。',
-      issues: policyIssues,
-    },
-    {
-      id: 'acceptance-scenarios',
-      label: '验收场景结构',
-      passed: scenarioIssues.length === 0,
-      summary: `检查 ${acceptanceScenarios.length} 条 acceptance scenario 是否可执行。`,
-      issues: scenarioIssues,
-    },
-    {
-      id: 'requirement-coverage',
-      label: '需求到验收场景覆盖',
-      passed: uncoveredRequirementIds.length === 0 && requirementIds.length > 0,
-      summary: `检查 ${requirementIds.length} 条核心需求是否至少被一个 acceptance scenario 覆盖。`,
-      issues:
-        requirementIds.length === 0
-          ? ['没有可覆盖的核心需求 id']
-          : uncoveredRequirementIds.map(
-              (requirementId) =>
-                `需求 ${requirementId} 未被 acceptance scenario 引用`,
-            ),
-    },
-    {
-      id: 'traceability',
-      label: '需求证据 traceability',
-      passed: traceabilityIssues.length === 0 && requirementIds.length > 0,
-      summary: `检查 ${traceability.length} 条 traceability 是否连接需求、场景和证据。`,
-      issues: traceabilityIssues,
-    },
-    {
-      id: 'prompt-requirement-verification',
-      label: '需求本身的验收场景',
-      passed: unverifiedPromptRequirementIds.length === 0,
-      summary:
-        '检查来自创建者需求的核心需求是否有验证其业务行为的 acceptance scenario（平台流程场景不计入）。',
-      issues: unverifiedPromptRequirementIds.map(
-        (requirementId) =>
-          `需求 ${requirementId} 只被平台流程场景引用，没有验证该需求本身的验收场景`,
-      ),
-    },
-  ];
+/** Zod issue → 「路径: 说明」，作为模型自我修复的反馈与 Gate 0 失败详情 */
+export function formatZodIssues(issues: readonly z.core.$ZodIssue[]): string[] {
+  return issues.map((issue) => formatIssue(issue.path, issue.message));
 }
 
-export function evaluateGate0AppSpec(
-  appSpec: GeneratedAppSpecV1 | null,
-): Gate0Evaluation {
-  const checks = buildGate0Checks(appSpec);
-  const failedChecks = checks.filter((check) => !check.passed);
-  const evidence = checks.map((check) => ({
-    id: `gate-0-${check.id}`,
-    label: check.label,
-    kind: 'app_spec' as const,
-    url: null,
-    summary:
-      check.issues.length === 0
-        ? check.summary
-        : `${check.summary} 缺口：${check.issues.join('；')}`,
-  }));
+export function formatReferenceIssues(
+  issues: readonly AppSpecReferenceIssue[],
+): string[] {
+  return issues.map((issue) => formatIssue(issue.path, issue.message));
+}
 
-  if (failedChecks.length > 0) {
-    const failure: GeneratedAppGateRunFailure = {
-      code: 'app-spec-incomplete',
-      message: `AppSpec 完整性检查失败：${failedChecks
-        .map((check) => check.label)
-        .join('、')}。`,
-      details: {
-        checks: checks.map((check) => ({
-          id: check.id,
-          label: check.label,
-          passed: check.passed,
-          issues: check.issues,
-        })),
-      },
-    };
-    const onlyPromptVerificationFailed = failedChecks.every(
-      (check) => check.id === 'prompt-requirement-verification',
+function formatIssue(
+  path: ReadonlyArray<PropertyKey>,
+  message: string,
+): string {
+  const location = path
+    .map((segment) =>
+      typeof segment === 'number' ? `[${segment}]` : `.${String(segment)}`,
+    )
+    .join('')
+    .replace(/^\./, '');
+  return location ? `${location}: ${message}` : message;
+}
+
+/**
+ * 模型草稿 → 持久化 AppSpec v2：补平台需求与平台场景、页面、数据策略、范围边界、
+ * traceability、固定版本的绑定与生成元数据。调用方负责用 `GeneratedAppSpecV2Schema` 复核。
+ */
+export function buildAppSpecV2FromDraft(
+  draft: GeneratedAppSpecDraft,
+  params: {
+    binding: GeneratedAppBinding;
+    modelConfigId: string;
+    attempt: number;
+    prompt: string;
+    generatedAt: Date;
+  },
+): GeneratedAppSpecV2 {
+  const platformScenario: GeneratedAppAcceptanceScenarioV2 = {
+    id: GENERATED_APP_PLATFORM_SCENARIO_ID,
+    title: '公开提交保存在创建者租户并可由创建者管理',
+    scope: 'platform',
+    requirementIds: [GENERATED_APP_PLATFORM_REQUIREMENT_ID],
+    given: ['应用已通过门禁并开启公开分享'],
+    when: ['终端用户在公开页提交表单'],
+    then: [
+      '提交内容与运行结果写入创建者租户',
+      '创建者可以在提交列表中查看并删除提交',
+    ],
+    browserSteps: [],
+  };
+  const acceptanceScenarios = [...draft.acceptanceScenarios, platformScenario];
+  const coreRequirements: GeneratedAppSpecV2['coreRequirements'] = [
+    ...draft.requirements,
+    {
+      id: GENERATED_APP_PLATFORM_REQUIREMENT_ID,
+      text: '公开应用的提交内容与运行结果保存在创建者租户内，创建者可以查看和删除。',
+      source: 'platform',
+    },
+  ];
+
+  const traceability = coreRequirements.map((requirement) => {
+    const scenarios = acceptanceScenarios.filter((scenario) =>
+      scenario.requirementIds.includes(requirement.id),
     );
-
+    const fieldIds = new Set<string>();
+    const sectionIds = new Set<string>();
+    for (const scenario of scenarios) {
+      for (const step of scenario.browserSteps) {
+        if (step.action === 'fill' || step.action === 'select') {
+          fieldIds.add(step.fieldId);
+        } else if (step.action === 'expectResult') {
+          sectionIds.add(step.sectionId);
+        }
+      }
+    }
     return {
-      status: 'failed',
-      summary: onlyPromptVerificationFailed
-        ? 'Gate 0 失败：AppSpec 没有从需求推导出验证业务行为的验收场景（初稿由固定模板生成，只含平台流程场景），无法验证生成的应用实现了需求。'
-        : 'Gate 0 失败：AppSpec 缺少可验证生成所需的结构化字段或需求覆盖证据。',
-      evidence,
-      failure,
-      repairInstructions: onlyPromptVerificationFailed
-        ? '服务端目前只能按固定模板生成 AppSpec 初稿，尚不能从需求推导页面、表单字段、工作流绑定与验收场景，AppSpec 也不支持手动编辑；在需求推导能力上线前，此类应用无法通过 Gate 0。'
-        : '补齐 AppSpec 的核心需求、页面/流程、数据策略、acceptance scenarios 与 traceability 后重新启动门禁运行器。',
+      requirementId: requirement.id,
+      scenarioIds: scenarios.map((scenario) => scenario.id),
+      fieldIds: [...fieldIds],
+      sectionIds: [...sectionIds],
+    };
+  });
+
+  return {
+    version: 2,
+    appName: draft.appName,
+    summary: draft.summary,
+    userGoal: draft.userGoal,
+    actors: draft.actors,
+    coreRequirements,
+    pages: [
+      {
+        id: GENERATED_APP_PUBLIC_RUNTIME_PAGE_ID,
+        name: '公开运行页',
+        purpose: `终端用户无需登录，填写「${draft.inputForm.title}」并查看「${draft.resultView.title}」。`,
+      },
+      {
+        id: GENERATED_APP_CREATOR_WORKBENCH_PAGE_ID,
+        name: '创建者工作台',
+        purpose: '创建者查看生成记录、门禁结果、提交记录与发布状态。',
+      },
+    ],
+    inputForm: draft.inputForm,
+    resultView: draft.resultView,
+    binding: params.binding,
+    dataPolicy: {
+      publicSubmissionsPersisted: true,
+      creatorCanDeleteSubmissions: true,
+      endUserLoginRequired: false,
+    },
+    nonGoals: [
+      '不生成自定义后端服务、数据库 schema 或部署资产；业务处理由绑定的已发布工作流或 Agent 执行。',
+      '不绕过 AgentLoom 鉴权、租户隔离、资源配额或 API 权限模型。',
+    ],
+    acceptanceScenarios,
+    traceability,
+    generation: {
+      modelConfigId: params.modelConfigId,
+      generatedAt: params.generatedAt.toISOString(),
+      attempt: params.attempt,
+      promptSha256: crypto
+        .createHash('sha256')
+        .update(params.prompt, 'utf8')
+        .digest('hex'),
+    },
+  };
+}
+
+/**
+ * Gate 0 对已有 AppSpec 的判定：v1 模板 → legacy；v2 契约（含跨字段引用）→ 绑定复核结果。
+ * 纯函数；生成与绑定解析由 `GeneratedAppGate0Service` 完成后再交给这里判定。
+ */
+export function evaluateGate0AppSpec(
+  appSpec: GeneratedAppSpec | null | undefined,
+  bindingCheck: Gate0BindingCheck,
+): Gate0Evaluation {
+  if (!appSpec) {
+    return buildGate0Failure('app-spec-missing', 'AppSpec 尚未生成。', []);
+  }
+
+  if (appSpec.version !== 2) {
+    return buildGate0Failure(
+      'app-spec-legacy-template',
+      'AppSpec 是 v1 固定模板（需求原样复制、只有平台流程场景），不能证明生成的应用实现了需求。',
+      [],
+    );
+  }
+
+  const parsed = GeneratedAppSpecV2Schema.safeParse(appSpec);
+  if (!parsed.success) {
+    const issues = formatZodIssues(parsed.error.issues);
+    return buildGate0Failure(
+      'app-spec-model-output-invalid',
+      `AppSpec 不符合 v2 契约（${issues.length} 个问题）。`,
+      issues,
+    );
+  }
+
+  const spec = parsed.data;
+  const schemaEvidence = buildSchemaEvidence(spec);
+
+  if (!bindingCheck) {
+    return buildGate0Failure(
+      'app-spec-binding-invalid',
+      'AppSpec 的绑定尚未复核，不能确认绑定目标仍可调用。',
+      [],
+      [schemaEvidence],
+    );
+  }
+
+  if (!bindingCheck.ok) {
+    const issues = formatReferenceIssues(bindingCheck.issues);
+    return buildGate0Failure(
+      'app-spec-binding-invalid',
+      `AppSpec 的绑定与目标不兼容（${issues.length} 个问题）。`,
+      issues,
+      [schemaEvidence],
+    );
+  }
+
+  const bindingEvidence = buildBindingEvidence(bindingCheck.resolved);
+  return {
+    status: 'passed',
+    summary: `Gate 0 通过：${schemaEvidence.summary}绑定${bindingEvidence.summary}`,
+    evidence: [schemaEvidence, bindingEvidence],
+    failure: null,
+    repairInstructions: null,
+  };
+}
+
+/** 生成器失败（模型不可用、无候选、输出不合规、超时）也走同一失败形状 */
+export function buildGate0Failure(
+  code: Gate0FailureCode,
+  message: string,
+  issues: string[],
+  evidence: GeneratedAppGateEvidence[] = [],
+  details: Record<string, unknown> = {},
+): Gate0Evaluation {
+  return {
+    status: 'failed',
+    summary: `Gate 0 失败：${message}`,
+    evidence: [
+      ...evidence,
+      {
+        id: 'gate-0-failure',
+        label: 'AppSpec 问题',
+        kind: 'app_spec',
+        url: null,
+        summary:
+          issues.length === 0
+            ? message
+            : `${message} ${issues.slice(0, 10).join('；')}`,
+        details: { code, issues },
+      },
+    ],
+    failure: {
+      code,
+      message,
+      details: { issues, ...details },
+    },
+    repairInstructions: GATE_0_REPAIR_INSTRUCTIONS[code],
+  };
+}
+
+function buildSchemaEvidence(spec: GeneratedAppSpecV2): GeneratedAppGateEvidence {
+  const requirementScenarios = spec.acceptanceScenarios.filter(
+    (scenario) => scenario.scope === 'requirement',
+  );
+  return {
+    id: 'gate-0-app-spec-v2',
+    label: 'AppSpec v2 契约',
+    kind: 'app_spec',
+    url: null,
+    summary: `需求 ${spec.coreRequirements.filter((requirement) => requirement.source === 'prompt').length} 条（另有平台需求），表单字段 ${spec.inputForm.fields.length} 个，结果分区 ${spec.resultView.sections.length} 个，可在浏览器执行的验收场景 ${requirementScenarios.length} 条。`,
+    details: {
+      fieldIds: spec.inputForm.fields.map((field) => field.id),
+      sectionIds: spec.resultView.sections.map((section) => section.id),
+      scenarioIds: requirementScenarios.map((scenario) => scenario.id),
+    },
+  };
+}
+
+function buildBindingEvidence(
+  resolved: ResolvedGeneratedAppBinding,
+): GeneratedAppGateEvidence {
+  if (resolved.kind === 'workflow') {
+    return {
+      id: 'gate-0-binding',
+      label: '绑定复核',
+      kind: 'app_spec',
+      url: null,
+      summary: `工作流「${resolved.candidate.name}」固定版本 ${resolved.binding.workflowVersionId}，${resolved.binding.inputMapping.length} 个输入映射、${resolved.binding.outputMapping.length} 个输出映射与已发布快照兼容。`,
+      details: {
+        kind: 'workflow',
+        workflowDefinitionId: resolved.binding.workflowDefinitionId,
+        workflowVersionId: resolved.binding.workflowVersionId,
+      },
     };
   }
 
   return {
-    status: 'passed',
-    summary:
-      'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
-    evidence,
-    failure: null,
-    repairInstructions: null,
+    id: 'gate-0-binding',
+    label: '绑定复核',
+    kind: 'app_spec',
+    url: null,
+    summary: `Agent「${resolved.candidate.name}」固定版本 ${resolved.binding.agentVersionId}，回复写入分区 ${resolved.binding.replySectionId}。`,
+    details: {
+      kind: 'agent',
+      agentDefinitionId: resolved.binding.agentDefinitionId,
+      agentVersionId: resolved.binding.agentVersionId,
+    },
   };
 }

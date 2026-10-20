@@ -38,6 +38,7 @@ import type {
   GeneratedAppGateRun,
   GeneratedAppPublishCandidatePlan,
   GeneratedAppSpecV1,
+  GeneratedAppSpecV2,
   GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,
@@ -195,7 +196,7 @@ import {
 } from './generated-app.runtime-binding.util';
 import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
 import {
-  buildInitialAppSpec,
+  buildAppName,
   getPublicRuntimePages,
   resolveStatusForShareDisabled,
   evaluateGate0AppSpec,
@@ -251,31 +252,20 @@ export class GeneratedAppRepository {
   ): Promise<GeneratedAppResponseDto> {
     const prompt = dto.prompt.trim();
     await this.assertCreateReferencesInTenant(tenantId, dto);
-    const appSpec = buildInitialAppSpec(prompt);
-    // 初始 Gate 0 按 AppSpec 实际评估，不再无条件写 passed
-    const gate0 = evaluateGate0AppSpec(appSpec);
-    const gateResults = createInitialGeneratedAppGateResults().map((gate) =>
-      gate.gateId === 'gate-0'
-        ? {
-            ...gate,
-            status: gate0.status,
-            summary: gate0.summary,
-            evidence: gate0.evidence,
-          }
-        : gate,
-    );
+    // AppSpec 由生成运行的 Gate 0 调用模型生成；创建时只落需求，门禁全部待运行
+    const gateResults = createInitialGeneratedAppGateResults();
     const readiness = evaluateGeneratedAppReadiness(gateResults);
-    const status: GeneratedAppStatus = 'app_spec_ready';
+    const status: GeneratedAppStatus = 'app_spec_generating';
 
     const [created] = await this.tenantDb
       .insert(schema.generatedApps)
       .values({
         tenantId,
         prompt,
-        appName: appSpec.appName,
-        description: appSpec.summary,
+        appName: buildAppName(prompt),
+        description: prompt,
         status,
-        appSpec,
+        appSpec: null,
         generationPlan: null,
         gateResults,
         readiness,
@@ -289,6 +279,41 @@ export class GeneratedAppRepository {
       .returning();
 
     return this.toResponseDto(created);
+  }
+
+  /**
+   * Gate 0 生成通过后落库 AppSpec v2：名称与描述取自规格，记录实际使用的生成模型（repair 复用），
+   * 状态从 app_spec_generating 进入 app_spec_ready（其他状态由后续门禁结果决定，不在这里改）。
+   */
+  async saveGeneratedAppSpec(params: {
+    tenantId: string;
+    userId: string;
+    appId: string;
+    appSpec: GeneratedAppSpecV2;
+    generationModelConfigId: string;
+  }): Promise<void> {
+    const updated = await this.tenantDb
+      .update(schema.generatedApps)
+      .set({
+        appSpec: params.appSpec,
+        appName: params.appSpec.appName,
+        description: params.appSpec.summary,
+        generationModelConfigId: params.generationModelConfigId,
+        status: sql`CASE WHEN ${schema.generatedApps.status} = 'app_spec_generating' THEN 'app_spec_ready'::generated_app_status ELSE ${schema.generatedApps.status} END`,
+        updatedBy: params.userId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.generatedApps.tenantId, params.tenantId),
+          eq(schema.generatedApps.id, params.appId),
+        ),
+      )
+      .returning({ id: schema.generatedApps.id });
+
+    if (updated.length === 0) {
+      throw new GeneratedAppNotFoundException(params.appId);
+    }
   }
 
   /**
