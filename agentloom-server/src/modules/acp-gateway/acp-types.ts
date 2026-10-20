@@ -185,6 +185,8 @@ export interface AcpSessionLoadParams {
 
 export interface AcpSessionLoadResult {
   sessionId: string;
+  /** 上一个连接留下、已在本次加载中视为释放（必要时已终止）的终端 id；没有时省略 */
+  releasedTerminalIds?: string[];
 }
 
 export type AcpSessionStopReason = StopReason;

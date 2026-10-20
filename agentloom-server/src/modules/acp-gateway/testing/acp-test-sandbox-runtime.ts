@@ -30,6 +30,8 @@ interface TestExecRecord {
   readonly output: Array<{ level: 'stdout' | 'stderr'; text: string }>;
   readonly callbacks: Set<(level: string, message: string) => void>;
   readonly exit: Promise<RuntimeExecExitInfo>;
+  /** stdout/stderr 已读尽（或 spawn 失败）时兑现，对应 Firecracker 输出流的结束 */
+  readonly closed: Promise<void>;
   running: boolean;
   exitCode: number | null;
 }
@@ -143,15 +145,21 @@ export class AcpTestSandboxRuntime implements SandboxRuntimeDriver {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     const execId = randomUUID();
+    // tsconfig lib 为 ES2023，没有 Promise.withResolvers
     let resolveExit!: (value: RuntimeExecExitInfo) => void;
     const exit = new Promise<RuntimeExecExitInfo>((resolveExitPromise) => {
       resolveExit = resolveExitPromise;
+    });
+    let resolveClosed!: () => void;
+    const closed = new Promise<void>((resolveClosedPromise) => {
+      resolveClosed = resolveClosedPromise;
     });
     const record: TestExecRecord = {
       child,
       output: [],
       callbacks: new Set(),
       exit,
+      closed,
       running: true,
       exitCode: null,
     };
@@ -169,6 +177,7 @@ export class AcpTestSandboxRuntime implements SandboxRuntimeDriver {
       record.running = false;
       record.exitCode = 127;
       resolveExit({ running: false, exitCode: 127, pid: child.pid ?? null });
+      resolveClosed();
     });
     child.once('exit', (code) => {
       if (!record.running) {
@@ -178,10 +187,12 @@ export class AcpTestSandboxRuntime implements SandboxRuntimeDriver {
       record.exitCode = code;
       resolveExit({ running: false, exitCode: code, pid: child.pid ?? null });
     });
+    child.once('close', () => resolveClosed());
     this.execs.set(execId, record);
     return { execId };
   }
 
+  /** 与 Firecracker 驱动同一契约：先重放已有输出，再持续推送，直到输出流结束才返回 */
   async attachExecOutput(
     execId: string,
     callback: (level: string, message: string) => void,
@@ -191,6 +202,8 @@ export class AcpTestSandboxRuntime implements SandboxRuntimeDriver {
       callback(chunk.level, chunk.text);
     }
     record.callbacks.add(callback);
+    await record.closed;
+    record.callbacks.delete(callback);
   }
 
   async waitForExecExit(execId: string): Promise<RuntimeExecExitInfo> {

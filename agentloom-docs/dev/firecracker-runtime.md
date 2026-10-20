@@ -117,6 +117,8 @@ guestd 自身的运行时 API：
 | GET | `/v1/runtime/processes` | `processes` |
 | GET | `/v1/runtime/diagnostics` | `diagnosticsReport` |
 
+exec 输出：`/output` 立即回 `200 application/x-ndjson` 响应头，先补发已有输出，再随进程输出逐条推送 `{level, data(base64)}` 并 flush，进程退出且 stdout/stderr 读尽后结束响应；每个 exec 最多保留 1 MiB 输出。调用方因此既能在命令运行期间看到输出，也能在退出后重放全部输出（`SandboxRuntimeDriver.attachExecOutput` 在流结束时才返回）。`/kill` 对已结束的 exec 直接返回 204，不再按已回收的 pid 发信号。
+
 `/v1/runtime/diagnostics`（`agentloom-firecracker-runtime/internal/guest/diagnostics.go`）返回 `guestdStartedAt`、`uptimeSeconds`、`runtimeRestarts` 与 `lastRuntimeExit`（guestd 进程内记录的 Node 运行时退出次数与最近一次退出原因）、`oomKillCount`（`/proc/vmstat` 的 `oom_kill`）、`oomKills`（从 `/dev/kmsg` 解析的最近 10 条「Killed process」记录：`pid`、`command`、`secondsSinceBoot`）。server 在 prompt 流中断或 guest 报告会话不存在时读取它，把原因写进错误信息，见 [Agent 运行态](/dev/server/agent-runtime)。
 
 Node 沙箱服务的源码在 `agentloom-deploy/sandbox/`（包名 `@agentloom/sandbox`）：Fastify 服务为每个会话拉起一个 DeepSeek Harness（dsh）子进程，经会话目录内的 unix socket 与子进程里的 bridge 插件通信，机制见 [Agent 运行态](/dev/server/agent-runtime)。`agentloom-deploy/sandbox/src/server.ts` 注册 `/v1/session`、`/v1/prompt`、`/v1/abort`、`/v1/permission`、`/v1/pty/*`、`/health` 等路由，监听 `SANDBOX_LISTEN_SOCKET` 指定的 unix socket；远程工具回调的令牌头常量在 `agentloom-deploy/sandbox/src/remote-tools.ts`。dsh launcher 的路径可用 `AGENTLOOM_DSH_BIN` 覆盖，默认解析安装目录内的 `@deepseek-ai/dsh/lib/bin.js`；dsh 要求 Node 不低于 22.19（`agentloom-deploy/sandbox/package.json` 的 `engines`），rootfs 中的 Node 版本须满足。

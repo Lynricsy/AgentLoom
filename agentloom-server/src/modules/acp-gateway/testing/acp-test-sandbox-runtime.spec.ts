@@ -205,6 +205,40 @@ describe('AcpTestSandboxRuntime', () => {
     expect(root).toEqual(expect.any(String));
   });
 
+  it('attachExecOutput 与 Firecracker 驱动同契约：运行中持续推送输出，进程退出、输出读尽后才返回', async () => {
+    const { runtime } = await createRuntime();
+    const { execId } = await runtime.createExec('runtime', {
+      command: 'node',
+      args: [
+        '-e',
+        "process.stdout.write('first');setTimeout(() => process.stdout.write('second'), 300)",
+      ],
+      cwd: '/workspace',
+    });
+    // tsconfig lib 为 ES2023，没有 Promise.withResolvers
+    let resolveFirstChunk!: () => void;
+    const firstChunk = new Promise<void>((resolve) => {
+      resolveFirstChunk = resolve;
+    });
+    const chunks: string[] = [];
+    let attachSettled = false;
+    const attach = runtime
+      .attachExecOutput(execId, (_level, text) => {
+        chunks.push(text);
+        resolveFirstChunk();
+      })
+      .then(() => {
+        attachSettled = true;
+      });
+
+    await firstChunk;
+    expect(chunks.join('')).toBe('first');
+    expect(attachSettled).toBe(false);
+
+    await attach;
+    expect(chunks.join('')).toBe('firstsecond');
+  });
+
   it('使用默认 cwd，拒绝非目录 cwd，并将 spawn error 映射为 stderr 与 127', async () => {
     const { root, runtime } = await createRuntime();
     await writeFile(join(root, 'file.txt'), 'x');

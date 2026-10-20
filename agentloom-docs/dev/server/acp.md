@@ -80,9 +80,11 @@ flowchart LR
 
 `session/load` 在返回响应**之前**，把每条持久化重放条目作为 `session/update` 通知发出（`update.replayed = true`），随后恢复 MCP 工具与终端。租户不匹配或会话模式不对时返回 `-32602`，`data.reason` 为 `Session not found`。
 
+终端记录只存在于创建它的网关进程内存中，stdio 网关每个连接是一个新进程，所以跨连接加载时上一个连接的终端一律视为**已释放**：仍为 `running` 的 exec 被 best-effort 以 TERM 终止（避免沙箱里留下无人管理的进程），每个终端记一条审计 `acp.terminal.server_sandbox.continuity_dropped`（`metadata` 含 `terminalId`、`execId`、`previousStatus`），并从会话的 continuity 中移除；响应为 `{ sessionId, releasedTerminalIds }`，客户端应丢弃这些 `terminalId`，对它们的后续 `terminal/*` 调用返回 `-32602 terminal_not_found`。没有被释放的终端时响应只有 `sessionId`。同一进程内重新加载时，registry 中仍在的终端原样重新绑定。
+
 `session/prompt` 期间服务端持续发送 `session/update`；同一会话已有进行中的 prompt 时返回 `-32003 Prompt already in progress`（`agentloom-server/src/modules/acp-gateway/handlers/session-prompt.handler.ts:80`）。
 
-`session/cancel` 移除会话跟踪，先中止进行中的 `session/prompt`（该 prompt 立即以 `{ stopReason: 'cancelled' }` 应答，不等运行时迭代器结束），再把等待中的权限请求按 `cancelled` 应答、把等待中的 fs 代理请求按 `{ cancelled: true }` 应答，清理 MCP 工具与终端，最后取消运行时。任一清理步骤失败时返回 `-32603`，`data.cleanupFailures` 列出失败项。取消后该 `sessionId` 不再可用，后续 `session/prompt` 返回 `-32602 Session not found`。
+`session/cancel` 移除会话跟踪，先中止进行中的 `session/prompt`（该 prompt 立即以 `{ stopReason: 'cancelled' }` 应答，不等运行时迭代器结束），再把等待中的权限请求按 `cancelled` 应答、把等待中的 fs 代理请求按 `{ cancelled: true }` 应答，清理 MCP 工具与终端，最后取消运行时。终端清理时即使终止失败（exec 已被沙箱回收等）也会丢弃记录并持久化空的 continuity。任一清理步骤失败时返回 `-32603`，`data.cleanupFailures` 列出失败项。取消只作用于当前连接：之后在本连接里该 `sessionId` 不再可用，`session/prompt` 返回 `-32602 Session not found`；会话的持久化记录（`acp_conversation_sessions`）不会删除，也没有过期清理，新连接仍可 `session/load` 继续这段对话。连接断开或进程收到 SIGINT/SIGTERM 时网关对每个会话执行的正是这一步，因此断开后可以在新连接中加载。
 
 ## 出站消息（服务端 → 客户端）
 
@@ -120,7 +122,9 @@ flowchart LR
 | `DEFAULT_TERMINAL_TIMEOUT_MS` | 300000 | 终端存活上限，到时以 TERM 终止 |
 | `BLOCKED_COMMANDS` | `bash` `sh` `zsh` `fish` `sudo` `su` `docker` `kubectl` | 禁止直接执行的命令 |
 
-创建前的检查：命令不在 `BLOCKED_COMMANDS` 中；参数不含 `&&`、`||`、`;`、`$(`、反引号、回车、换行；带递归标志的 `rm` 不得指向 `/`、`.`、`..`、`~` 或工作区本身及其外部；路径类参数与 `cwd` 必须解析到 `/workspace` 内。被拒绝时返回 `-32004`，`data.reason` 为 `terminal_command_not_allowed`、`terminal_command_pattern_not_allowed`、`terminal_cwd_escaped_workspace` 或 `terminal_session_limit_exceeded`，并写审计。
+创建前的检查：命令不在 `BLOCKED_COMMANDS` 中；参数不含 `&&`、`||`、`;`、`$(`、反引号、回车、换行；带递归标志的 `rm` 不得指向 `/`、`.`、`..`、`~` 或工作区本身及其外部；路径类参数与 `cwd` 必须解析到 `/workspace` 内。被拒绝时返回 `-32004` 并写审计，`data.reason` 为：命令在禁用列表中 `terminal_command_not_allowed`；参数含注入片段、危险 `rm`、或路径类参数（以 `/`、`./`、`../`、`~` 开头，或 `--flag=<路径>`）解析到工作区之外 `terminal_command_pattern_not_allowed`（例如 `ls /etc`）；`cwd` 越界 `terminal_cwd_escaped_workspace`；会话内状态为 `running` 的终端（含已退出但尚未 `wait_for_exit`/`release` 的）已达上限 `terminal_session_limit_exceeded`。
+
+`terminal/create` 在沙箱进程启动后立即返回 `terminalId`，不等命令结束；输出由网关在后台持续采集到环形缓冲。长命令（`sleep`、`tail -f`、开发服务器）因此可以在运行期间读取输出、`terminal/kill`、`terminal/wait_for_exit` 超时等待，并受存活超时与并发上限约束。后台采集失败（如沙箱输出流中断）不影响进程本身，之后的 `terminal/output` 返回 `-32004 terminal_output_stream_failed`。
 
 生命周期：
 
@@ -138,7 +142,7 @@ stateDiagram-v2
     Released --> [*]
 ```
 
-- `terminal/output` 只在进程运行时可用；退出或被终止后返回 `-32004 terminal_output_unavailable`。`offset` 超出末尾返回 `-32602`；`offset` 已被环形缓冲裁掉返回 `-32004 terminal_output_offset_trimmed`。
+- `terminal/output` 返回到目前为止采集的输出。终端状态只在 `terminal/wait_for_exit` 观察到退出、`terminal/kill`、存活超时或会话清理时离开 `running`：进程已退出但还没调用 `wait_for_exit` 时仍可读取完整输出；状态离开 `running` 之后返回 `-32004 terminal_output_unavailable`。`offset` 超出末尾返回 `-32602`；`offset` 已被环形缓冲裁掉返回 `-32004 terminal_output_offset_trimmed`。
 - `terminal/wait_for_exit` 带 `timeoutMs` 时，等待超时返回 `-32004 terminal_wait_timeout`，**不**终止进程。
 - 存活超时会终止进程并审计 `acp.terminal.server_sandbox.timed_out`；之后的 `terminal/wait_for_exit` 返回 `-32004 terminal_timeout`。
 - 会话清理时终止的终端以原因 `session_cleanup` 审计。

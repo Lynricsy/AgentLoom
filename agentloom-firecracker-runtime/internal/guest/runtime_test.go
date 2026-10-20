@@ -2,9 +2,12 @@ package guest
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +17,69 @@ import (
 	"testing"
 	"time"
 )
+
+// 运行中的 exec 必须立即回响应头并增量推送输出；ACP terminal/create 依赖这一点在命令运行期间返回（D-198）
+func TestRuntimeExecOutputStreamsWhileRunningAndKillIsIdempotent(t *testing.T) {
+	server := httptest.NewServer(NewRuntimeAPI())
+	defer server.Close()
+	create, err := http.Post(server.URL+"/v1/runtime/exec", "application/json", strings.NewReader(`{"command":"/bin/sh","args":["-c","printf first; sleep 30"],"cwd":"/tmp"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created map[string]string
+	if err := json.NewDecoder(create.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	create.Body.Close()
+	execURL := server.URL + "/v1/runtime/exec/" + created["execId"]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, execURL+"/output", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("output headers did not arrive while exec was running: %v", err)
+	}
+	defer output.Body.Close()
+	reader := bufio.NewReader(output.Body)
+	line, err := reader.ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("first output chunk did not arrive while exec was running: %v", err)
+	}
+	var event execOutput
+	if err := json.Unmarshal(line, &event); err != nil {
+		t.Fatal(err)
+	}
+	if value, _ := base64.StdEncoding.DecodeString(event.Data); string(value) != "first" {
+		t.Fatalf("unexpected first chunk %q", value)
+	}
+
+	kill := func() int {
+		response, err := http.Post(execURL+"/kill", "application/json", strings.NewReader(`{"signal":"KILL"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		return response.StatusCode
+	}
+	if status := kill(); status != http.StatusNoContent {
+		t.Fatalf("kill running exec status=%d", status)
+	}
+	if _, err := io.ReadAll(reader); err != nil {
+		t.Fatalf("output stream did not end after exec exit: %v", err)
+	}
+	wait, err := http.Get(execURL + "/wait")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait.Body.Close()
+	if status := kill(); status != http.StatusNoContent {
+		t.Fatalf("kill finished exec status=%d", status)
+	}
+}
 
 func TestRuntimeExecCapturesOutputAndExit(t *testing.T) {
 	runtimeAPI := NewRuntimeAPI()

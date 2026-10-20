@@ -29,7 +29,9 @@ describe('SessionLoadHandler', () => {
 
   function createTerminalProxyService() {
     return {
-      restoreTerminalContinuity: vi.fn().mockResolvedValue([]),
+      restoreTerminalContinuity: vi
+        .fn()
+        .mockResolvedValue({ terminalIds: [], releasedTerminalIds: [] }),
     };
   }
 
@@ -452,7 +454,12 @@ describe('SessionLoadHandler', () => {
       }),
     };
     const terminalProxyService = {
-      restoreTerminalContinuity: vi.fn().mockResolvedValue(['terminal-1']),
+      restoreTerminalContinuity: vi.fn(
+        async (trackedSession: { terminalIds?: string[] }) => {
+          trackedSession.terminalIds = ['terminal-1'];
+          return { terminalIds: ['terminal-1'], releasedTerminalIds: [] };
+        },
+      ),
     };
     const mcpSessionService = createMcpSessionService();
     const handler = new SessionLoadHandler(
@@ -508,6 +515,57 @@ describe('SessionLoadHandler', () => {
     expect(mcpSessionService.restoreSessionTools).not.toHaveBeenCalled();
   });
 
+  it('上一个连接的终端不在本进程时加载成功，并在结果中列出已释放的终端（D-200）', async () => {
+    const state = createState();
+    const handler = new SessionLoadHandler(
+      {
+        get: vi.fn().mockReturnValue({
+          loadSession: vi.fn().mockResolvedValue({
+            id: 'session-001',
+            agentId: 'agent-001',
+            mode: 'conversation',
+            context: {
+              history: [],
+              terminalContinuity: {
+                terminals: [
+                  {
+                    terminalId: 'terminal-old',
+                    execId: 'exec-old',
+                    cwd: '/workspace/demo',
+                    outputByteLimit: 1024,
+                    status: 'running',
+                  },
+                ],
+              },
+            },
+            status: 'active',
+            tenantId: 'tenant-1',
+            createdAt: new Date('2025-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+          }),
+        }),
+      } as unknown as ModuleRef,
+      {
+        loadConversationReplay: vi.fn().mockResolvedValue([]),
+      } as never,
+      {
+        restoreTerminalContinuity: vi.fn().mockResolvedValue({
+          terminalIds: [],
+          releasedTerminalIds: ['terminal-old'],
+        }),
+      } as never,
+      createMcpSessionService() as never,
+    );
+
+    await expect(
+      handler.handle({ sessionId: 'session-001' }, state),
+    ).resolves.toEqual({
+      sessionId: 'session-001',
+      releasedTerminalIds: ['terminal-old'],
+    });
+    expect(state.sessions?.has('session-001')).toBe(true);
+  });
+
   it('应恢复仅使用 agentConversationId 的 serverSandbox 绑定', async () => {
     const state = createState();
     const handler = new SessionLoadHandler(
@@ -561,7 +619,7 @@ describe('SessionLoadHandler', () => {
     });
   });
 
-  it('应在 cold recovery 无法重绑 terminal continuity 时 fail-closed 且不注册 session', async () => {
+  it('应在恢复终端 continuity 本身失败（如持久化失败）时 fail-closed 且不注册 session', async () => {
     const state = createState();
     const terminalProxyService = {
       restoreTerminalContinuity: vi.fn().mockRejectedValue({

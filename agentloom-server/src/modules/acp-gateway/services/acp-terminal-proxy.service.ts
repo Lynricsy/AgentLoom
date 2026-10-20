@@ -79,6 +79,8 @@ interface TerminalRecord {
   buffer: Buffer;
   earliestOffset: number;
   nextOffset: number;
+  /** 后台输出采集失败的原因；采集仍在进行或已正常结束时为 null */
+  outputError: string | null;
 }
 
 @Injectable()
@@ -140,15 +142,20 @@ export class AcpTerminalProxyService {
         buffer: Buffer.alloc(0),
         earliestOffset: 0,
         nextOffset: 0,
+        outputError: null,
       };
       createdRecord = record;
 
-      await this.getSandboxTerminalService().attachOutput(
-        createdTerminal.execId,
-        (_stream, chunk) => {
+      // 输出在后台采集，不等流结束：驱动的输出流要到进程退出才结束，
+      // 等它会让 create 阻塞到命令跑完，运行中的 output/kill/wait 超时与并发上限全部失效
+      this.getSandboxTerminalService()
+        .attachOutput(createdTerminal.execId, (_stream, chunk) => {
           this.appendOutput(record, chunk);
-        },
-      );
+        })
+        .catch((error: unknown) => {
+          record.outputError =
+            error instanceof Error ? error.message : String(error);
+        });
 
       this.terminalRegistry.set(terminalId, record);
       trackedSession.terminalIds = [
@@ -210,6 +217,13 @@ export class AcpTerminalProxyService {
           terminalId: terminal.terminalId,
         },
       );
+    }
+
+    if (terminal.outputError !== null) {
+      throw new AcpJsonRpcError(-32004, 'ACP terminal output stream failed', {
+        reason: 'terminal_output_stream_failed',
+        terminalId: terminal.terminalId,
+      });
     }
 
     const offset = params.offset;
@@ -339,6 +353,8 @@ export class AcpTerminalProxyService {
       ),
     ]);
 
+    const killFailures: string[] = [];
+
     for (const terminalId of terminalIds) {
       const terminal = this.terminalRegistry.get(terminalId);
       if (
@@ -349,47 +365,86 @@ export class AcpTerminalProxyService {
         continue;
       }
 
-      await this.releaseTerminalRecord(
-        terminal,
-        trackedSession,
-        'session_cleanup',
-      );
+      try {
+        await this.releaseTerminalRecord(
+          terminal,
+          trackedSession,
+          'session_cleanup',
+        );
+      } catch (error) {
+        // 终止失败（exec 已被沙箱回收等）也要丢弃记录：会话已结束，
+        // 留在 continuity 里的条目会让下一次 session/load 去恢复不存在的终端
+        this.clearTerminalTimeout(terminal);
+        this.terminalRegistry.delete(terminal.terminalId);
+        killFailures.push(
+          `${terminalId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
 
     trackedSession.terminalIds = [];
     await this.persistTerminalContinuity(trackedSession);
+
+    if (killFailures.length > 0) {
+      throw new Error(
+        `Failed to kill ACP terminals: ${killFailures.join('; ')}`,
+      );
+    }
   }
 
+  /**
+   * session/load 时恢复终端：终端记录只存在于创建它的网关进程内存中。
+   * 本进程 registry 里仍有的条目重新绑定；其余条目（stdio 网关每个连接一个进程，旧连接的终端必然不在）
+   * 视为已释放：仍标为 running 的 best-effort 终止，避免沙箱里留下无人管理的进程，
+   * 记审计 continuity_dropped，从持久化 continuity 中移除，并把 id 返回给调用方告知客户端。
+   */
   async restoreTerminalContinuity(
     trackedSession: AcpTrackedSession,
     continuity: TerminalContinuityState,
-  ): Promise<string[]> {
-    const reboundTerminalIds: string[] = [];
+  ): Promise<{ terminalIds: string[]; releasedTerminalIds: string[] }> {
+    const terminalIds: string[] = [];
+    const releasedTerminalIds: string[] = [];
 
     for (const continuityEntry of continuity.terminals) {
       const terminal = this.terminalRegistry.get(continuityEntry.terminalId);
 
       if (
-        !terminal ||
-        terminal.sessionId !== trackedSession.sessionId ||
-        terminal.tenantId !== trackedSession.tenantId ||
-        terminal.execId !== continuityEntry.execId ||
-        terminal.cwd !== continuityEntry.cwd ||
-        terminal.outputByteLimit !== continuityEntry.outputByteLimit ||
-        terminal.status !== continuityEntry.status ||
-        terminal.exitCode !== (continuityEntry.exitCode ?? null) ||
-        terminal.signal !== (continuityEntry.signal ?? null)
+        terminal &&
+        terminal.sessionId === trackedSession.sessionId &&
+        terminal.tenantId === trackedSession.tenantId &&
+        terminal.execId === continuityEntry.execId
       ) {
-        throw this.buildTerminalContinuityUnavailableError(
-          trackedSession.sessionId,
-        );
+        terminalIds.push(terminal.terminalId);
+        continue;
       }
 
-      reboundTerminalIds.push(terminal.terminalId);
+      if (continuityEntry.status === 'running') {
+        await this.safeKill(
+          continuityEntry.execId,
+          DEFAULT_TERMINAL_KILL_SIGNAL,
+        );
+      }
+      await this.recordAudit(
+        trackedSession,
+        'acp.terminal.server_sandbox.continuity_dropped',
+        {
+          summary: 'Released ACP server_sandbox terminal from a previous connection',
+          metadata: {
+            terminalId: continuityEntry.terminalId,
+            execId: continuityEntry.execId,
+            previousStatus: continuityEntry.status,
+          },
+        },
+      );
+      releasedTerminalIds.push(continuityEntry.terminalId);
     }
 
-    trackedSession.terminalIds = reboundTerminalIds;
-    return reboundTerminalIds;
+    trackedSession.terminalIds = terminalIds;
+    if (releasedTerminalIds.length > 0) {
+      await this.persistTerminalContinuity(trackedSession);
+    }
+
+    return { terminalIds, releasedTerminalIds };
   }
 
   private ensureSandboxMode(mode: AcpTerminalCreateParams['mode']) {

@@ -52,6 +52,8 @@ type execRecord struct {
 	exitCode int
 	pid      int
 	output   []execOutput
+	// notify 在每次追加输出时关闭并换新，供 output 流式推送等待新数据
+	notify chan struct{}
 }
 
 type execOutput struct {
@@ -213,7 +215,7 @@ func (runtimeAPI *RuntimeAPI) createExec(response http.ResponseWriter, request *
 		http.Error(response, "unable to attach stderr", http.StatusInternalServerError)
 		return
 	}
-	record := &execRecord{command: command, started: runtimeAPI.now(), done: make(chan struct{}), exitCode: -1}
+	record := &execRecord{command: command, started: runtimeAPI.now(), done: make(chan struct{}), exitCode: -1, notify: make(chan struct{})}
 	runtimeAPI.mutex.Lock()
 	runtimeAPI.reapExecsLocked(runtimeAPI.now())
 	if runtimeAPI.activeExecCountLocked()+runtimeAPI.pending >= runtimeAPI.activeMax {
@@ -278,6 +280,8 @@ func (record *execRecord) capture(level string, reader io.Reader, waitGroup *syn
 					count = remaining
 				}
 				record.output = append(record.output, execOutput{Level: level, Data: base64.StdEncoding.EncodeToString(buffer[:count])})
+				close(record.notify)
+				record.notify = make(chan struct{})
 			}
 			record.mutex.Unlock()
 		}
@@ -396,18 +400,46 @@ func (runtimeAPI *RuntimeAPI) execOutput(response http.ResponseWriter, request *
 		http.Error(response, "exec not found", http.StatusNotFound)
 		return
 	}
-	select {
-	case <-record.done:
-	case <-request.Context().Done():
+	// 运行中即开始推送：先发响应头，再按追加顺序增量写出，进程退出且输出读尽后结束。
+	// 等到 done 才整体回写会让调用方（ACP terminal/create、运行中 terminal/output）阻塞到命令跑完。
+	response.Header().Set("Content-Type", "application/x-ndjson")
+	response.WriteHeader(http.StatusOK)
+	controller := http.NewResponseController(response)
+	if err := controller.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
 		return
 	}
-	record.mutex.Lock()
-	output := append([]execOutput(nil), record.output...)
-	record.mutex.Unlock()
-	response.Header().Set("Content-Type", "application/x-ndjson")
 	encoder := json.NewEncoder(response)
-	for _, value := range output {
-		if err := encoder.Encode(value); err != nil {
+	sent := 0
+	for {
+		// 先判 done 再取快照：done 在两路 capture 结束后才关闭，此时快照必然包含全部输出
+		finished := false
+		select {
+		case <-record.done:
+			finished = true
+		default:
+		}
+		record.mutex.Lock()
+		pending := append([]execOutput(nil), record.output[sent:]...)
+		changed := record.notify
+		record.mutex.Unlock()
+		sent += len(pending)
+		for _, value := range pending {
+			if err := encoder.Encode(value); err != nil {
+				return
+			}
+		}
+		if len(pending) > 0 {
+			if err := controller.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+				return
+			}
+		}
+		if finished {
+			return
+		}
+		select {
+		case <-changed:
+		case <-record.done:
+		case <-request.Context().Done():
 			return
 		}
 	}
@@ -451,7 +483,15 @@ func (runtimeAPI *RuntimeAPI) killExec(response http.ResponseWriter, request *ht
 		http.Error(response, "unsupported signal", http.StatusBadRequest)
 		return
 	}
-	if err := syscall.Kill(-record.pid, signal); err != nil && !errors.Is(err, os.ErrProcessDone) {
+	// 已结束的 exec 直接视为终止成功：进程组已被回收，按旧 pid 发信号会得到 ESRCH，
+	// pid 被复用时还会误伤无关进程组
+	select {
+	case <-record.done:
+		response.WriteHeader(http.StatusNoContent)
+		return
+	default:
+	}
+	if err := syscall.Kill(-record.pid, signal); err != nil && !errors.Is(err, os.ErrProcessDone) && !errors.Is(err, syscall.ESRCH) {
 		http.Error(response, "unable to signal exec", http.StatusConflict)
 		return
 	}

@@ -109,22 +109,18 @@ export class SessionLoadHandler {
       }
     }
 
+    let releasedTerminalIds: string[] = [];
     const terminalContinuity = session.context.terminalContinuity;
     if (terminalContinuity && terminalContinuity.terminals.length > 0) {
-      let terminalIds: string[];
-
       try {
-        terminalIds = await this.terminalProxyService.restoreTerminalContinuity(
-          trackedSession,
-          terminalContinuity,
-        );
+        ({ releasedTerminalIds } =
+          await this.terminalProxyService.restoreTerminalContinuity(
+            trackedSession,
+            terminalContinuity,
+          ));
       } catch (error) {
         await this.safeCleanupSessionTools(trackedSession);
         throw error;
-      }
-
-      if (terminalIds.length > 0) {
-        trackedSession.terminalIds = terminalIds;
       }
     }
 
@@ -134,6 +130,7 @@ export class SessionLoadHandler {
 
     return {
       sessionId: session.id,
+      ...(releasedTerminalIds.length > 0 ? { releasedTerminalIds } : {}),
     };
   }
 
