@@ -38,6 +38,7 @@ import { TooltipHint } from '@/shared/ui/tooltip';
 import { formatBytes } from '@/shared/lib/format';
 import { fadeInUp } from '@/shared/lib/motion';
 import { useTheme } from '@/shared/hooks/use-theme';
+import { resolveProblemDetail } from '@/shared/api/problemDetail';
 import {
   useCreateSkill,
   useUpdateSkill,
@@ -460,6 +461,7 @@ export function CreateSkillDialog({
   const [content, setContent] = useState('');
   const [nameError, setNameError] = useState('');
   const [fileError, setFileError] = useState('');
+  const [submitError, setSubmitError] = useState('');
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<'idle' | 'parsing' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
@@ -492,6 +494,7 @@ export function CreateSkillDialog({
       setContent(skill.content ?? '');
       setNameError('');
       setFileError('');
+      setSubmitError('');
       setDeletingFile(null);
       setImportStatus('idle');
       setImportMessage('');
@@ -502,6 +505,7 @@ export function CreateSkillDialog({
       setContent('');
       setNameError('');
       setFileError('');
+      setSubmitError('');
       setDeletingFile(null);
       setImportStatus('idle');
       setImportMessage('');
@@ -632,6 +636,7 @@ export function CreateSkillDialog({
       return;
     }
     setNameError('');
+    setSubmitError('');
 
     if (isEditing && skill) {
       updateMutation.mutate(
@@ -640,8 +645,13 @@ export function CreateSkillDialog({
           name: trimmedName,
           description: description.trim() || undefined,
           content: content || undefined,
+          occVersion: skill.version,
         },
-        { onSuccess: () => onOpenChange(false) },
+        {
+          onSuccess: () => onOpenChange(false),
+          onError: (error) =>
+            setSubmitError(resolveProblemDetail(error, '保存失败，请刷新后重试')),
+        },
       );
     } else {
       try {
@@ -653,8 +663,8 @@ export function CreateSkillDialog({
         });
 
         onOpenChange(false);
-      } catch {
-        /* createMutation 错误状态由 UI 处理 */
+      } catch (error) {
+        setSubmitError(resolveProblemDetail(error, '创建失败，请稍后重试'));
       }
     }
   }, [
@@ -885,6 +895,17 @@ export function CreateSkillDialog({
               </TabsContent>
             </Tabs>
         </DialogBody>
+
+        {/* 提交错误放在滚动区外，紧邻保存按钮；放进 DialogBody 会被高编辑器挤出可视范围 */}
+        <AnimatePresence initial={false}>
+          {submitError && (
+            <motion.div key="submit-error" className="px-6 pt-3" {...fadeInUp}>
+              <Alert variant="error" role="alert">
+                <span className="block min-w-0 break-words">{submitError}</span>
+              </Alert>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <DialogFooter>
           <Button

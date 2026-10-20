@@ -25,6 +25,8 @@ export interface UpdateSkillPayload {
   name?: string;
   description?: string;
   content?: string;
+  /** 乐观锁：编辑前读到的 Skill.version，服务端不一致时返回 409 */
+  occVersion: number;
 }
 
 function buildSearchParams(params?: ListSkillsParams): Record<string, string> {

@@ -48,7 +48,9 @@ describe('skillApi 响应包络', () => {
 
     await expect(fetchSkillById('skill-1')).resolves.toEqual(skill)
     await expect(createSkill({ name: 'Skill' })).resolves.toEqual(skill)
-    await expect(updateSkill('skill-1', { name: 'Skill' })).resolves.toEqual(skill)
+    await expect(
+      updateSkill('skill-1', { name: 'Skill', occVersion: 2 }),
+    ).resolves.toEqual(skill)
     await expect(archiveSkill('skill-1')).resolves.toEqual({
       ...skill,
       status: 'archived',
