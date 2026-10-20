@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
 import { INVALID_JSON_BODY } from '../../../common/http/body-parsers';
@@ -59,7 +59,10 @@ function createReply() {
   return { reply: reply as unknown as FastifyReply, sent };
 }
 
-function createController(publicBaseUrl?: string) {
+function createController(
+  publicBaseUrl?: string,
+  frontendUrl = 'https://studio.example.com',
+) {
   const service = {
     getAgentCard: vi.fn(async () => ({ name: 'card' })),
     sendMessage: vi.fn(async () => ({ task: TASK })),
@@ -68,7 +71,11 @@ function createController(publicBaseUrl?: string) {
     cancelTask: vi.fn(async () => TASK),
     loadSubscribableRun: vi.fn(),
   };
-  const config = { get: vi.fn(() => publicBaseUrl) };
+  const env: Record<string, string | undefined> = {
+    APP_PUBLIC_BASE_URL: publicBaseUrl,
+    APP_FRONTEND_URL: frontendUrl,
+  };
+  const config = { get: vi.fn((key: string) => env[key]) };
   const controller = new A2aController(
     service as never,
     {} as never,
@@ -99,15 +106,12 @@ async function call(
 
 describe('A2aController', () => {
   describe('getAgentCard', () => {
-    it('优先使用 APP_PUBLIC_BASE_URL', async () => {
+    it('优先使用 APP_PUBLIC_BASE_URL，去掉末尾斜杠', async () => {
       const { controller, service } = createController(
-        'https://agentloom.example.com',
+        'https://agentloom.example.com/',
       );
 
-      await controller.getAgentCard(AGENT_ID, {
-        protocol: 'http',
-        host: 'internal:3000',
-      } as FastifyRequest);
+      await controller.getAgentCard(AGENT_ID);
 
       expect(service.getAgentCard).toHaveBeenCalledWith(
         AGENT_ID,
@@ -115,19 +119,27 @@ describe('A2aController', () => {
       );
     });
 
-    it('未配置时取请求的协议与主机', async () => {
-      const { controller, service } = createController();
+    it.each([
+      ['未设置', undefined],
+      // Compose 把未设置的变量注入为空串，ConfigService 会回落到 process.env 取回原值
+      ['空串', ''],
+      ['空白', '  '],
+    ])(
+      'APP_PUBLIC_BASE_URL %s时取 APP_FRONTEND_URL 的 origin，得到绝对地址',
+      async (_label, publicBaseUrl) => {
+        const { controller, service } = createController(
+          publicBaseUrl,
+          'https://agentloom.example.com/studio/',
+        );
 
-      await controller.getAgentCard(AGENT_ID, {
-        protocol: 'https',
-        host: 'a.test:8443',
-      } as FastifyRequest);
+        await controller.getAgentCard(AGENT_ID);
 
-      expect(service.getAgentCard).toHaveBeenCalledWith(
-        AGENT_ID,
-        'https://a.test:8443',
-      );
-    });
+        expect(service.getAgentCard).toHaveBeenCalledWith(
+          AGENT_ID,
+          'https://agentloom.example.com',
+        );
+      },
+    );
   });
 
   describe('rpc', () => {

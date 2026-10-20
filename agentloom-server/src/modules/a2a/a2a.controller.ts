@@ -8,13 +8,12 @@ import {
   Logger,
   Param,
   Post,
-  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiExcludeController } from '@nestjs/swagger';
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply } from 'fastify';
 
 import { Public } from '../../common/decorators/public.decorator';
 import { INVALID_JSON_BODY } from '../../common/http/body-parsers';
@@ -23,6 +22,7 @@ import { AgentApiEventStreamService } from '../agent-api-runtime/agent-api-event
 import { AgentApiKeyGuard } from '../agent-api/agent-api-key.guard';
 import type { AgentApiKeyContext } from '../agent-api/agent-api.types';
 import { CurrentAgentApiKey } from '../agent-api/current-agent-api-key.decorator';
+import { resolveA2aPublicBaseUrl } from './a2a-mapper';
 import { pipeTaskEventsToSse } from './a2a-sse.util';
 import { A2aRpcError, toRpcError } from './a2a.exceptions';
 import { A2aService } from './a2a.service';
@@ -53,22 +53,25 @@ import {
 @Controller('a2a')
 export class A2aController {
   private readonly logger = new Logger(A2aController.name);
+  /** 启动时定下的对外基址，不随请求的 Host 变化（见 resolveA2aPublicBaseUrl） */
+  private readonly publicBaseUrl: string;
 
   constructor(
     private readonly a2aService: A2aService,
     private readonly eventStream: AgentApiEventStreamService,
-    private readonly configService: ConfigService<EnvConfig, true>,
-  ) {}
+    configService: ConfigService<EnvConfig, true>,
+  ) {
+    this.publicBaseUrl = resolveA2aPublicBaseUrl(
+      configService.get('APP_PUBLIC_BASE_URL', { infer: true }),
+      configService.get('APP_FRONTEND_URL', { infer: true }),
+    );
+  }
 
   @Get('agents/:agentDefinitionId/.well-known/agent-card.json')
   async getAgentCard(
     @Param('agentDefinitionId') agentDefinitionId: string,
-    @Req() request: FastifyRequest,
   ): Promise<A2aAgentCard> {
-    const baseUrl =
-      this.configService.get('APP_PUBLIC_BASE_URL', { infer: true }) ??
-      `${request.protocol}://${request.host}`;
-    return this.a2aService.getAgentCard(agentDefinitionId, baseUrl);
+    return this.a2aService.getAgentCard(agentDefinitionId, this.publicBaseUrl);
   }
 
   @Post('agents/:agentDefinitionId/rpc')

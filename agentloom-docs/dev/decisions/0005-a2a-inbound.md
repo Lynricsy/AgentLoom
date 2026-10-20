@@ -41,7 +41,7 @@ docType: explanation
 
 - A2A 调用与 Agent 对外 API 共享同一把 Key 的配额与并发上限，运维侧没有新的限流维度。
 - run 状态机、事件镜像、清扫任务的改动会直接改变 A2A 行为；映射集中在 `agentloom-server/src/modules/a2a/a2a-mapper.ts` 与 `agentloom-server/src/modules/a2a/a2a-sse.util.ts`。
-- 新环境变量 `APP_PUBLIC_BASE_URL` 决定 Agent Card 中的 RPC 地址；未设置时取请求的协议与 `Host`，部署在反向代理后需要正确的 `X-Forwarded-*` 与 `APP_TRUST_PROXY_HOPS`。
+- 新环境变量 `APP_PUBLIC_BASE_URL` 决定 Agent Card 中的 RPC 地址；未设置或为空串时取 `APP_FRONTEND_URL` 的 origin。最初的回退是请求的协议与 `Host`，线上 Compose 把未设置的变量注入为空串后得到了相对地址（E2E 阶段 4 D-197），且公开端点的 `Host` 可被伪造，因此改为只依赖配置。
 - Agent Card 端点无鉴权，以 Agent ID 精确读取，只暴露已发布 Agent 的名称、描述、版本号与组织名。
 - 请求体除 `application/json` 外也接受 `application/a2a+json`（`agentloom-server/src/main.ts` 注册解析器）。
 - A2A 规范升级时在 [上游追踪](/dev/upstreams) 更新审阅版本；`A2A-Version` 只接受 `1.0`。

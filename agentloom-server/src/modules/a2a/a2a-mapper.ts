@@ -121,6 +121,26 @@ export interface A2aAgentCardSource {
   organizationName: string;
 }
 
+/**
+ * Agent Card 中 RPC 地址的站点基址。外部 A2A 客户端只认绝对地址，因此不从请求推导：
+ * 公开端点上的 Host / X-Forwarded-* 可被调用方伪造，且反向代理后得到的是内部地址。
+ * - `APP_PUBLIC_BASE_URL` 非空（去掉首尾空白后）时使用它；Compose 把未设置的变量注入为空串，
+ *   而 ConfigService 对 schema 归一成 undefined 的键会回落到 process.env 取回原始空串，故此处再判空。
+ * - 否则取 `APP_FRONTEND_URL` 的 origin：官方部署（Compose nginx、Helm Ingress）中 Studio 与 `/api`
+ *   同源，分享链接、生成应用、MinIO 公开地址也都以它为对外站点。
+ */
+export function resolveA2aPublicBaseUrl(
+  publicBaseUrl: string | undefined,
+  frontendUrl: string,
+): string {
+  const configured = publicBaseUrl?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+
+  return new URL(frontendUrl).origin;
+}
+
 export function buildA2aRpcUrl(
   baseUrl: string,
   agentDefinitionId: string,

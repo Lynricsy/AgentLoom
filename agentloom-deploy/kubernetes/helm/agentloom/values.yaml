@@ -55,7 +55,7 @@ env:
     APP_MASTER_ENCRYPTION_KEY: REPLACE_WITH_BASE64_32_BYTES
     APP_OAUTH_REDIRECT_URL: https://agentloom.example.com/api/v1/auth/oauth/callback
     APP_FRONTEND_URL: https://agentloom.example.com
-    # 对外公开访问的站点基址（A2A Agent Card 的 RPC 地址前缀）；留空时取请求的协议与主机
+    # 对外公开访问的站点基址（A2A Agent Card 的 RPC 地址前缀）；留空时取 APP_FRONTEND_URL 的 origin（Studio 与 API 不同源时必须设置）
     APP_PUBLIC_BASE_URL: https://agentloom.example.com
     # server 前方可信反向代理跳数：Ingress Controller 直连 server 为 1；
     # Ingress 前再有一层终止 TLS 的负载均衡且其追加 X-Forwarded-For 时改为 2。

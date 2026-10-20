@@ -12,7 +12,7 @@ AgentLoom 以 [A2A 协议](https://a2a-protocol.org/latest/specification/) 1.0 �
 
 - Agent 已发布。未发布或已归档的 Agent 读取 Agent Card 返回 404，RPC 调用返回 `-32004`。
 - 已为该 Agent 创建 Agent API Key（`alak_…`），创建方式见 [Agent 对外 API · 创建 Agent API Key](/api/agent-api#_1-创建-agent-api-key)。一把 Key 只能调用它绑定的 Agent。
-- 自托管部署时设置 `APP_PUBLIC_BASE_URL` 为对外访问的站点基址（如 `https://agentloom.example.com`），Agent Card 中的 RPC 地址以它为前缀；不设置时取请求的协议与 `Host`，经反向代理访问时可能得到内部地址。
+- Agent Card 中的 RPC 地址总是绝对地址：设置了 `APP_PUBLIC_BASE_URL`（如 `https://agentloom.example.com`）时以它为前缀；未设置或为空串时取 `APP_FRONTEND_URL` 的 origin（官方 Compose 与 Helm 部署中 Studio 与 `/api` 同源）。Studio 与 API 不同源的自托管部署必须设置 `APP_PUBLIC_BASE_URL` 为 API 的对外站点。服务端不再用请求的协议与 `Host` 推导地址：这是无鉴权的公开端点，`Host` 可被调用方伪造。
 
 ## 端点
 
