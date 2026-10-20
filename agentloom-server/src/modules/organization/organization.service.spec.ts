@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DRIZZLE } from '../../database/database.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
@@ -122,6 +122,7 @@ interface TransactionDb {
   update: MockFunction;
   delete: MockFunction;
   select: MockFunction;
+  execute: MockFunction;
 }
 
 interface InsertChain {
@@ -188,6 +189,7 @@ function createTransactionDb(): TransactionDb {
     update: vi.fn(),
     delete: vi.fn(),
     select: vi.fn(),
+    execute: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -335,12 +337,45 @@ function setupResolveUser(
   return localUser;
 }
 
+const INVITING_TENANT_ID = 'tenant-1';
+
+/** 邀请经原始连接按 token 查询：select().from().innerJoin().where().limit() */
+function mockInvitationLookup(db: MockDb, rows: unknown[]) {
+  const chain = {
+    from: vi.fn(),
+    innerJoin: vi.fn(),
+    where: vi.fn(),
+    limit: vi.fn().mockResolvedValue(rows),
+  };
+  chain.from.mockReturnValue(chain);
+  chain.innerJoin.mockReturnValue(chain);
+  chain.where.mockReturnValue(chain);
+  db.select.mockReturnValue(chain);
+  return chain;
+}
+
+function createInvitationLookupRow(overrides: Partial<InvitationRecord> = {}) {
+  const { id, organizationId, email, role, status, invitedBy, expiresAt } =
+    createInvitationRecord(overrides);
+  return {
+    id,
+    organizationId,
+    email,
+    role,
+    status,
+    invitedBy,
+    expiresAt,
+    tenantId: INVITING_TENANT_ID,
+  };
+}
+
 function setupAcceptInvitationTransaction(
   db: MockDb,
   member: OrganizationMemberRecord,
+  consumed: unknown[] = [{ id: INVITATION_ID }],
 ) {
   const tx = createTransactionDb();
-  const invitationUpdateChain = createUpdateChain();
+  const invitationUpdateChain = createUpdateChain(consumed);
   const userUpdateChain = createUpdateChain();
   const memberInsertChain = createInsertChain([member]);
 
@@ -835,18 +870,18 @@ describe('OrganizationService', () => {
       );
     });
 
-    it('正常接受邀请并创建成员', async () => {
-      const invitation = createInvitationRecord({ role: 'admin' });
+    it('经原始连接按 token 精确查找邀请，在发出邀请的组织租户事务中创建成员', async () => {
       const org = createOrganizationRecord();
       const member = createMemberRecord({
         userId: TARGET_USER_ID,
         role: 'admin',
       });
+      const lookup = mockInvitationLookup(db, [
+        createInvitationLookupRow({ role: 'admin' }),
+      ]);
       const { tx, invitationUpdateChain, memberInsertChain } =
         setupAcceptInvitationTransaction(db, member);
-
-      db.query.organizationInvitations.findFirst.mockResolvedValue(invitation);
-      db.query.organizationMembers.findFirst.mockResolvedValue(undefined);
+      tx.query.organizationMembers.findFirst.mockResolvedValue(undefined);
       tx.query.organizations.findFirst.mockResolvedValue(org);
 
       const result = await service.acceptInvitation(
@@ -855,12 +890,25 @@ describe('OrganizationService', () => {
       );
 
       expect(result).toEqual({ organization: org, member });
+      expect(lookup.where).toHaveBeenCalledWith(
+        eq(organizationInvitations.token, TOKEN_BASE64URL),
+      );
+      // 不经请求租户上下文查询邀请
+      expect(db.query.organizationInvitations.findFirst).not.toHaveBeenCalled();
+      // 写入前切到 authenticated 角色与发出邀请的组织租户
+      expect(tx.execute).toHaveBeenCalledTimes(2);
       expect(tx.update).toHaveBeenCalledWith(organizationInvitations);
       expect(invitationUpdateChain.set).toHaveBeenCalledWith({
         status: 'accepted',
         acceptedAt: expect.any(Date),
         acceptedBy: TARGET_USER_ID,
       });
+      expect(invitationUpdateChain.where).toHaveBeenCalledWith(
+        and(
+          eq(organizationInvitations.id, INVITATION_ID),
+          eq(organizationInvitations.status, 'pending'),
+        ),
+      );
       expect(tx.insert).toHaveBeenCalledWith(organizationMembers);
       expect(memberInsertChain.values).toHaveBeenCalledWith({
         organizationId: ORG_ID,
@@ -868,22 +916,29 @@ describe('OrganizationService', () => {
         role: 'admin',
         invitedBy: USER_ID,
       });
+      expect(auditLogService.recordWithin).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({
+          tenantId: INVITING_TENANT_ID,
+          actorId: TARGET_USER_ID,
+          eventType: 'organization.invitation.accepted',
+          resourceId: ORG_ID,
+        }),
+      );
     });
 
     it('接受邀请后无条件把 currentOrganizationId 切到该组织（含已选择其他组织的用户）', async () => {
-      const invitation = createInvitationRecord({ role: 'viewer' });
       const org = createOrganizationRecord();
       const member = createMemberRecord({
         userId: TARGET_USER_ID,
         role: 'viewer',
       });
+      mockInvitationLookup(db, [createInvitationLookupRow()]);
       const { tx, userUpdateChain } = setupAcceptInvitationTransaction(
         db,
         member,
       );
-
-      db.query.organizationInvitations.findFirst.mockResolvedValue(invitation);
-      db.query.organizationMembers.findFirst.mockResolvedValue(undefined);
+      tx.query.organizationMembers.findFirst.mockResolvedValue(undefined);
       tx.query.organizations.findFirst.mockResolvedValue(org);
 
       await service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID);
@@ -905,9 +960,7 @@ describe('OrganizationService', () => {
           email: 'someone-else@example.com',
         }),
       );
-      db.query.organizationInvitations.findFirst.mockResolvedValue(
-        createInvitationRecord(),
-      );
+      mockInvitationLookup(db, [createInvitationLookupRow()]);
 
       await expect(
         service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
@@ -918,50 +971,71 @@ describe('OrganizationService', () => {
     });
 
     it('邀请不存在时抛出 InvitationNotFoundException', async () => {
-      db.query.organizationInvitations.findFirst.mockResolvedValue(undefined);
+      mockInvitationLookup(db, []);
 
       await expect(
         service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
       ).rejects.toBeInstanceOf(InvitationNotFoundException);
 
-      expect(db.query.organizationMembers.findFirst).not.toHaveBeenCalled();
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it('邀请已使用时抛出 InvitationExpiredOrUsedException', async () => {
-      db.query.organizationInvitations.findFirst.mockResolvedValue(
-        createInvitationRecord({ status: 'accepted' }),
-      );
+      mockInvitationLookup(db, [
+        createInvitationLookupRow({ status: 'accepted' }),
+      ]);
 
       await expect(
         service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
       ).rejects.toBeInstanceOf(InvitationExpiredOrUsedException);
 
-      expect(db.query.organizationMembers.findFirst).not.toHaveBeenCalled();
       expect(db.transaction).not.toHaveBeenCalled();
     });
 
-    it('邀请过期时更新状态为 expired 并抛出', async () => {
+    it('邀请过期时在发出邀请的组织租户中更新状态为 expired 并抛出', async () => {
+      const tx = createTransactionDb();
       const updateChain = createUpdateChain();
-      db.query.organizationInvitations.findFirst.mockResolvedValue(
-        createInvitationRecord({ expiresAt: '2025-12-31T00:00:00.000Z' }),
-      );
-      db.update.mockReturnValue(updateChain);
+      tx.update.mockReturnValue(updateChain);
+      setupTransaction(db, tx);
+      mockInvitationLookup(db, [
+        createInvitationLookupRow({ expiresAt: '2025-12-31T00:00:00.000Z' }),
+      ]);
 
       await expect(
         service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
       ).rejects.toBeInstanceOf(InvitationExpiredOrUsedException);
 
-      expect(db.update).toHaveBeenCalledWith(organizationInvitations);
+      expect(tx.execute).toHaveBeenCalledTimes(2);
+      expect(tx.update).toHaveBeenCalledWith(organizationInvitations);
       expect(updateChain.set).toHaveBeenCalledWith({ status: 'expired' });
-      expect(updateChain.where).toHaveBeenCalledTimes(1);
-      expect(db.transaction).not.toHaveBeenCalled();
+      expect(updateChain.where).toHaveBeenCalledWith(
+        eq(organizationInvitations.id, INVITATION_ID),
+      );
+      expect(tx.insert).not.toHaveBeenCalled();
     });
 
-    it('已是成员时抛出 AlreadyOrganizationMemberException', async () => {
-      db.query.organizationInvitations.findFirst.mockResolvedValue(
-        createInvitationRecord(),
+    it('并发接受时邀请已被消费则抛出 InvitationExpiredOrUsedException 且不创建成员', async () => {
+      mockInvitationLookup(db, [createInvitationLookupRow()]);
+      const { tx } = setupAcceptInvitationTransaction(
+        db,
+        createMemberRecord({ userId: TARGET_USER_ID }),
+        [],
       );
-      db.query.organizationMembers.findFirst.mockResolvedValue(
+
+      await expect(
+        service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
+      ).rejects.toBeInstanceOf(InvitationExpiredOrUsedException);
+
+      expect(tx.insert).not.toHaveBeenCalled();
+    });
+
+    it('已是成员时抛出 AlreadyOrganizationMemberException 且不创建成员', async () => {
+      mockInvitationLookup(db, [createInvitationLookupRow()]);
+      const { tx } = setupAcceptInvitationTransaction(
+        db,
+        createMemberRecord({ userId: TARGET_USER_ID }),
+      );
+      tx.query.organizationMembers.findFirst.mockResolvedValue(
         createMemberRecord({ userId: TARGET_USER_ID }),
       );
 
@@ -969,7 +1043,8 @@ describe('OrganizationService', () => {
         service.acceptInvitation(TOKEN_BASE64URL, TARGET_USER_ID),
       ).rejects.toBeInstanceOf(AlreadyOrganizationMemberException);
 
-      expect(db.transaction).not.toHaveBeenCalled();
+      expect(tx.insert).not.toHaveBeenCalled();
+      expect(auditLogService.recordWithin).not.toHaveBeenCalled();
     });
   });
 

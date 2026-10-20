@@ -104,24 +104,6 @@ export const auditLogCaptureConfigs = {
       });
     },
   },
-  acceptInvitation: {
-    eventType: 'organization.invitation.accepted',
-    buildRecord: ({ request, response }) => {
-      const actorId = getActorId(request);
-      const result = getResponseData(response);
-      const organization = asRecord(result?.organization);
-      const tenantId = readString(organization, 'tenantId');
-      const organizationId = readString(organization, 'id');
-
-      return createUserActorRecord(tenantId, actorId, {
-        eventType: 'organization.invitation.accepted',
-        resourceType: 'organization',
-        resourceId: organizationId ?? '',
-        summary: 'Organization invitation accepted',
-        after: toAuditLogJson(result),
-      });
-    },
-  },
   updateMemberRole: {
     eventType: 'organization.member.role.updated',
     buildRecord: ({ request, response }) => {

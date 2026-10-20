@@ -16,7 +16,6 @@ import {
 import { AuditLogInterceptor } from '../audit-log.interceptor';
 
 const REQUEST_TENANT_ID = '550e8400-e29b-41d4-a716-446655440000';
-const CREATED_TENANT_ID = '550e8400-e29b-41d4-a716-446655440001';
 const USER_ID = '550e8400-e29b-41d4-a716-446655440002';
 const ORG_ID = '550e8400-e29b-41d4-a716-446655440003';
 const EXECUTION_ID = '550e8400-e29b-41d4-a716-446655440004';
@@ -81,51 +80,6 @@ describe('AuditLogInterceptor', () => {
     expect(auditLogService.record).not.toHaveBeenCalled();
   });
 
-  it('should derive acceptInvitation tenant and organization id from the response payload', async () => {
-    const handler = {};
-    Reflect.defineMetadata(
-      AUDIT_LOG_CAPTURE_KEY,
-      auditLogCaptureConfigs.acceptInvitation,
-      handler,
-    );
-
-    await lastValueFrom(
-      interceptor.intercept(
-        createContext(
-          {
-            user: { sub: USER_ID, tenantId: REQUEST_TENANT_ID },
-            params: { token: 'invite-token' },
-          },
-          handler,
-        ),
-        createNext({
-          data: {
-            organization: {
-              id: ORG_ID,
-              tenantId: CREATED_TENANT_ID,
-              name: 'Joined Org',
-            },
-            member: {
-              userId: USER_ID,
-              role: 'creator',
-            },
-          },
-        }),
-      ),
-    );
-
-    expect(auditLogService.record).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: CREATED_TENANT_ID,
-        actorId: USER_ID,
-        actorType: 'user',
-        eventType: 'organization.invitation.accepted',
-        resourceType: 'organization',
-        resourceId: ORG_ID,
-      }),
-    );
-  });
-
   it('should preserve actor identity for tool permission approval at the HTTP boundary', async () => {
     const handler = {};
     Reflect.defineMetadata(
@@ -179,20 +133,13 @@ describe('AuditLogInterceptor', () => {
     const handler = {};
     Reflect.defineMetadata(
       AUDIT_LOG_CAPTURE_KEY,
-      auditLogCaptureConfigs.acceptInvitation,
+      auditLogCaptureConfigs.updateMemberRole,
       handler,
     );
     auditLogService.record.mockRejectedValueOnce(new Error('db unavailable'));
 
     const response = {
-      data: {
-        organization: {
-          id: ORG_ID,
-          tenantId: CREATED_TENANT_ID,
-          name: 'Joined Org',
-        },
-        member: { userId: USER_ID, role: 'viewer' },
-      },
+      data: { userId: USER_ID, role: 'admin' },
     };
 
     const result = await lastValueFrom(
@@ -200,7 +147,7 @@ describe('AuditLogInterceptor', () => {
         createContext(
           {
             user: { sub: USER_ID, tenantId: REQUEST_TENANT_ID },
-            params: { token: 'invite-token' },
+            params: { id: ORG_ID, userId: USER_ID },
           },
           handler,
         ),
@@ -212,10 +159,10 @@ describe('AuditLogInterceptor', () => {
     expect(auditLogService.record).toHaveBeenCalledTimes(1);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining(
-        'Failed to persist audit log for organization.invitation.accepted',
+        'Failed to persist audit log for organization.member.role.updated',
       ),
       expect.objectContaining({
-        tenantId: CREATED_TENANT_ID,
+        tenantId: REQUEST_TENANT_ID,
         resourceType: 'organization',
         resourceId: ORG_ID,
       }),

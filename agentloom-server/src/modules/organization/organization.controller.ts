@@ -190,7 +190,6 @@ export class OrganizationController {
 
   @Post('invitations/:token/accept')
   @HttpCode(HttpStatus.OK)
-  @CaptureAuditLog(auditLogCaptureConfigs.acceptInvitation)
   @ApiOperation({ summary: '接受组织邀请' })
   @ApiResponse({ status: 200, description: '成功加入组织' })
   @ApiResponse({ status: 404, description: '邀请不存在' })

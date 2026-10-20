@@ -154,7 +154,7 @@ RLS 策略本身见 [/dev/server/security](/dev/server/security#数据库行级�
 
 只处理 HTTP 请求，且只对带 `@CaptureAuditLog()`（`agentloom-server/src/modules/evidence/audit-log.capture.ts`）的路由生效：handler 成功返回后用配置的 `buildRecord` 生成审计记录并写入。写入失败只记 warn 日志；但请求已在租户事务中时，审计插入复用该事务，数据库层失败（例如 RLS 拒绝）会中止整个事务，提交时仍返回 500。
 
-因此审计记录所属租户与请求租户不同的操作不能用 `@CaptureAuditLog()`：创建组织的 `organization.created` 由 `OrganizationService.createOrganization` 在建组织的事务内调用 `AuditLogService.recordWithin` 写入。
+因此审计记录所属租户与请求租户不同的操作不能用 `@CaptureAuditLog()`：创建组织的 `organization.created` 由 `OrganizationService.createOrganization` 在建组织的事务内调用 `AuditLogService.recordWithin` 写入；接受邀请的 `organization.invitation.accepted` 由 `OrganizationService.acceptInvitation` 在发出邀请的组织租户事务内同样以 `recordWithin` 写入。
 
 ### ZodValidationPipe
 

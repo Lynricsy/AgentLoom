@@ -261,10 +261,28 @@ export class OrganizationService {
   }
 
   async acceptInvitation(token: string, userId: string) {
-    const invitation =
-      await this.tenantDb.query.organizationInvitations.findFirst({
-        where: eq(organizationInvitations.token, token),
-      });
+    // 邀请行受租户 RLS 保护，只对发出邀请的组织租户可见，而受邀人的请求事务处在其原组织租户
+    // （或没有租户），经 tenantDb 永远查不到。这里用原始连接按唯一 token 精确定位邀请及其组织租户
+    // （与 ShareService 按 share_token 跨租户读取同一做法），不放宽邀请表的通用 RLS；
+    // 之后的全部写入都在发出邀请的组织租户事务中完成。
+    const [invitation] = await this.db
+      .select({
+        id: organizationInvitations.id,
+        organizationId: organizationInvitations.organizationId,
+        email: organizationInvitations.email,
+        role: organizationInvitations.role,
+        status: organizationInvitations.status,
+        invitedBy: organizationInvitations.invitedBy,
+        expiresAt: organizationInvitations.expiresAt,
+        tenantId: organizations.tenantId,
+      })
+      .from(organizationInvitations)
+      .innerJoin(
+        organizations,
+        eq(organizations.id, organizationInvitations.organizationId),
+      )
+      .where(eq(organizationInvitations.token, token))
+      .limit(1);
 
     if (!invitation) {
       throw new InvitationNotFoundException();
@@ -275,15 +293,17 @@ export class OrganizationService {
     }
 
     if (new Date(invitation.expiresAt) < new Date()) {
-      await this.tenantDb
-        .update(organizationInvitations)
-        .set({ status: 'expired' })
-        .where(eq(organizationInvitations.id, invitation.id));
+      await this.runInInvitingTenant(invitation.tenantId, (tx) =>
+        tx
+          .update(organizationInvitations)
+          .set({ status: 'expired' })
+          .where(eq(organizationInvitations.id, invitation.id)),
+      );
       throw new InvitationExpiredOrUsedException();
     }
 
     // 邀请只对受邀邮箱有效：链接一旦外泄，其他登录用户不能凭 token 以该角色加入
-    const acceptingUser = await this.tenantDb.query.users.findFirst({
+    const acceptingUser = await this.db.query.users.findFirst({
       where: eq(users.id, userId),
     });
     if (
@@ -294,27 +314,38 @@ export class OrganizationService {
       throw new InvitationEmailMismatchException();
     }
 
-    const existingMember =
-      await this.tenantDb.query.organizationMembers.findFirst({
-        where: and(
-          eq(organizationMembers.organizationId, invitation.organizationId),
-          eq(organizationMembers.userId, userId),
-        ),
-      });
-
-    if (existingMember) {
-      throw new AlreadyOrganizationMemberException();
-    }
-
-    return await this.tenantDb.transaction(async (tx) => {
-      await tx
+    return await this.runInInvitingTenant(invitation.tenantId, async (tx) => {
+      // 只消费仍为 pending 的邀请：并发的两次接受只有一次能更新成功
+      const [consumed] = await tx
         .update(organizationInvitations)
         .set({
           status: 'accepted',
           acceptedAt: new Date(),
           acceptedBy: userId,
         })
-        .where(eq(organizationInvitations.id, invitation.id));
+        .where(
+          and(
+            eq(organizationInvitations.id, invitation.id),
+            eq(organizationInvitations.status, 'pending'),
+          ),
+        )
+        .returning({ id: organizationInvitations.id });
+
+      if (!consumed) {
+        throw new InvitationExpiredOrUsedException();
+      }
+
+      const existingMember = await tx.query.organizationMembers.findFirst({
+        where: and(
+          eq(organizationMembers.organizationId, invitation.organizationId),
+          eq(organizationMembers.userId, userId),
+        ),
+      });
+
+      // 抛出即回滚上面的消费，邀请保持 pending
+      if (existingMember) {
+        throw new AlreadyOrganizationMemberException();
+      }
 
       const [member] = await tx
         .insert(organizationMembers)
@@ -339,7 +370,36 @@ export class OrganizationService {
         where: eq(organizations.id, invitation.organizationId),
       });
 
+      // 审计记录属于发出邀请的组织租户，与请求事务的租户不同，不能交给 HTTP 审计拦截器
+      await this.auditLogService.recordWithin(tx, {
+        tenantId: invitation.tenantId,
+        actorId: userId,
+        actorType: 'user',
+        eventType: 'organization.invitation.accepted',
+        resourceType: 'organization',
+        resourceId: invitation.organizationId,
+        summary: 'Organization invitation accepted',
+        after: { organization: { ...organization! }, member: { ...member } },
+      });
+
       return { organization: organization!, member };
+    });
+  }
+
+  /**
+   * 在发出邀请的组织租户上下文中开启独立事务（新连接），不复用受邀人请求所在的租户事务，
+   * 写入仍受该租户的 RLS 约束。
+   */
+  private runInInvitingTenant<T>(
+    tenantId: string,
+    operation: (tx: DrizzleDB) => Promise<T>,
+  ): Promise<T> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL ROLE authenticated`);
+      await tx.execute(
+        sql`SELECT set_config('app.current_tenant', ${tenantId}, true)`,
+      );
+      return operation(tx as unknown as DrizzleDB);
     });
   }
 

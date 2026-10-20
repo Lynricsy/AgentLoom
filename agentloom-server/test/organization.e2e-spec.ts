@@ -672,6 +672,215 @@ describe('Organization E2E (testcontainers)', () => {
       expect(acceptedInvitation.status).toBe('accepted');
     });
 
+    it('已属于其他组织的用户接受邀请成功并切换当前组织 (200)', async () => {
+      const owner = createTestUser('accept-cross-owner');
+      const invitee = createTestUser('accept-cross-invitee');
+      await seedAppUser(owner.id, owner.email);
+      await seedAppUser(invitee.id, invitee.email);
+
+      const organization = await seedOrganization(owner.id, {
+        name: 'Inviting Org',
+        slug: 'inviting-org',
+      });
+      // 受邀人已有自己的组织，请求在其原组织的租户事务中执行
+      const ownOrganization = await seedOrganization(invitee.id, {
+        name: 'Invitee Own Org',
+        slug: 'invitee-own-org',
+      });
+      const invitation = await seedInvitation(
+        organization.id,
+        invitee.email,
+        'operator',
+        owner.id,
+      );
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${invitation.token}/accept`,
+        headers: authHeaders(
+          withTenantContext(invitee, ownOrganization.tenant_id, 'owner'),
+        ),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.data.organization.id).toBe(organization.id);
+      expect(body.data.member.userId).toBe(invitee.id);
+      expect(body.data.member.role).toBe('operator');
+
+      const memberships = await sql`
+        SELECT organization_id, role
+        FROM "organization_members"
+        WHERE user_id = ${invitee.id}::uuid
+        ORDER BY role
+      `;
+      expect(memberships.map((row) => [row.organization_id, row.role])).toEqual(
+        expect.arrayContaining([
+          [organization.id, 'operator'],
+          [ownOrganization.id, 'owner'],
+        ]),
+      );
+      expect(memberships).toHaveLength(2);
+
+      const [acceptedInvitation] = await sql`
+        SELECT status, accepted_by
+        FROM "organization_invitations"
+        WHERE id = ${invitation.id}::uuid
+      `;
+      expect(acceptedInvitation.status).toBe('accepted');
+      expect(acceptedInvitation.accepted_by).toBe(invitee.id);
+
+      const [user] = await sql`
+        SELECT current_organization_id
+        FROM "users"
+        WHERE id = ${invitee.id}::uuid
+      `;
+      expect(user.current_organization_id).toBe(organization.id);
+
+      const auditRows = await sql`
+        SELECT tenant_id, actor_id, resource_id
+        FROM "audit_logs"
+        WHERE event_type = 'organization.invitation.accepted'
+          AND resource_id = ${organization.id}
+      `;
+      expect(auditRows).toHaveLength(1);
+      expect(auditRows[0].tenant_id).toBe(organization.tenant_id);
+      expect(auditRows[0].actor_id).toBe(invitee.id);
+    });
+
+    it('受邀邮箱以外的账号接受返回 403，邀请保持待处理', async () => {
+      const owner = createTestUser('accept-mismatch-owner');
+      const invitee = createTestUser('accept-mismatch-invitee');
+      const intruder = createTestUser('accept-mismatch-intruder');
+      await seedAppUser(owner.id, owner.email);
+      await seedAppUser(intruder.id, intruder.email);
+
+      const organization = await seedOrganization(owner.id, {
+        name: 'Mismatch Org',
+        slug: 'mismatch-org',
+      });
+      const intruderOrganization = await seedOrganization(intruder.id, {
+        name: 'Intruder Org',
+        slug: 'intruder-org',
+      });
+      const invitation = await seedInvitation(
+        organization.id,
+        invitee.email,
+        'admin',
+        owner.id,
+      );
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${invitation.token}/accept`,
+        headers: authHeaders(
+          withTenantContext(intruder, intruderOrganization.tenant_id, 'owner'),
+        ),
+      });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().type).toBe(
+        'https://agentloom.dev/errors/invitation-email-mismatch',
+      );
+
+      const [pendingInvitation] = await sql`
+        SELECT status
+        FROM "organization_invitations"
+        WHERE id = ${invitation.id}::uuid
+      `;
+      expect(pendingInvitation.status).toBe('pending');
+
+      const intruderMemberships = await sql`
+        SELECT 1
+        FROM "organization_members"
+        WHERE organization_id = ${organization.id}::uuid
+          AND user_id = ${intruder.id}::uuid
+      `;
+      expect(intruderMemberships).toHaveLength(0);
+    });
+
+    it('已使用的邀请再次接受返回 410', async () => {
+      const owner = createTestUser('accept-reuse-owner');
+      const invitee = createTestUser('accept-reuse-invitee');
+      await seedAppUser(owner.id, owner.email);
+      await seedAppUser(invitee.id, invitee.email);
+
+      const organization = await seedOrganization(owner.id, {
+        name: 'Reuse Org',
+        slug: 'reuse-org',
+      });
+      const ownOrganization = await seedOrganization(invitee.id, {
+        name: 'Reuse Invitee Org',
+        slug: 'reuse-invitee-org',
+      });
+      const invitation = await seedInvitation(
+        organization.id,
+        invitee.email,
+        'viewer',
+        owner.id,
+      );
+      const headers = authHeaders(
+        withTenantContext(invitee, ownOrganization.tenant_id, 'owner'),
+      );
+
+      const first = await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${invitation.token}/accept`,
+        headers,
+      });
+      expect(first.statusCode).toBe(200);
+
+      const second = await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${invitation.token}/accept`,
+        headers,
+      });
+      expect(second.statusCode).toBe(410);
+      expect(second.json().type).toBe(
+        'https://agentloom.dev/errors/invitation-expired-or-used',
+      );
+    });
+
+    it('过期邀请返回 410 并标记为 expired', async () => {
+      const owner = createTestUser('accept-expired-owner');
+      const invitee = createTestUser('accept-expired-invitee');
+      await seedAppUser(owner.id, owner.email);
+      await seedAppUser(invitee.id, invitee.email);
+
+      const organization = await seedOrganization(owner.id, {
+        name: 'Expired Org',
+        slug: 'expired-org',
+      });
+      const ownOrganization = await seedOrganization(invitee.id, {
+        name: 'Expired Invitee Org',
+        slug: 'expired-invitee-org',
+      });
+      const invitation = await seedInvitation(
+        organization.id,
+        invitee.email,
+        'viewer',
+        owner.id,
+        undefined,
+        new Date(Date.now() - 60 * 1000).toISOString(),
+      );
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/v1/invitations/${invitation.token}/accept`,
+        headers: authHeaders(
+          withTenantContext(invitee, ownOrganization.tenant_id, 'owner'),
+        ),
+      });
+
+      expect(res.statusCode).toBe(410);
+      const [expiredInvitation] = await sql`
+        SELECT status
+        FROM "organization_invitations"
+        WHERE id = ${invitation.id}::uuid
+      `;
+      expect(expiredInvitation.status).toBe('expired');
+    });
+
     it('无效 token 返回 404', async () => {
       const user = createTestUser('accept-invalid');
       await seedAppUser(user.id, user.email);

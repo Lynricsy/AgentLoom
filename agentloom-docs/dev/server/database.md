@@ -255,6 +255,8 @@ erDiagram
 
 `workflow_shares` 与 `agent_shares` 使用 `createDirectTenantPolicies`，只约束管理端（创建者租户）的列表与撤销；匿名访客与其他租户按 `share_token` 读取、导入时走 `ShareService` 的原始连接，不经过租户事务。
 
+`organization_invitations` 走关联 `organizations` 的租户策略，邀请行只对发出邀请的组织租户可见。受邀人的请求事务处在其原组织租户（或没有租户），因此 `OrganizationService.acceptInvitation` 用原始连接按唯一 `token` 定位邀请及其组织租户，校验状态、有效期与受邀邮箱后，另开事务执行 `SET LOCAL ROLE authenticated` 并把 `app.current_tenant` 设为发出邀请的组织租户，在其中消费邀请（仅更新仍为 `pending` 的行）、写入成员、切换当前组织并写审计。邀请表的策略不放宽。
+
 其余表都使用 `createDirectTenantPolicies`。
 
 ### 租户事务
