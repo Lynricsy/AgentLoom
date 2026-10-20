@@ -48,7 +48,7 @@ const TEST_AGENT_VERSION_ID =
 // 角色从 organization_members 读取（与 HTTP RolesGuard 一致），JWT 的 tenant_role 不作数（D-199）
 const TEST_VIEWER_USER_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const TEST_VIEWER_SUPABASE_USER_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-// 另一个 Agent 的对话：ACP 会话不得绑定别的 Agent 的沙箱（D-199）
+// 另一个 Agent 的对话：ACP 只接受 no_sandbox Agent，绑定别的 Agent 的沙箱对话是 agentConversationId 的实际用途（D-199）
 const TEST_OTHER_AGENT_CONVERSATION_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const TEST_OTHER_AGENT_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const SANDBOX_SESSION_CWD = '/workspace/demo';
@@ -665,7 +665,7 @@ async function runScenario() {
         PRIMARY KEY (organization_id, user_id)
       )
     `);
-    // SessionNewHandler 校验 serverSandbox.agentConversationId 归属读取的最小列集合
+    // SessionNewHandler 校验 serverSandbox.agentConversationId 存在性读取的最小列集合（agent_definition_id 只用于构造“另一个 Agent 的对话”）
     await sql.unsafe(`
       CREATE TABLE IF NOT EXISTS agent_conversations (
         id uuid PRIMARY KEY,
@@ -1831,7 +1831,19 @@ async function runScenario() {
           },
         }),
       );
-      const otherAgentBindingResponse = await stdout.nextJson(10_000);
+      const { response: otherAgentBindingResponse } =
+        await collectUntilResponse(child, stdout, 146, { timeoutMs: 10_000 });
+      await writeJsonRpc(
+        child,
+        createJsonRpcRequest(148, 'session/new', {
+          agentId: TEST_AGENT_ID,
+          cwd: SANDBOX_SESSION_CWD,
+          serverSandbox: {
+            agentConversationId: crypto.randomUUID(),
+          },
+        }),
+      );
+      const missingConversationBindingResponse = await stdout.nextJson(10_000);
       await writeJsonRpc(
         child,
         createJsonRpcRequest(147, 'session/new', {
@@ -2201,6 +2213,7 @@ async function runScenario() {
         viewerPromptResponse,
         ownerReauthResponse,
         otherAgentBindingResponse,
+        missingConversationBindingResponse,
         missingExecutionBindingResponse,
         disconnectTerminalCreateResponse,
         disconnectExitCode,

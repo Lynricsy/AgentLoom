@@ -113,6 +113,7 @@ type AcpStdioScenarioResult = {
   viewerPromptResponse?: JsonRpcResponse;
   ownerReauthResponse?: JsonRpcResponse;
   otherAgentBindingResponse?: JsonRpcResponse;
+  missingConversationBindingResponse?: JsonRpcResponse;
   missingExecutionBindingResponse?: JsonRpcResponse;
   disconnectTerminalCreateResponse?: JsonRpcResponse;
   disconnectExitCode?: number | null;
@@ -1195,12 +1196,17 @@ describe('ACP stdio E2E', () => {
       id: 145,
       result: { authenticated: true },
     });
+    // 绑定别的 Agent 的对话：只校验同租户存在（ACP 只接受 no_sandbox Agent，它自己的对话没有沙箱）
     expect(result.otherAgentBindingResponse).toMatchObject({
       id: 146,
+      result: { sessionId: expect.any(String) },
+    });
+    expect(result.missingConversationBindingResponse).toMatchObject({
+      id: 148,
       error: {
         code: -32602,
         message: 'Invalid params',
-        data: { reason: 'server_sandbox_binding_agent_mismatch' },
+        data: { reason: 'server_sandbox_binding_not_found' },
       },
     });
     expect(result.missingExecutionBindingResponse).toMatchObject({

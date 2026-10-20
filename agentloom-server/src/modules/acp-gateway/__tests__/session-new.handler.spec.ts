@@ -283,11 +283,13 @@ describe('SessionNewHandler', () => {
     expect(runtime.createSession).not.toHaveBeenCalled();
   });
 
-  it('应接受属于同一 Agent 的 agentConversationId 绑定', async () => {
+  // ACP 只接受 no_sandbox Agent，它自己的对话没有沙箱；绑定别的 Agent 的沙箱对话是该参数的实际用途，
+  // 且 HTTP 侧凭 agent:run 已能向租户内任意对话发消息，不额外放大权限
+  it('应接受属于其他 Agent 的 agentConversationId 绑定，只校验对话在本租户内存在', async () => {
     const runtime = createRuntime('session-conv');
     const accessService = createAccessService();
     const handler = createHandler({
-      db: createMockDb(undefined, undefined, [[{ agentId: AGENT_ID }]]),
+      db: createMockDb(undefined, undefined, [[{ id: CONVERSATION_ID }]]),
       runtime,
       accessService,
     });
@@ -313,12 +315,6 @@ describe('SessionNewHandler', () => {
   });
 
   it.each([
-    [
-      '对话属于另一个 Agent',
-      { agentConversationId: CONVERSATION_ID },
-      [[{ agentId: '01a15400-65d7-7252-86ee-3b411e23ffff' }]],
-      'server_sandbox_binding_agent_mismatch',
-    ],
     [
       '对话不存在（或属于其他租户，RLS 下同样查不到）',
       { agentConversationId: CONVERSATION_ID },

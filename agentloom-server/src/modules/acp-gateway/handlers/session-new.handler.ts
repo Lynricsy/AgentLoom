@@ -77,7 +77,6 @@ export class SessionNewHandler {
             tx,
             state,
             tenantId,
-            normalizedParams.agentId,
             normalizedParams.serverSandbox,
           );
         }
@@ -245,15 +244,15 @@ export class SessionNewHandler {
 
   /**
    * serverSandbox 绑定在创建会话时校验，规则对齐 HTTP（路由器已校验 agent:run）：
-   * - 对话：同租户内存在，且属于本会话的 Agent，否则任一已发布的 no_sandbox Agent 都能操作别的 Agent 的沙箱。
-   *   HTTP 对话接口按组织共享、不区分创建者（发消息、PTY 写入只要求 agent:run），这里同样不要求是调用者自己的对话。
+   * - 对话：同租户内存在即可，不要求属于本会话的 Agent。ACP 只接受 no_sandbox Agent，它自己的对话没有沙箱，
+   *   绑定别的 Agent 的沙箱对话正是这个参数的用途；HTTP 侧凭 agent:run 已能向租户内任意对话发消息
+   *   （对话按组织共享、不区分创建者），这里不会多给权限。
    * - 执行：同租户内存在；操作执行沙箱对应 HTTP 的执行控制（终端写入等），另需 execution:control。
    */
   private async assertServerSandboxBinding(
     tx: DrizzleDB,
     state: AcpConnectionState,
     tenantId: string,
-    agentId: string,
     binding: ServerSandboxBinding,
   ): Promise<void> {
     const { agentConversationId, executionId } = binding;
@@ -261,7 +260,7 @@ export class SessionNewHandler {
     if (agentConversationId !== undefined) {
       const [conversation] = UUID_PATTERN.test(agentConversationId)
         ? await tx
-            .select({ agentId: agentConversations.agentDefinitionId })
+            .select({ id: agentConversations.id })
             .from(agentConversations)
             .where(
               and(
@@ -275,12 +274,6 @@ export class SessionNewHandler {
         throw new AcpJsonRpcError(-32602, 'Invalid params', {
           agentConversationId,
           reason: 'server_sandbox_binding_not_found',
-        });
-      }
-      if (conversation.agentId !== agentId) {
-        throw new AcpJsonRpcError(-32602, 'Invalid params', {
-          agentConversationId,
-          reason: 'server_sandbox_binding_agent_mismatch',
         });
       }
     }
