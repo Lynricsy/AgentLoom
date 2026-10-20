@@ -17,7 +17,7 @@ import type {
   GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
-import { buildGeneratedAppRuntimeForm } from './generated-app.runtime';
+import { buildGeneratedAppRuntimeForm } from './generated-app.runtime-form-v1';
 
 export type GeneratedAppGate3ExecutorMode = 'real' | 'fixture' | 'disabled';
 

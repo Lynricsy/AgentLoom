@@ -17,6 +17,11 @@ import type {
   GeneratedAppSpec,
   GeneratedAppSubmission,
 } from '../../../database/schema';
+import type { GeneratedAppSpecV2 } from '../types/app-spec-v2.schema';
+import type {
+  GeneratedAppRuntimeResult,
+  PublicGeneratedAppRuntimeFormV2,
+} from '../types/generation-v2.ports';
 
 export const GeneratedAppStatusSchema = z.enum([
   'app_spec_generating',
@@ -79,10 +84,12 @@ export const GeneratedAppRepairAttemptStatusSchema = z.enum([
 ]);
 
 export const GeneratedAppRuntimeBindingReadinessStateSchema = z.enum([
-  'deterministic_only',
-  'editor_handoff_draft',
+  /** 还没有 v2 AppSpec，或 Agent 绑定的包装工作流尚未创建 */
+  'runtime_not_bound',
   'workflow_not_found',
   'workflow_not_published',
+  /** 绑定的工作流已重新发布：应用仍执行固定版本，重新生成才会采用新版本 */
+  'workflow_version_drift',
   'workflow_published',
 ]);
 
@@ -191,6 +198,8 @@ export const QueryGeneratedAppSubmissionsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   status: GeneratedAppSubmissionStatusSchema.optional(),
+  /** 默认只看终端用户提交；gate-acceptance 是 Gate 5 浏览器验收产生的提交 */
+  origin: z.enum(['public', 'gate-acceptance']).default('public'),
 });
 
 export class QueryGeneratedAppSubmissionsDto extends createZodDto(
@@ -482,6 +491,8 @@ export interface GeneratedAppRuntimeBindingReadinessResponseDto {
   workflowDefinitionId: string | null;
   workflowStatus: string | null;
   publishedVersionId: string | null;
+  /** 公开提交实际执行的固定版本（工作流绑定取 AppSpec，Agent 绑定取与 AppSpec 一致的包装工作流版本） */
+  pinnedVersionId: string | null;
   canStartWorkflowExecution: boolean;
   summary: string;
   notice: string;
@@ -616,61 +627,16 @@ export interface PublicGeneratedAppResponseDto {
   description: string;
   dataUseNotice: string;
   appSpec: Pick<
-    GeneratedAppSpec,
+    GeneratedAppSpecV2,
     'version' | 'appName' | 'summary' | 'userGoal' | 'actors' | 'pages'
   >;
   runtimeSurface: {
     kind: 'generated-app';
     previewUrl: string | null;
   };
-  runtimeForm: PublicGeneratedAppRuntimeFormDto;
+  /** 按 AppSpec v2 生成的表单与结果视图；字段 id 即提交 JSON 的键 */
+  runtimeForm: PublicGeneratedAppRuntimeFormV2;
   createdAt: Date;
-}
-
-export type PublicGeneratedAppRuntimeFieldType =
-  'text' | 'textarea' | 'single_select' | 'multi_select' | 'number' | 'range';
-
-export interface PublicGeneratedAppRuntimeFormOptionDto {
-  value: string;
-  label: string;
-}
-
-export interface PublicGeneratedAppRuntimeFieldDto {
-  id: string;
-  label: string;
-  type: PublicGeneratedAppRuntimeFieldType;
-  required: boolean;
-  placeholder: string;
-  helpText: string;
-  options: PublicGeneratedAppRuntimeFormOptionDto[];
-  min?: number;
-  max?: number;
-  step?: number;
-}
-
-export interface PublicGeneratedAppRuntimeFormSectionDto {
-  id: string;
-  title: string;
-  description: string;
-  fieldIds: string[];
-}
-
-export interface PublicGeneratedAppRuntimeResultViewDto {
-  title: string;
-  description: string;
-  emptyState: string;
-  successTitle: string;
-  nextStepHint: string;
-}
-
-export interface PublicGeneratedAppRuntimeFormDto {
-  formId: string;
-  title: string;
-  description: string;
-  submitLabel: string;
-  sections: PublicGeneratedAppRuntimeFormSectionDto[];
-  fields: PublicGeneratedAppRuntimeFieldDto[];
-  resultView: PublicGeneratedAppRuntimeResultViewDto;
 }
 
 export interface GeneratedAppSubmissionResponseDto {
@@ -686,7 +652,9 @@ export interface GeneratedAppSubmissionResponseDto {
   anonymousSessionId: string;
   status: GeneratedAppSubmission['status'];
   input: Record<string, unknown>;
+  /** v2 为公开结果（status / sections / publicError）；v1 历史提交保留原形状 */
   result: Record<string, unknown> | null;
+  /** v2 为执行引用（executionId、固定的工作流与版本、未启动原因），只对创建者可见 */
   report: Record<string, unknown> | null;
   errorMessage: string | null;
   createdAt: Date;
@@ -701,8 +669,8 @@ export interface PublicGeneratedAppSubmissionResponseDto {
   status: GeneratedAppSubmission['status'];
   anonymousSessionId: string;
   input: Record<string, unknown>;
-  result: Record<string, unknown> | null;
-  report: Record<string, unknown> | null;
+  /** 执行结束后按结果视图填充分区；执行中为 status=running、sections 为空 */
+  result: GeneratedAppRuntimeResult | null;
   errorMessage: string | null;
   createdAt: Date;
   updatedAt: Date;

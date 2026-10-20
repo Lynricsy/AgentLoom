@@ -782,6 +782,64 @@ describe('ExecutionService', () => {
       });
     });
 
+    it('给定 workflowVersionId 时按该版本快照的输入契约校验，不受工作流当前契约影响', async () => {
+      const PINNED_VERSION_ID = '00000000-0000-0000-0000-0000000000c3';
+      // 工作流此后改过输入契约（version 3、必填 question），固定版本仍是 version 1 的 topic
+      const workflowWithNewerSchema = {
+        ...mockPublishedWorkflow,
+        inputSchema: {
+          version: 3,
+          collectionMode: 'form',
+          fields: [
+            { id: 'question', type: 'text', label: '问题', required: true },
+          ],
+        },
+      };
+      const pinnedVersion = {
+        ...mockVersion,
+        id: PINNED_VERSION_ID,
+        snapshot: {
+          ...mockSnapshot,
+          inputSchema: {
+            version: 1,
+            collectionMode: 'form',
+            fields: [
+              { id: 'topic', type: 'text', label: '主题', required: true },
+            ],
+          },
+        },
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflowWithNewerSchema]))
+        .mockReturnValueOnce(createSelectChain([pinnedVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([mockExecution]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          inputParams: { topic: '固定版本' },
+          launchSource: 'api',
+          triggerType: 'api',
+          schemaVersion: 1,
+          workflowVersionId: PINNED_VERSION_ID,
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.workflowVersionId).toBe(PINNED_VERSION_ID);
+      expect(insertValues.inputParams).toMatchObject({
+        topic: '固定版本',
+        _meta: { launchConfig: { schemaVersion: 1 } },
+      });
+    });
+
     it('给定的 workflowVersionId 不存在时应抛出 WorkflowVersionNotFoundException', async () => {
       db.select
         .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))

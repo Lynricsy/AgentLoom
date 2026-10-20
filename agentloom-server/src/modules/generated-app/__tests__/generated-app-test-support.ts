@@ -32,6 +32,15 @@ import type {
   GeneratedAppSubmission,
   WorkflowDefinition,
 } from '../../../database/schema';
+import { z } from 'zod';
+import {
+  GeneratedAppSpecV2Schema,
+  type GeneratedAppSpecV2,
+} from '../types/app-spec-v2.schema';
+import type {
+  ResolvedGeneratedAppBinding,
+  WorkflowBindingCandidate,
+} from '../types/generation-v2.ports';
 import type { GeneratedAppRecordV1 } from '../generated-app.internal';
 import {
   GeneratedAppArtifactNotFoundException,
@@ -69,6 +78,7 @@ import { WorkflowNotPublishedException } from '../../execution/execution.excepti
 import type { ExecutionService } from '../../execution/execution.service';
 import type { StorageService } from '../../../infrastructure/storage/storage.service';
 import type { PluginService } from '../../plugin/plugin.service';
+import type { WorkflowVersionService } from '../../workflow-definition/workflow-version.service';
 import { PluginSandboxService } from '../../plugin/plugin-sandbox.service';
 import {
   GeneratedAppGate4IntegrationRunner,
@@ -674,23 +684,14 @@ function createStorageServiceMock(
   } as unknown as StorageService;
 }
 function createRuntimeBindingServiceForTest(
-  pluginService?: PluginService,
-  configService = createConfigService(),
-  storageService = createStorageServiceMock(),
+  workflowVersionService?: WorkflowVersionService,
 ): GeneratedAppRuntimeBindingService {
-  const repository = new GeneratedAppRepository(
-    mockTenantDb as unknown as DrizzleDB,
-    configService,
-  );
-  const artifactService = new GeneratedAppArtifactService(
-    repository,
-    configService,
-    storageService,
-  );
   return new GeneratedAppRuntimeBindingService(
-    repository,
-    artifactService,
-    pluginService,
+    new GeneratedAppRepository(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService(),
+    ),
+    workflowVersionService,
   );
 }
 function createRepairServiceForTest(): GeneratedAppGenerationRepairService {
@@ -716,7 +717,6 @@ function createPublicRuntimeServiceForTest(
   );
   const runtimeBindingService = new GeneratedAppRuntimeBindingService(
     repository,
-    artifactService,
   );
   return new GeneratedAppPublicRuntimeService(
     repository,
@@ -935,6 +935,255 @@ function createGeneratedApp(
   } as GeneratedAppRecordV1;
 }
 
+// ─── v2 共享 fixture（ADR-0007）：问答页面绑定文档问答工作流 ─────────────
+
+const V2_MODEL_CONFIG_ID = '01a154d7-8c8f-7c7b-87f3-a94220c05251';
+const V2_AGENT_DEFINITION_ID = '99999999-9999-4999-8999-999999999991';
+const V2_AGENT_VERSION_ID = '99999999-9999-4999-8999-999999999992';
+const V2_PROMPT = '一个问答页面：输入问题，调用上述工作流返回答案与引用';
+
+/**
+ * 按 ADR-0007「确认方式」的 S2 场景构造并经 `GeneratedAppSpecV2Schema` 校验的 AppSpec：
+ * 一个必填 `question` 字段，结果视图「答案」（text-output）与「引用」（json-output 的 citations 键）。
+ * 覆盖项先合并再校验，非法覆盖会直接抛错，避免用例拿到不合契约的 fixture。
+ */
+function createAppSpecV2Fixture(
+  overrides: Partial<GeneratedAppSpecV2> = {},
+): GeneratedAppSpecV2 {
+  const base: z.input<typeof GeneratedAppSpecV2Schema> = {
+    version: 2,
+    appName: '文档问答',
+    summary: '输入问题，调用文档问答工作流返回答案与引用。',
+    userGoal: '终端用户提问并得到带引用的答案',
+    actors: ['终端用户'],
+    coreRequirements: [
+      { id: 'req-ask', text: '输入问题并返回答案与引用', source: 'prompt' },
+      {
+        id: 'req-platform-persist',
+        text: '公开提交保存在创建者租户内，创建者可查看和删除。',
+        source: 'platform',
+      },
+    ],
+    pages: [
+      {
+        id: 'public-runtime',
+        name: '公开运行页',
+        purpose: '终端用户填写表单并查看结果。',
+      },
+    ],
+    inputForm: {
+      title: '提问',
+      submitLabel: '提问',
+      fields: [
+        {
+          id: 'question',
+          label: '问题',
+          type: 'textarea',
+          required: true,
+          maxLength: 2000,
+        },
+      ],
+    },
+    resultView: {
+      title: '回答',
+      sections: [
+        { id: 'answer', label: '答案', format: 'markdown' },
+        { id: 'citations', label: '引用', format: 'citations' },
+      ],
+    },
+    binding: {
+      kind: 'workflow',
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      workflowVersionId: WORKFLOW_VERSION_ID,
+      inputMapping: [{ fieldId: 'question', workflowInputFieldId: 'question' }],
+      outputMapping: [
+        { sectionId: 'answer', nodeId: 'out-answer' },
+        { sectionId: 'citations', nodeId: 'out-structured', path: 'citations' },
+      ],
+    },
+    dataPolicy: {
+      publicSubmissionsPersisted: true,
+      creatorCanDeleteSubmissions: true,
+      endUserLoginRequired: false,
+    },
+    nonGoals: ['不生成自定义后端或新工作流。'],
+    acceptanceScenarios: [
+      {
+        id: 'scenario-ask',
+        title: '提问后看到答案与引用',
+        scope: 'requirement',
+        requirementIds: ['req-ask'],
+        given: ['公开页已打开'],
+        when: ['输入问题并提交'],
+        then: ['展示答案', '展示引用'],
+        browserSteps: [
+          {
+            action: 'fill',
+            fieldId: 'question',
+            value: '最多可以同时运行几个子 Agent？',
+          },
+          { action: 'submit' },
+          {
+            action: 'expectResult',
+            sectionId: 'answer',
+            assertion: 'contains',
+            text: '10',
+          },
+          {
+            action: 'expectResult',
+            sectionId: 'citations',
+            assertion: 'nonEmpty',
+          },
+        ],
+      },
+      {
+        id: 'scenario-platform-persist',
+        title: '提交保存可追踪',
+        scope: 'platform',
+        requirementIds: ['req-platform-persist'],
+        given: ['应用已公开'],
+        when: ['终端用户提交'],
+        then: ['提交归属创建者租户'],
+        browserSteps: [],
+      },
+    ],
+    traceability: [
+      {
+        requirementId: 'req-ask',
+        scenarioIds: ['scenario-ask'],
+        fieldIds: ['question'],
+        sectionIds: ['answer', 'citations'],
+      },
+      {
+        requirementId: 'req-platform-persist',
+        scenarioIds: ['scenario-platform-persist'],
+        fieldIds: [],
+        sectionIds: [],
+      },
+    ],
+    generation: {
+      modelConfigId: V2_MODEL_CONFIG_ID,
+      generatedAt: NOW.toISOString(),
+      attempt: 1,
+      promptSha256: crypto.createHash('sha256').update(V2_PROMPT).digest('hex'),
+    },
+  };
+
+  return GeneratedAppSpecV2Schema.parse({ ...base, ...overrides });
+}
+
+/** Agent 绑定的变体：结果视图恰好一个回复分区 */
+function createAgentAppSpecV2Fixture(): GeneratedAppSpecV2 {
+  const workflowSpec = createAppSpecV2Fixture();
+
+  return createAppSpecV2Fixture({
+    resultView: {
+      title: '回答',
+      emptyState: '提交后在这里显示结果。',
+      sections: [{ id: 'reply', label: '回复', format: 'markdown' }],
+    },
+    binding: {
+      kind: 'agent',
+      agentDefinitionId: V2_AGENT_DEFINITION_ID,
+      agentVersionId: V2_AGENT_VERSION_ID,
+      replySectionId: 'reply',
+    },
+    acceptanceScenarios: workflowSpec.acceptanceScenarios.map((scenario) =>
+      scenario.scope === 'requirement'
+        ? {
+            ...scenario,
+            browserSteps: [
+              scenario.browserSteps[0],
+              { action: 'submit' },
+              {
+                action: 'expectResult',
+                sectionId: 'reply',
+                assertion: 'nonEmpty',
+              },
+            ],
+          }
+        : scenario,
+    ),
+    traceability: workflowSpec.traceability.map((entry) =>
+      entry.requirementId === 'req-ask'
+        ? { ...entry, sectionIds: ['reply'] }
+        : entry,
+    ),
+  });
+}
+
+/** 与 `createAppSpecV2Fixture` 绑定一致的工作流候选：固定版本快照的 inputSchema 与输出节点 */
+function createWorkflowBindingCandidateFixture(
+  overrides: Partial<WorkflowBindingCandidate> = {},
+): WorkflowBindingCandidate {
+  return {
+    kind: 'workflow',
+    workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    workflowVersionId: WORKFLOW_VERSION_ID,
+    name: '宣传册文档问答',
+    description: '检索宣传册知识库并回答问题',
+    inputSchema: {
+      version: 1,
+      collectionMode: 'form',
+      fields: [
+        { id: 'question', type: 'text', label: '问题', required: true },
+      ],
+    },
+    outputNodes: [
+      { nodeId: 'out-answer', nodeType: 'text-output', label: '答案' },
+      { nodeId: 'out-structured', nodeType: 'json-output', label: '结构化' },
+    ],
+    ...overrides,
+  };
+}
+
+function createResolvedBindingFixture(
+  appSpec: GeneratedAppSpecV2 = createAppSpecV2Fixture(),
+): ResolvedGeneratedAppBinding {
+  if (appSpec.binding.kind === 'agent') {
+    return {
+      kind: 'agent',
+      binding: appSpec.binding,
+      candidate: {
+        kind: 'agent',
+        agentDefinitionId: appSpec.binding.agentDefinitionId,
+        agentVersionId: appSpec.binding.agentVersionId,
+        name: '宣传册助手',
+        description: null,
+      },
+    };
+  }
+
+  return {
+    kind: 'workflow',
+    binding: appSpec.binding,
+    candidate: createWorkflowBindingCandidateFixture({
+      workflowDefinitionId: appSpec.binding.workflowDefinitionId,
+      workflowVersionId: appSpec.binding.workflowVersionId,
+    }),
+  };
+}
+
+/** 持有 v2 AppSpec 的应用记录（Gate 0 已产出规格、等待 Gate 1–7） */
+function createGeneratedAppV2(
+  overrides: Partial<GeneratedApp> = {},
+): GeneratedApp {
+  return {
+    ...createGeneratedApp(),
+    prompt: V2_PROMPT,
+    appName: '文档问答',
+    description: '输入问题，调用文档问答工作流返回答案与引用。',
+    status: 'app_spec_ready',
+    appSpec: createAppSpecV2Fixture(),
+    generationModelConfigId: V2_MODEL_CONFIG_ID,
+    bindingTarget: {
+      kind: 'workflow',
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    },
+    ...overrides,
+  } as GeneratedApp;
+}
+
 function createWorkflowDefinitionReadinessRow(
   overrides: Partial<
     Pick<
@@ -1060,6 +1309,15 @@ export {
   createWorkflowDefinitionReadinessRow,
   createGeneratedAppWithGate3Workspace,
   mockTenantDb,
+  V2_MODEL_CONFIG_ID,
+  V2_AGENT_DEFINITION_ID,
+  V2_AGENT_VERSION_ID,
+  V2_PROMPT,
+  createAppSpecV2Fixture,
+  createAgentAppSpecV2Fixture,
+  createWorkflowBindingCandidateFixture,
+  createResolvedBindingFixture,
+  createGeneratedAppV2,
 };
 
 export type { SelectOrderedLimitChain, StartGenerationRunInput };

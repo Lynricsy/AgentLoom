@@ -531,12 +531,27 @@ export class ExecutionService {
       throw new WorkflowNotPublishedException(workflowId);
     }
 
-    const workflowInputSchema = workflow.inputSchema
-      ? workflowInputSchemaSchema.parse(workflow.inputSchema)
+    // 显式指定版本（评测候选版本、生成应用的固定版本）时先取该版本快照，并按快照里的输入契约
+    // 校验：固定版本的调用方不受工作流之后改契约的影响。未指定时沿用工作流当前契约，
+    // 且先校验入参再读版本，入参非法时不查版本。
+    const requestedVersionDefinition =
+      runRequest?.workflowVersionId && !useDraftDefinition
+        ? await this.resolveVersionExecutionDefinition(
+            workflowId,
+            runRequest.workflowVersionId,
+            workflow.publishedVersionId,
+            tenantId,
+          )
+        : null;
+    const launchInputSchema = requestedVersionDefinition
+      ? (requestedVersionDefinition.definitionSnapshot.inputSchema ?? null)
+      : workflow.inputSchema;
+    const workflowInputSchema = launchInputSchema
+      ? workflowInputSchemaSchema.parse(launchInputSchema)
       : createDefaultWorkflowInputSchema();
 
     const inputParams = shouldNormalizeLaunchInput(
-      workflow.inputSchema,
+      launchInputSchema,
       runRequest,
     )
       ? buildNormalizedExecutionInputParams(
@@ -552,13 +567,13 @@ export class ExecutionService {
           versionId: null,
           definitionSnapshot: this.buildDraftExecutionSnapshot(workflow),
         }
-      : await this.resolveVersionExecutionDefinition(
+      : (requestedVersionDefinition ??
+        (await this.resolveVersionExecutionDefinition(
           workflowId,
-          // 评测执行可显式指定版本（含未发布的候选版本）；缺省走当前发布版本
-          runRequest?.workflowVersionId,
+          undefined,
           workflow.publishedVersionId,
           tenantId,
-        );
+        )));
 
     const admissionDecision =
       await this.resourceGovernanceService.resolveExecutionAdmissionDecision({

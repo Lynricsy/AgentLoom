@@ -8,7 +8,16 @@ import { tmpdir } from 'node:os';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import {
   computeContentHash as computePluginArchiveContentHash,
   readArchiveManifest,
@@ -132,12 +141,7 @@ import {
   GeneratedAppGate7PublishCandidateRunner,
   type GeneratedAppPublishCandidateExecutionLevel,
 } from './generated-app.publish-candidate-runner';
-import {
-  buildGeneratedAppRuntimeForm,
-  buildPublicGeneratedAppRuntimeDescription,
-  buildPublicGeneratedAppRuntimeSpec,
-  evaluateGeneratedAppLocalRuntime,
-} from './generated-app.runtime';
+
 import {
   buildGenerationPlan,
   buildStaticContracts,
@@ -177,23 +181,8 @@ import {
   getNonEmptyString,
   isNonEmptyString,
 } from './generated-app.plan-validation.util';
-import {
-  sanitizePublicSubmissionValue,
-  sanitizePublicWorkflowOutputValue,
-  limitPublicWorkflowOutputText,
-  buildPublicWorkflowOutputReportItems,
-  getWorkflowExecutionPublicStatusLabel,
-  limitRepairAttemptText,
-  GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_LIMIT,
-  PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN,
-  PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN,
-} from './generated-app.public-sanitizer.util';
-import {
-  buildGeneratedWorkflowRuntimeNodes,
-  buildGeneratedWorkflowRuntimeEdges,
-  buildGeneratedPrivatePluginRegistrationManifest,
-  buildGeneratedWorkflowRuntimeInputSchema,
-} from './generated-app.runtime-binding.util';
+import { sanitizePublicSubmissionValue, limitRepairAttemptText, PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN, PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN } from './generated-app.public-sanitizer.util';
+
 import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
 import {
   buildAppName,
@@ -229,6 +218,14 @@ import {
 import { DEFAULT_PREVIEW } from './generated-app.internal';
 import type { GeneratedAppRecordV1 } from './generated-app.internal';
 import { isAppSpecV2 } from './types/generated-app.types';
+import type { GeneratedAppRuntimeResult } from './types/generation-v2.ports';
+
+/** 公开分享令牌与验收令牌都是 URL 段；先挡掉明显不合法的输入，不进数据库查询 */
+const PUBLIC_RUNTIME_TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+function hashAcceptanceToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 @Injectable()
 export class GeneratedAppRepository {
@@ -1067,7 +1064,7 @@ export class GeneratedAppRepository {
         gateResult: GeneratedAppGateResult,
         nowIso: string,
       ) => GeneratedAppGateResult[];
-      generationPlan?: GeneratedAppGenerationPlan | null;
+      generationPlan?: GeneratedApp['generationPlan'];
     } = {},
   ): Promise<RecordGeneratedAppGateRunResponseDto> {
     const gateDefinition = getGeneratedAppGateDefinition(parsed.gateId);
@@ -1385,10 +1382,26 @@ export class GeneratedAppRepository {
     return attempt;
   }
 
-  public async findPublicGeneratedAppRecord(
-    token: string,
-  ): Promise<GeneratedAppRecordV1> {
-    const [app] = await this.db
+  /**
+   * 公开路由按令牌取应用：先按已发布的公开分享令牌，再按未过期的 Gate 5 验收令牌
+   * （库里只存 sha256）。AppSpec 版本与发布门槛由公开运行时服务按访问方式判断。
+   */
+  public async findByPublicOrAcceptanceToken(token: string): Promise<
+    | { access: 'public'; appId: string; tenantId: string; app: GeneratedApp }
+    | {
+        access: 'acceptance';
+        appId: string;
+        tenantId: string;
+        generationRunId: string;
+        app: GeneratedApp;
+      }
+    | null
+  > {
+    if (!PUBLIC_RUNTIME_TOKEN_PATTERN.test(token)) {
+      return null;
+    }
+
+    const [publicApp] = await this.db
       .select()
       .from(schema.generatedApps)
       .where(
@@ -1400,14 +1413,97 @@ export class GeneratedAppRepository {
       )
       .limit(1);
 
-    // v1 公开运行时不能渲染 v2 规格；v2 公开运行时接入前按不存在处理
-    if (!app || !app.appSpec || isAppSpecV2(app.appSpec)) {
-      throw new GeneratedAppNotFoundException('公开链接');
+    if (publicApp) {
+      return {
+        access: 'public',
+        appId: publicApp.id,
+        tenantId: publicApp.tenantId,
+        app: publicApp,
+      };
     }
 
-    this.assertCanEnablePublicShare(app);
+    const [acceptanceApp] = await this.db
+      .select()
+      .from(schema.generatedApps)
+      .where(
+        and(
+          eq(
+            schema.generatedApps.acceptanceTokenHash,
+            hashAcceptanceToken(token),
+          ),
+          gt(schema.generatedApps.acceptanceTokenExpiresAt, new Date()),
+          isNotNull(schema.generatedApps.acceptanceGenerationRunId),
+        ),
+      )
+      .limit(1);
 
-    return { ...app, appSpec: app.appSpec };
+    if (!acceptanceApp?.acceptanceGenerationRunId) {
+      return null;
+    }
+
+    return {
+      access: 'acceptance',
+      appId: acceptanceApp.id,
+      tenantId: acceptanceApp.tenantId,
+      generationRunId: acceptanceApp.acceptanceGenerationRunId,
+      app: acceptanceApp,
+    };
+  }
+
+  /**
+   * 签发 Gate 5 验收令牌：32 字节随机 hex，只存 sha256。同一应用同时只有一个有效令牌，
+   * 重新签发会使旧令牌失效。自带租户事务，调用方不要在外层持有事务。
+   */
+  async issueAcceptanceToken(params: {
+    tenantId: string;
+    appId: string;
+    generationRunId: string;
+    ttlMs: number;
+  }): Promise<{ token: string; expiresAt: Date }> {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + params.ttlMs);
+
+    await runInTenantTransaction(this.db, params.tenantId, async (tenantDb) => {
+      const [updated] = await tenantDb
+        .update(schema.generatedApps)
+        .set({
+          acceptanceTokenHash: hashAcceptanceToken(token),
+          acceptanceTokenExpiresAt: expiresAt,
+          acceptanceGenerationRunId: params.generationRunId,
+        })
+        .where(
+          and(
+            eq(schema.generatedApps.id, params.appId),
+            eq(schema.generatedApps.tenantId, params.tenantId),
+          ),
+        )
+        .returning({ id: schema.generatedApps.id });
+
+      if (!updated) {
+        throw new GeneratedAppNotFoundException(params.appId);
+      }
+    });
+
+    return { token, expiresAt };
+  }
+
+  /** 撤销验收令牌（幂等）。自带租户事务，调用方不要在外层持有事务 */
+  async revokeAcceptanceToken(tenantId: string, appId: string): Promise<void> {
+    await runInTenantTransaction(this.db, tenantId, (tenantDb) =>
+      tenantDb
+        .update(schema.generatedApps)
+        .set({
+          acceptanceTokenHash: null,
+          acceptanceTokenExpiresAt: null,
+          acceptanceGenerationRunId: null,
+        })
+        .where(
+          and(
+            eq(schema.generatedApps.id, appId),
+            eq(schema.generatedApps.tenantId, tenantId),
+          ),
+        ),
+    );
   }
 
   public async findSubmissionRecord(
@@ -1502,8 +1598,7 @@ export class GeneratedAppRepository {
       status: submission.status,
       anonymousSessionId: submission.anonymousSessionId,
       input: submission.input,
-      result: this.sanitizePublicSubmissionResultReport(submission.result),
-      report: this.sanitizePublicSubmissionResultReport(submission.report),
+      result: this.toPublicRuntimeResult(submission.result),
       errorMessage: submission.errorMessage,
       createdAt: submission.createdAt,
       updatedAt: submission.updatedAt,
@@ -1594,14 +1689,25 @@ export class GeneratedAppRepository {
     return baseUrl.replace(/\/+$/, '');
   }
 
-  public sanitizePublicSubmissionResultReport<
-    T extends Record<string, unknown>,
-  >(payload: T | null): T | null {
-    if (!payload) {
-      return payload;
+  /** 公开端只返回 v2 运行结果形状；写入时已脱敏，这里只做形状把关 */
+  private toPublicRuntimeResult(
+    value: Record<string, unknown> | null,
+  ): GeneratedAppRuntimeResult | null {
+    if (
+      !isRecord(value) ||
+      !Array.isArray(value.sections) ||
+      (value.status !== 'running' &&
+        value.status !== 'completed' &&
+        value.status !== 'failed')
+    ) {
+      return null;
     }
 
-    return sanitizePublicSubmissionValue(payload) as T;
+    return {
+      status: value.status,
+      sections: value.sections as GeneratedAppRuntimeResult['sections'],
+      publicError: typeof value.publicError === 'string' ? value.publicError : null,
+    };
   }
 
   public getRepairPlanOrNull(value: unknown): GeneratedAppRepairPlan | null {

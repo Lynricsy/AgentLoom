@@ -10,7 +10,7 @@ import type {
   GeneratedAppSpecV1,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
-import { buildGeneratedAppRuntimeForm } from './generated-app.runtime';
+import { buildGeneratedAppRuntimeForm } from './generated-app.runtime-form-v1';
 
 export type GeneratedAppGate4ExecutorMode = 'real' | 'fixture' | 'disabled';
 

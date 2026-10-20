@@ -19,7 +19,7 @@ import {
 } from '../plan-builders/integration-plan.builder';
 import { GeneratedAppGate3WorkspaceRunner } from '../generated-app.workspace';
 import { GeneratedAppGate4IntegrationRunner } from '../generated-app.integration-runner';
-import { buildGeneratedAppRuntimeForm } from '../generated-app.runtime';
+import { buildGeneratedAppRuntimeForm } from '../generated-app.runtime-form-v1';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const APP_ID = '33333333-3333-4333-8333-333333333333';

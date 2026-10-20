@@ -123,12 +123,7 @@ import {
   GeneratedAppGate7PublishCandidateRunner,
   type GeneratedAppPublishCandidateExecutionLevel,
 } from './generated-app.publish-candidate-runner';
-import {
-  buildGeneratedAppRuntimeForm,
-  buildPublicGeneratedAppRuntimeDescription,
-  buildPublicGeneratedAppRuntimeSpec,
-  evaluateGeneratedAppLocalRuntime,
-} from './generated-app.runtime';
+
 import {
   buildGenerationPlan,
   buildStaticContracts,
@@ -168,23 +163,8 @@ import {
   getNonEmptyString,
   isNonEmptyString,
 } from './generated-app.plan-validation.util';
-import {
-  sanitizePublicSubmissionValue,
-  sanitizePublicWorkflowOutputValue,
-  limitPublicWorkflowOutputText,
-  buildPublicWorkflowOutputReportItems,
-  getWorkflowExecutionPublicStatusLabel,
-  limitRepairAttemptText,
-  GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_LIMIT,
-  PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN,
-  PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN,
-} from './generated-app.public-sanitizer.util';
-import {
-  buildGeneratedWorkflowRuntimeNodes,
-  buildGeneratedWorkflowRuntimeEdges,
-  buildGeneratedPrivatePluginRegistrationManifest,
-  buildGeneratedWorkflowRuntimeInputSchema,
-} from './generated-app.runtime-binding.util';
+import { sanitizePublicSubmissionValue, limitRepairAttemptText, PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN, PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN } from './generated-app.public-sanitizer.util';
+
 import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
 import {
   getPublicRuntimePages,
@@ -222,26 +202,8 @@ export const DEFAULT_PREVIEW: GeneratedAppPreview = {
   testReportUrl: null,
 };
 
-export const GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE =
-  'generated-app-editor-handoff';
 export const GENERATED_APP_WORKFLOW_RUNTIME_METADATA_SOURCE =
   'generated-app-runtime-workflow';
-export const GENERATED_APP_WORKFLOW_RUNTIME_BINDING_KIND =
-  'public-runtime-workflow';
-export const GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY =
-  'async-workflow-execution-created';
-export const GENERATED_APP_PUBLIC_WORKFLOW_COMPLETED_BOUNDARY =
-  'async-workflow-execution-completed';
-export const GENERATED_APP_PUBLIC_WORKFLOW_FAILED_BOUNDARY =
-  'async-workflow-execution-failed';
-export const GENERATED_APP_PUBLIC_WORKFLOW_CANCELLED_BOUNDARY =
-  'async-workflow-execution-cancelled';
-export const GENERATED_APP_PUBLIC_WORKFLOW_NOT_STARTED_BOUNDARY =
-  'local-deterministic-report-only';
-export const GENERATED_APP_PUBLIC_WORKFLOW_STATUS_SECTION_ID =
-  'workflow-execution-status';
-export const UUID_LIKE_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES = 256 * 1024;
 export const GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID =
@@ -475,30 +437,6 @@ export const GENERATED_APP_PLUGIN_ARTIFACT_DEFINITIONS = [
   path: (toolId: string) => string;
   contentType: string;
 }>;
-
-export type GeneratedAppWorkflowExecutionNotStartedReason =
-  | 'no-workflow-bound'
-  | 'workflow-not-published'
-  | 'workflow-execution-unavailable'
-  | 'workflow-execution-blocked';
-
-export interface GeneratedAppWorkflowExecutionHandoff {
-  workflowExecution: boolean;
-  workflowDefinitionId: string | null;
-  executionId: string | null;
-  executionStatus: schema.WorkflowExecution['status'] | null;
-  executionBoundary:
-    | typeof GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY
-    | typeof GENERATED_APP_PUBLIC_WORKFLOW_COMPLETED_BOUNDARY
-    | typeof GENERATED_APP_PUBLIC_WORKFLOW_FAILED_BOUNDARY
-    | typeof GENERATED_APP_PUBLIC_WORKFLOW_CANCELLED_BOUNDARY
-    | typeof GENERATED_APP_PUBLIC_WORKFLOW_NOT_STARTED_BOUNDARY;
-  notStartedReason: GeneratedAppWorkflowExecutionNotStartedReason | null;
-  notice: string;
-  updatedAt?: string | null;
-  completedAt?: string | null;
-  summary?: Record<string, unknown>;
-}
 
 /** v2 公开运行时接入前的过渡：v1 公开运行时只能服务持有 v1 规格的应用 */
 export type GeneratedAppRecordV1 = GeneratedApp & {

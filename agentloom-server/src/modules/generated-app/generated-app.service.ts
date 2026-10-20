@@ -124,12 +124,7 @@ import {
   GeneratedAppGate7PublishCandidateRunner,
   type GeneratedAppPublishCandidateExecutionLevel,
 } from './generated-app.publish-candidate-runner';
-import {
-  buildGeneratedAppRuntimeForm,
-  buildPublicGeneratedAppRuntimeDescription,
-  buildPublicGeneratedAppRuntimeSpec,
-  evaluateGeneratedAppLocalRuntime,
-} from './generated-app.runtime';
+
 import {
   buildGenerationPlan,
   buildStaticContracts,
@@ -169,23 +164,8 @@ import {
   getNonEmptyString,
   isNonEmptyString,
 } from './generated-app.plan-validation.util';
-import {
-  sanitizePublicSubmissionValue,
-  sanitizePublicWorkflowOutputValue,
-  limitPublicWorkflowOutputText,
-  buildPublicWorkflowOutputReportItems,
-  getWorkflowExecutionPublicStatusLabel,
-  limitRepairAttemptText,
-  GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_LIMIT,
-  PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN,
-  PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN,
-} from './generated-app.public-sanitizer.util';
-import {
-  buildGeneratedWorkflowRuntimeNodes,
-  buildGeneratedWorkflowRuntimeEdges,
-  buildGeneratedPrivatePluginRegistrationManifest,
-  buildGeneratedWorkflowRuntimeInputSchema,
-} from './generated-app.runtime-binding.util';
+import { sanitizePublicSubmissionValue, limitRepairAttemptText, PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN, PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN } from './generated-app.public-sanitizer.util';
+
 import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
 import {
   getPublicRuntimePages,
@@ -227,8 +207,6 @@ import { GeneratedAppGenerationOrchestratorService } from './generated-app-gener
 import { GeneratedAppPublicRuntimeService } from './generated-app-public-runtime.service';
 import type {
   GeneratedAppArtifactDefinition,
-  GeneratedAppWorkflowExecutionHandoff,
-  GeneratedAppWorkflowExecutionNotStartedReason,
 } from './generated-app.internal';
 
 @Injectable()
@@ -275,8 +253,7 @@ export class GeneratedAppService {
       runtimeBindingService ??
       new GeneratedAppRuntimeBindingService(
         this.repository,
-        this.artifactService,
-        pluginService,
+        workflowVersionService,
       );
     this.repairService =
       repairService ?? new GeneratedAppGenerationRepairService(this.repository);

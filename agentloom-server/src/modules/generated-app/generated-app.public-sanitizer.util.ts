@@ -1,11 +1,4 @@
-import * as schema from '../../database/schema';
-
-import {
-  getNonEmptyString,
-  getRecordArray,
-  getStringArray,
-  isRecord,
-} from './generated-app.plan-validation.util';
+import { isRecord } from './generated-app.plan-validation.util';
 
 export const GENERATED_APP_REPAIR_ATTEMPT_TEXT_MAX_LENGTH = 4000;
 
@@ -14,10 +7,6 @@ export const PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN =
 
 export const PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN =
   /(?:\/(?:root|home|users|var|tmp|etc|workspace)\/[^\s"'<>]+|[A-Za-z]:\\[^\s"'<>]+)/i;
-
-export const GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_LIMIT = 5;
-
-export const GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_TEXT_LIMIT = 500;
 
 export const PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS = new Set([
   '_meta',
@@ -112,83 +101,6 @@ export function sanitizePublicSubmissionValue(value: unknown): unknown {
   );
 }
 
-export function sanitizePublicWorkflowOutputValue(value: unknown): unknown {
-  const sanitized = sanitizePublicSubmissionValue(value);
-  if (typeof sanitized === 'string') {
-    return limitPublicWorkflowOutputText(sanitized);
-  }
-
-  return sanitized;
-}
-
-export function limitPublicWorkflowOutputText(value: string): string {
-  const trimmed = value.trim();
-
-  return trimmed.length > GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_TEXT_LIMIT
-    ? `${trimmed.slice(0, GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_TEXT_LIMIT)}...`
-    : trimmed;
-}
-
-export function formatPublicWorkflowOutputValue(value: unknown): string | null {
-  if (typeof value === 'string') {
-    return limitPublicWorkflowOutputText(value);
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const preferredParts = [
-    formatPublicWorkflowOutputField('风险等级', value.riskLevel),
-    formatPublicWorkflowOutputField('评分', value.score),
-    formatPublicWorkflowOutputField('信号数量', value.signalCount),
-    formatPublicWorkflowOutputField('模式', value.mode),
-  ].filter((item): item is string => Boolean(item));
-
-  const followUpQuestions = getStringArray(value.followUpQuestions);
-  if (followUpQuestions.length > 0) {
-    preferredParts.push(`追问：${followUpQuestions.slice(0, 2).join('；')}`);
-  }
-
-  if (preferredParts.length > 0) {
-    return limitPublicWorkflowOutputText(preferredParts.join('；'));
-  }
-
-  return limitPublicWorkflowOutputText(JSON.stringify(value));
-}
-
-export function formatPublicWorkflowOutputField(
-  label: string,
-  value: unknown,
-): string | null {
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return `${label}=${String(value)}`;
-  }
-
-  const text = getNonEmptyString(value);
-
-  return text ? `${label}=${text}` : null;
-}
-
-export function buildPublicWorkflowOutputReportItems(
-  summary: Record<string, unknown> | undefined,
-): string[] {
-  const outputs = getRecordArray(summary?.publicOutputs);
-
-  return outputs
-    .map((output) => {
-      const title = getNonEmptyString(output.title) ?? '业务输出';
-      const value = formatPublicWorkflowOutputValue(output.value);
-
-      return value ? `${title}：${value}` : null;
-    })
-    .filter((item): item is string => Boolean(item));
-}
-
 export function normalizePublicSubmissionPayloadKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9_]/g, '');
 }
@@ -211,27 +123,6 @@ export function isForbiddenPublicSubmissionPayloadKey(key: string): boolean {
     normalizedKey.endsWith('tokens') ||
     normalizedKey.endsWith('_tokens')
   );
-}
-
-export function getWorkflowExecutionPublicStatusLabel(
-  status: schema.WorkflowExecution['status'] | null,
-): string {
-  switch (status) {
-    case 'pending':
-      return '等待执行';
-    case 'running':
-      return '正在执行';
-    case 'paused':
-      return '已暂停';
-    case 'completed':
-      return '已完成';
-    case 'failed':
-      return '执行未完成';
-    case 'cancelled':
-      return '已取消';
-    default:
-      return '未创建';
-  }
 }
 
 export function limitRepairAttemptText(value: string): string {

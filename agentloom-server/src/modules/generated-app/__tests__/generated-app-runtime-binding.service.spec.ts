@@ -1,547 +1,486 @@
-import { ConfigService } from '@nestjs/config';
-import { HEADERS_METADATA } from '@nestjs/common/constants';
-import * as crypto from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  computeContentHash as computePluginArchiveContentHash,
-  readArchiveManifest,
-  verifyArchiveSignature as verifyPluginArchiveSignature,
-} from '@agentloom/plugin-sdk';
-import JSZip from 'jszip';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import type { DrizzleDB } from '../../../database/database.module';
-import type {
-  GeneratedApp,
-  GeneratedAppBrowserAcceptancePlan,
-  GeneratedAppBuildUnitPlan,
-  GeneratedAppGenerationPlan,
-  GeneratedAppGenerationRun,
-  GeneratedAppGateRun,
-  GeneratedAppIndependentVerificationPlan,
-  GeneratedAppIntegrationPlan,
-  GeneratedAppPublishCandidatePlan,
-  GeneratedAppReadiness,
-  GeneratedAppRepairPlan,
-  GeneratedAppRepairAttempt,
-  GeneratedAppReverificationPlan,
-  GeneratedAppStaticContracts,
-  GeneratedAppSubmission,
-  WorkflowDefinition,
-} from '../../../database/schema';
+import type { GeneratedApp } from '../../../database/schema';
+import type { WorkflowVersionService } from '../../workflow-definition/workflow-version.service';
 import {
-  GeneratedAppArtifactNotFoundException,
-  GeneratedAppArtifactTooLargeException,
-  GeneratedAppGenerationRunNotFoundException,
+  GeneratedAppBindingTargetNotFoundException,
   GeneratedAppNotFoundException,
-  GeneratedAppPublicShareNotReadyException,
-  GeneratedAppRepairAttemptNotFoundException,
-  GeneratedAppSubmissionNotFoundException,
 } from '../generated-app.exceptions';
-import * as generationPlanBuilder from '../plan-builders/generation-plan.builder';
-import * as integrationPlanBuilder from '../plan-builders/integration-plan.builder';
-import * as browserAcceptancePlanBuilder from '../plan-builders/browser-acceptance-plan.builder';
-import * as independentVerificationPlanBuilder from '../plan-builders/independent-verification-plan.builder';
-import * as publishCandidatePlanBuilder from '../plan-builders/publish-candidate-plan.builder';
-import {
-  buildBuildUnitPlan,
-  buildGenerationPlan,
-  buildStaticContracts,
-} from '../plan-builders/generation-plan.builder';
-import { buildIntegrationPlan } from '../plan-builders/integration-plan.builder';
-import { buildBrowserAcceptancePlan } from '../plan-builders/browser-acceptance-plan.builder';
-import { buildIndependentVerificationPlan } from '../plan-builders/independent-verification-plan.builder';
-import { buildPublishCandidatePlan } from '../plan-builders/publish-candidate-plan.builder';
-import { GeneratedAppGate7PublishCandidateRunner } from '../generated-app.publish-candidate-runner';
-import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
-import { GeneratedAppService } from '../generated-app.service';
 import { GeneratedAppRepository } from '../generated-app.repository';
-import { GeneratedAppArtifactService } from '../generated-app-artifact.service';
-import { GeneratedAppRuntimeBindingService } from '../generated-app-runtime-binding.service';
-import { GeneratedAppGenerationRepairService } from '../generated-app-generation-repair.service';
-import { GeneratedAppGenerationOrchestratorService } from '../generated-app-generation-orchestrator.service';
-import { GeneratedAppPublicRuntimeService } from '../generated-app-public-runtime.service';
-import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
-import type { ExecutionService } from '../../execution/execution.service';
-import type { StorageService } from '../../../infrastructure/storage/storage.service';
-import type { PluginService } from '../../plugin/plugin.service';
-import { PluginSandboxService } from '../../plugin/plugin-sandbox.service';
+import { buildAgentWrapperWorkflowGraph } from '../generated-app.runtime-binding.util';
 import {
-  GeneratedAppGate4IntegrationRunner,
-  type GeneratedAppGate4RunnerResult,
-} from '../generated-app.integration-runner';
-import type { GeneratedAppResponseDto } from '../dto';
-import { GeneratedAppPublicController } from '../generated-app.controller';
+  GENERATED_APP_AGENT_WRAPPER_BINDING_KIND,
+  GeneratedAppRuntimeBindingService,
+} from '../generated-app-runtime-binding.service';
 import {
-  GeneratedAppGate3WorkspaceRunner,
-  type GeneratedAppGate3RepairResult,
-  type GeneratedAppGate3RunnerResult,
-} from '../generated-app.workspace';
-
-import {
+  APP_ID,
+  GENERATION_RUN_ID,
   TENANT_ID,
   USER_ID,
-  APP_ID,
+  V2_AGENT_DEFINITION_ID,
   WORKFLOW_DEFINITION_ID,
   WORKFLOW_VERSION_ID,
-  NOW,
+  createAgentAppSpecV2Fixture,
+  createAppSpecV2Fixture,
   createConfigService,
-  createSelectChain,
-  createGeneratedPrivatePluginServiceMock,
-  createStorageServiceMock,
-  createRuntimeBindingServiceForTest,
   createGeneratedApp,
-  createWorkflowDefinitionReadinessRow,
-  createGeneratedAppWithGate3Workspace,
-  mockTenantDb,
+  createGeneratedAppV2,
 } from './generated-app-test-support';
 
-describe('runtime migrated scenarios', () => {
-  let service: GeneratedAppService;
+vi.mock(
+  '../../../common/interceptors/tenant-transaction.context',
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    runInTenantTransaction: (
+      db: unknown,
+      _tenantId: string,
+      operation: (db: unknown) => unknown,
+    ) => operation(db),
+  }),
+);
+
+const WRAPPER_ID = '88888888-8888-4888-8888-888888888881';
+const WRAPPER_VERSION_ID = '88888888-8888-4888-8888-888888888882';
+const NEWER_VERSION_ID = '88888888-8888-4888-8888-888888888883';
+const RUNTIME_SOURCE = 'generated-app-runtime-workflow';
+const dialect = new PgDialect();
+
+function limitChain<T>(rows: T[]) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(rows),
+  };
+}
+
+function updateChain<T>(rows: T[] = []) {
+  const chain = {
+    set: vi.fn().mockReturnThis(),
+    where: vi.fn(),
+    returning: vi.fn().mockResolvedValue(rows),
+  };
+  chain.where.mockReturnValue(chain);
+  return chain;
+}
+
+function createFakeDb() {
+  return {
+    select: vi.fn(),
+    insert: vi.fn(),
+    update: vi.fn(),
+    // 包装工作流写入用 savepoint；单测直接复用同一个 db
+    transaction: <T>(operation: (tx: unknown) => Promise<T>) =>
+      operation(fakeDb),
+  };
+}
+let fakeDb: ReturnType<typeof createFakeDb>;
+
+function wrapperWorkflowRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: WRAPPER_ID,
+    status: 'published',
+    publishedVersionId: WRAPPER_VERSION_ID,
+    inputSchema: null,
+    metadata: {
+      source: RUNTIME_SOURCE,
+      generatedAppId: APP_ID,
+      bindingKind: GENERATED_APP_AGENT_WRAPPER_BINDING_KIND,
+    },
+    ...overrides,
+  };
+}
+
+describe('GeneratedAppRuntimeBindingService', () => {
   let repository: GeneratedAppRepository;
-  let artifactService: GeneratedAppArtifactService;
-  let runtimeBindingService: GeneratedAppRuntimeBindingService;
-  let repairService: GeneratedAppGenerationRepairService;
-  let orchestrator: GeneratedAppGenerationOrchestratorService;
-  let publicRuntimeService: GeneratedAppPublicRuntimeService;
+  let publish: Mock;
+  let service: GeneratedAppRuntimeBindingService;
 
   beforeEach(() => {
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
-    const configService = createConfigService();
-    const pluginService = createGeneratedPrivatePluginServiceMock();
-    const storageService = createStorageServiceMock();
+    fakeDb = createFakeDb();
     repository = new GeneratedAppRepository(
-      mockTenantDb as unknown as DrizzleDB,
-      configService,
+      fakeDb as unknown as DrizzleDB,
+      createConfigService(),
     );
-    artifactService = new GeneratedAppArtifactService(
-      repository,
-      configService,
-      storageService,
+    vi.spyOn(repository, 'tenantDb', 'get').mockReturnValue(
+      fakeDb as unknown as DrizzleDB,
     );
-    runtimeBindingService = new GeneratedAppRuntimeBindingService(
-      repository,
-      artifactService,
-      pluginService,
-    );
-    repairService = new GeneratedAppGenerationRepairService(repository);
-    orchestrator = new GeneratedAppGenerationOrchestratorService(
-      repository,
-      repairService,
-      runtimeBindingService,
-      configService,
-    );
-    publicRuntimeService = new GeneratedAppPublicRuntimeService(
-      repository,
-      artifactService,
-      runtimeBindingService,
-    );
-    service = new GeneratedAppService(
-      mockTenantDb as unknown as DrizzleDB,
-      configService,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      pluginService,
-      undefined,
-      storageService,
-      repository,
-      artifactService,
-      runtimeBindingService,
-      repairService,
-      orchestrator,
-      publicRuntimeService,
-    );
+    publish = vi.fn().mockResolvedValue({ data: { id: NEWER_VERSION_ID } });
+    service = new GeneratedAppRuntimeBindingService(repository, {
+      publish,
+    } as unknown as WorkflowVersionService);
   });
 
-  it('runtime binding readiness 无 Workflow 绑定时应返回 deterministic_only', async () => {
-    const app = createGeneratedApp({ workflowDefinitionId: null });
-    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+  function mockApp(app: GeneratedApp) {
+    vi.spyOn(repository, 'findGeneratedAppRecord').mockResolvedValue(app);
+  }
 
-    const response = await service.getRuntimeBindingReadiness(
-      TENANT_ID,
-      APP_ID,
-    );
+  describe('运行时绑定就绪度', () => {
+    it('还没有 v2 AppSpec 时 runtime_not_bound，不查询工作流', async () => {
+      mockApp(createGeneratedApp());
 
-    expect(response).toEqual(
-      expect.objectContaining({
-        state: 'deterministic_only',
-        workflowDefinitionId: null,
-        workflowStatus: null,
-        publishedVersionId: null,
-        canStartWorkflowExecution: false,
-        summary: expect.stringContaining('没有绑定 Workflow'),
-        notice: expect.stringContaining('deterministic report'),
-        updatedAt: NOW,
-      }),
-    );
-    expect(mockTenantDb.select).toHaveBeenCalledTimes(1);
-  });
-
-  it('runtime binding readiness 绑定 Workflow 不存在时应返回 workflow_not_found', async () => {
-    const app = createGeneratedApp({
-      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
-    });
-    mockTenantDb.select
-      .mockReturnValueOnce(createSelectChain([app]))
-      .mockReturnValueOnce(createSelectChain([]));
-
-    const response = await service.getRuntimeBindingReadiness(
-      TENANT_ID,
-      APP_ID,
-    );
-
-    expect(response).toEqual(
-      expect.objectContaining({
-        state: 'workflow_not_found',
-        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
-        workflowStatus: null,
-        publishedVersionId: null,
-        canStartWorkflowExecution: false,
-        summary: expect.stringContaining('不存在'),
-      }),
-    );
-  });
-
-  it('runtime binding readiness 对 editor handoff draft 即使已发布也不应标记可执行', async () => {
-    const app = createGeneratedApp({
-      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
-    });
-    mockTenantDb.select
-      .mockReturnValueOnce(createSelectChain([app]))
-      .mockReturnValueOnce(
-        createSelectChain([
-          createWorkflowDefinitionReadinessRow({
-            status: 'published',
-            publishedVersionId: WORKFLOW_VERSION_ID,
-            metadata: {
-              source: 'generated-app-editor-handoff',
-              generatedAppId: APP_ID,
-              bindingKind: 'editor-handoff-draft',
-              publicRuntimeBoundary:
-                'Generated App public runtime never exposes this internal resource id',
-            },
-          }),
-        ]),
+      const readiness = await service.getRuntimeBindingReadiness(
+        TENANT_ID,
+        APP_ID,
       );
 
-    const response = await service.getRuntimeBindingReadiness(
-      TENANT_ID,
-      APP_ID,
-    );
-
-    expect(response).toEqual(
-      expect.objectContaining({
-        state: 'editor_handoff_draft',
-        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
-        workflowStatus: 'published',
-        publishedVersionId: WORKFLOW_VERSION_ID,
+      expect(readiness).toMatchObject({
+        state: 'runtime_not_bound',
         canStartWorkflowExecution: false,
-        summary: expect.stringContaining('专业编辑器草稿'),
-        notice: expect.stringContaining('不会被公开提交自动执行'),
-      }),
-    );
-    expect(JSON.stringify(response)).not.toContain('generatedAppId');
-    expect(JSON.stringify(response)).not.toContain('publicRuntimeBoundary');
-  });
-
-  it('runtime binding readiness 对未发布 Workflow 应返回 workflow_not_published', async () => {
-    const app = createGeneratedApp({
-      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        pinnedVersionId: null,
+      });
+      expect(fakeDb.select).not.toHaveBeenCalled();
     });
-    mockTenantDb.select
-      .mockReturnValueOnce(createSelectChain([app]))
-      .mockReturnValueOnce(
-        createSelectChain([
-          createWorkflowDefinitionReadinessRow({
-            status: 'draft',
-            publishedVersionId: null,
-          }),
-        ]),
+
+    it('固定版本仍是当前发布版本时 workflow_published，按租户与固定版本查询', async () => {
+      mockApp(createGeneratedAppV2());
+      const workflowSelect = limitChain([
+        {
+          id: WORKFLOW_DEFINITION_ID,
+          status: 'published',
+          publishedVersionId: WORKFLOW_VERSION_ID,
+          metadata: {},
+        },
+      ]);
+      const versionSelect = limitChain([
+        {
+          id: WORKFLOW_VERSION_ID,
+          snapshot: {
+            nodes: [],
+            edges: [],
+            inputSchema: { version: 2, collectionMode: 'form', fields: [] },
+          },
+        },
+      ]);
+      fakeDb.select
+        .mockReturnValueOnce(workflowSelect)
+        .mockReturnValueOnce(versionSelect);
+
+      const readiness = await service.getRuntimeBindingReadiness(
+        TENANT_ID,
+        APP_ID,
       );
 
-    const response = await service.getRuntimeBindingReadiness(
-      TENANT_ID,
-      APP_ID,
-    );
-
-    expect(response).toEqual(
-      expect.objectContaining({
-        state: 'workflow_not_published',
-        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
-        workflowStatus: 'draft',
-        publishedVersionId: null,
-        canStartWorkflowExecution: false,
-        summary: expect.stringContaining('尚未发布'),
-      }),
-    );
-  });
-
-  it('runtime binding readiness 对已发布非草稿 Workflow 应返回 workflow_published', async () => {
-    const app = createGeneratedApp({
-      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
-    });
-    mockTenantDb.select
-      .mockReturnValueOnce(createSelectChain([app]))
-      .mockReturnValueOnce(
-        createSelectChain([
-          createWorkflowDefinitionReadinessRow({
-            status: 'published',
-            publishedVersionId: WORKFLOW_VERSION_ID,
-            metadata: { source: 'manual-runtime-workflow' },
-          }),
-        ]),
-      );
-
-    const response = await service.getRuntimeBindingReadiness(
-      TENANT_ID,
-      APP_ID,
-    );
-
-    expect(response).toEqual(
-      expect.objectContaining({
+      expect(readiness).toMatchObject({
         state: 'workflow_published',
         workflowDefinitionId: WORKFLOW_DEFINITION_ID,
-        workflowStatus: 'published',
-        publishedVersionId: WORKFLOW_VERSION_ID,
+        pinnedVersionId: WORKFLOW_VERSION_ID,
         canStartWorkflowExecution: true,
-        summary: expect.stringContaining('已发布'),
-        notice: expect.stringContaining('创建异步 Workflow execution'),
-      }),
-    );
-    expect(JSON.stringify(response)).not.toContain('manual-runtime-workflow');
-  });
-
-  it('无插件工具时绑定编排应保持应用不变且不访问插件服务', async () => {
-    const pluginService = createGeneratedPrivatePluginServiceMock();
-    const pluginServiceInstance = new GeneratedAppService(
-      mockTenantDb as unknown as DrizzleDB,
-      createConfigService(),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      pluginService,
-    );
-    const generationPlan = buildGenerationPlan(createGeneratedApp().appSpec);
-    const appWithoutPlan = createGeneratedApp({ generationPlan: null });
-    const appWithEmptyTools = createGeneratedApp({
-      generationPlan: {
-        ...generationPlan,
-        pluginTools: {
-          ...generationPlan.pluginTools,
-          tools: [],
-        },
-      },
-    });
-    const pluginBindingInternals = createRuntimeBindingServiceForTest(
-      pluginService,
-    ) as unknown as {
-      ensureGeneratedPrivatePluginBindings(
-        tenantId: string,
-        userId: string,
-        app: GeneratedApp,
-      ): Promise<GeneratedApp>;
-    };
-
-    const withoutPlan =
-      await pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
-        TENANT_ID,
-        USER_ID,
-        appWithoutPlan,
+      });
+      const versionQuery = dialect.sqlToQuery(
+        versionSelect.where.mock.calls[0]?.[0] as SQL,
       );
-    const withEmptyTools =
-      await pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
+      expect(versionQuery.params).toEqual([
+        WORKFLOW_DEFINITION_ID,
         TENANT_ID,
-        USER_ID,
-        appWithEmptyTools,
+        WORKFLOW_VERSION_ID,
+      ]);
+    });
+
+    it('源工作流重新发布后 workflow_version_drift：仍可执行固定版本', async () => {
+      mockApp(createGeneratedAppV2());
+      fakeDb.select
+        .mockReturnValueOnce(
+          limitChain([
+            {
+              id: WORKFLOW_DEFINITION_ID,
+              status: 'published',
+              publishedVersionId: NEWER_VERSION_ID,
+              metadata: {},
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          limitChain([
+            {
+              id: WORKFLOW_VERSION_ID,
+              snapshot: { nodes: [], edges: [], inputSchema: null },
+            },
+          ]),
+        );
+
+      const readiness = await service.getRuntimeBindingReadiness(
+        TENANT_ID,
+        APP_ID,
       );
 
-    expect(withoutPlan).toBe(appWithoutPlan);
-    expect(withEmptyTools).toBe(appWithEmptyTools);
-    expect(pluginService.findByPluginId).not.toHaveBeenCalled();
-    expect(mockTenantDb.update).not.toHaveBeenCalled();
-  });
-
-  it('存在插件工具但模块缺少 PluginService 时应在任何持久化前失败', async () => {
-    const serviceWithoutPlugin = new GeneratedAppService(
-      mockTenantDb as unknown as DrizzleDB,
-      createConfigService(),
-    );
-    const app = createGeneratedApp({
-      generationPlan: buildGenerationPlan(createGeneratedApp().appSpec),
-    });
-    const pluginBindingInternals =
-      createRuntimeBindingServiceForTest() as unknown as {
-        ensureGeneratedPrivatePluginBindings(
-          tenantId: string,
-          userId: string,
-          app: GeneratedApp,
-        ): Promise<GeneratedApp>;
-      };
-
-    await expect(
-      pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
-        TENANT_ID,
-        USER_ID,
-        app,
-      ),
-    ).rejects.toThrow('需要 PluginService');
-    expect(mockTenantDb.insert).not.toHaveBeenCalled();
-    expect(mockTenantDb.update).not.toHaveBeenCalled();
-  });
-
-  it('插件绑定应在 Gate 3 workspace 或规范化 toolId 缺失时拒绝进入文件与数据库阶段', async () => {
-    const pluginService = createGeneratedPrivatePluginServiceMock();
-    const pluginServiceInstance = new GeneratedAppService(
-      mockTenantDb as unknown as DrizzleDB,
-      createConfigService(),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      pluginService,
-    );
-    const pluginBindingInternals = createRuntimeBindingServiceForTest(
-      pluginService,
-    ) as unknown as {
-      ensureGeneratedPrivatePluginBindings(
-        tenantId: string,
-        userId: string,
-        app: GeneratedApp,
-      ): Promise<GeneratedApp>;
-    };
-    const planWithoutWorkspace = buildGenerationPlan(
-      createGeneratedApp().appSpec,
-    );
-    const appWithoutWorkspace = createGeneratedApp({
-      generationPlan: planWithoutWorkspace,
+      expect(readiness).toMatchObject({
+        state: 'workflow_version_drift',
+        publishedVersionId: NEWER_VERSION_ID,
+        pinnedVersionId: WORKFLOW_VERSION_ID,
+        canStartWorkflowExecution: true,
+      });
     });
 
-    await expect(
-      pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
-        TENANT_ID,
-        USER_ID,
-        appWithoutWorkspace,
-      ),
-    ).rejects.toThrow('缺少 Gate 3 workspace');
-
-    const appWithWorkspace = createGeneratedAppWithGate3Workspace();
-    const firstTool = appWithWorkspace.generationPlan.pluginTools.tools[0];
-    const appWithoutToolId = createGeneratedApp({
-      generationPlan: {
-        ...appWithWorkspace.generationPlan,
-        pluginTools: {
-          ...appWithWorkspace.generationPlan.pluginTools,
-          tools: firstTool ? [{ ...firstTool, toolId: ' ' }] : [],
+    it('工作流不存在、已归档、未发布或固定版本被删时不可执行', async () => {
+      const app = createGeneratedAppV2();
+      const spec = createAppSpecV2Fixture();
+      const cases: Array<{ rows: unknown[][]; state: string }> = [
+        { rows: [[]], state: 'workflow_not_found' },
+        {
+          rows: [[{ id: WORKFLOW_DEFINITION_ID, status: 'archived', publishedVersionId: null, metadata: {} }]],
+          state: 'workflow_not_found',
         },
-      },
+        {
+          rows: [[{ id: WORKFLOW_DEFINITION_ID, status: 'draft', publishedVersionId: null, metadata: {} }]],
+          state: 'workflow_not_published',
+        },
+        {
+          rows: [
+            [{ id: WORKFLOW_DEFINITION_ID, status: 'published', publishedVersionId: NEWER_VERSION_ID, metadata: {} }],
+            [],
+          ],
+          state: 'workflow_not_found',
+        },
+      ];
+
+      for (const { rows, state } of cases) {
+        for (const result of rows) {
+          fakeDb.select.mockReturnValueOnce(limitChain(result));
+        }
+        await expect(
+          service.resolveRuntimeTarget(fakeDb as unknown as DrizzleDB, app, spec),
+        ).resolves.toMatchObject({ available: false, state });
+      }
     });
 
-    await expect(
-      pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
-        TENANT_ID,
-        USER_ID,
-        appWithoutToolId,
-      ),
-    ).rejects.toThrow('toolId 缺失');
-    expect(pluginService.findByPluginId).not.toHaveBeenCalled();
-    expect(mockTenantDb.update).not.toHaveBeenCalled();
-  });
+    it('Agent 绑定取与当前 AppSpec 指纹一致的包装工作流版本，而不是最新发布版本', async () => {
+      const spec = createAgentAppSpecV2Fixture();
+      const app = createGeneratedAppV2({
+        appSpec: spec,
+        workflowDefinitionId: WRAPPER_ID,
+      });
+      const graph = buildAgentWrapperWorkflowGraph(spec, { appId: APP_ID });
+      fakeDb.select
+        .mockReturnValueOnce(
+          limitChain([wrapperWorkflowRow({ publishedVersionId: NEWER_VERSION_ID })]),
+        )
+        .mockReturnValueOnce(
+          limitChain([
+            // 创建者手动改过并重新发布的版本：指纹对不上
+            { id: NEWER_VERSION_ID, snapshot: { nodes: [], edges: [], inputSchema: null } },
+            {
+              id: WRAPPER_VERSION_ID,
+              snapshot: { nodes: graph.nodes, edges: graph.edges, inputSchema: graph.inputSchema },
+            },
+          ]),
+        );
 
-  it('插件注册刷新决策应识别 artifact 与每个租户私有 metadata 漂移', () => {
-    const wasmBundleUrl = `generated-apps/${APP_ID}/plugins/tool.wasm`;
-    const pluginBundle = {
-      storageKey: `generated-apps/${APP_ID}/plugins/tool.alp`,
-      signature: 'signature-v1',
-      contentHash: 'content-hash-v1',
-      wasmEntry: 'dist/plugin.wasm',
-    };
-    const metadata = {
-      source: 'generated-app-private-plugin',
-      activationScope: 'tenant-private',
-      generatedAppId: APP_ID,
-      appSpecVersion: 1,
-      toolId: 'tool',
-      wasmEntry: pluginBundle.wasmEntry,
-      wasmBundleUrl,
-    };
-    const pluginRecord = {
-      storageKey: pluginBundle.storageKey,
-      signature: pluginBundle.signature,
-      contentHash: pluginBundle.contentHash,
-      wasmBundleUrl,
-      metadata,
-    };
-    const pluginInternals = createRuntimeBindingServiceForTest() as unknown as {
-      mustRefreshGeneratedPrivatePluginRegistration(
-        app: GeneratedApp,
-        toolId: string,
-        pluginRecord: {
-          storageKey: string | null;
-          signature: string | null;
-          contentHash: string | null;
-          wasmBundleUrl: string | null;
-          metadata: Record<string, unknown> | null;
-        },
-        pluginBundle: {
-          storageKey: string;
-          signature: string;
-          contentHash: string;
-          wasmEntry: string | null;
-        },
-        wasmBundleUrl: string | undefined,
-      ): boolean;
-    };
+      await expect(
+        service.resolveRuntimeTarget(fakeDb as unknown as DrizzleDB, app, spec),
+      ).resolves.toEqual({
+        available: true,
+        workflowDefinitionId: WRAPPER_ID,
+        workflowVersionId: WRAPPER_VERSION_ID,
+        inputSchemaVersion: 1,
+        workflowStatus: 'published',
+        publishedVersionId: NEWER_VERSION_ID,
+        drifted: true,
+      });
+    });
 
-    expect(
-      pluginInternals.mustRefreshGeneratedPrivatePluginRegistration(
-        createGeneratedApp(),
-        'tool',
-        pluginRecord,
-        pluginBundle,
-        wasmBundleUrl,
-      ),
-    ).toBe(false);
+    it('Agent 绑定尚未创建包装工作流，或绑定的是别的工作流时 runtime_not_bound', async () => {
+      const spec = createAgentAppSpecV2Fixture();
 
-    const driftedRecords = [
-      { ...pluginRecord, storageKey: 'stale.alp' },
-      { ...pluginRecord, signature: 'stale-signature' },
-      { ...pluginRecord, contentHash: 'stale-hash' },
-      { ...pluginRecord, wasmBundleUrl: null },
-      { ...pluginRecord, metadata: { ...metadata, source: 'manual' } },
-      {
-        ...pluginRecord,
-        metadata: { ...metadata, activationScope: 'organization' },
-      },
-      {
-        ...pluginRecord,
-        metadata: { ...metadata, generatedAppId: 'other-app' },
-      },
-      { ...pluginRecord, metadata: { ...metadata, appSpecVersion: 2 } },
-      { ...pluginRecord, metadata: { ...metadata, toolId: 'other-tool' } },
-      { ...pluginRecord, metadata: { ...metadata, wasmEntry: null } },
-      { ...pluginRecord, metadata: { ...metadata, wasmBundleUrl: null } },
-      { ...pluginRecord, metadata: null },
-    ];
-
-    for (const driftedRecord of driftedRecords) {
-      expect(
-        pluginInternals.mustRefreshGeneratedPrivatePluginRegistration(
-          createGeneratedApp(),
-          'tool',
-          driftedRecord,
-          pluginBundle,
-          wasmBundleUrl,
+      await expect(
+        service.resolveRuntimeTarget(
+          fakeDb as unknown as DrizzleDB,
+          createGeneratedAppV2({ appSpec: spec, workflowDefinitionId: null }),
+          spec,
         ),
-      ).toBe(true);
-    }
+      ).resolves.toMatchObject({ available: false, state: 'runtime_not_bound' });
+
+      fakeDb.select.mockReturnValueOnce(
+        limitChain([wrapperWorkflowRow({ metadata: { source: 'user' } })]),
+      );
+      await expect(
+        service.resolveRuntimeTarget(
+          fakeDb as unknown as DrizzleDB,
+          createGeneratedAppV2({ appSpec: spec, workflowDefinitionId: WRAPPER_ID }),
+          spec,
+        ),
+      ).resolves.toMatchObject({ available: false, state: 'runtime_not_bound' });
+    });
+  });
+
+  describe('ensureRuntimeWorkflow', () => {
+    it('工作流绑定直接使用被绑定工作流与固定版本，不创建、不发布任何工作流', async () => {
+      fakeDb.select.mockReturnValueOnce(limitChain([{ id: WORKFLOW_VERSION_ID }]));
+      const appUpdate = updateChain([{ id: APP_ID }]);
+      fakeDb.update.mockReturnValueOnce(appUpdate);
+
+      await expect(
+        service.ensureRuntimeWorkflow({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          appId: APP_ID,
+          appSpec: createAppSpecV2Fixture(),
+          generationRunId: GENERATION_RUN_ID,
+        }),
+      ).resolves.toEqual({
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        workflowVersionId: WORKFLOW_VERSION_ID,
+      });
+      expect(fakeDb.insert).not.toHaveBeenCalled();
+      expect(publish).not.toHaveBeenCalled();
+      expect(appUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+          agentDefinitionId: null,
+        }),
+      );
+    });
+
+    it('固定版本已不存在时报绑定目标不存在，不改应用', async () => {
+      fakeDb.select.mockReturnValueOnce(limitChain([]));
+
+      await expect(
+        service.ensureRuntimeWorkflow({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          appId: APP_ID,
+          appSpec: createAppSpecV2Fixture(),
+          generationRunId: GENERATION_RUN_ID,
+        }),
+      ).rejects.toBeInstanceOf(GeneratedAppBindingTargetNotFoundException);
+      expect(fakeDb.update).not.toHaveBeenCalled();
+    });
+
+    it('Agent 绑定首次创建包装工作流并经发布链发布，应用记录包装工作流与 Agent', async () => {
+      const spec = createAgentAppSpecV2Fixture();
+      fakeDb.select.mockReturnValueOnce(limitChain([]));
+      const insert = {
+        values: vi.fn().mockReturnThis(),
+        returning: vi.fn().mockResolvedValue([{ id: WRAPPER_ID }]),
+      };
+      fakeDb.insert.mockReturnValueOnce(insert);
+      const appUpdate = updateChain([{ id: APP_ID }]);
+      fakeDb.update.mockReturnValueOnce(appUpdate);
+
+      await expect(
+        service.ensureRuntimeWorkflow({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          appId: APP_ID,
+          appSpec: spec,
+          generationRunId: GENERATION_RUN_ID,
+        }),
+      ).resolves.toEqual({
+        workflowDefinitionId: WRAPPER_ID,
+        workflowVersionId: NEWER_VERSION_ID,
+      });
+      const graph = buildAgentWrapperWorkflowGraph(spec, { appId: APP_ID });
+      expect(insert.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          status: 'draft',
+          nodes: graph.nodes,
+          edges: graph.edges,
+          inputSchema: graph.inputSchema,
+          metadata: expect.objectContaining({
+            source: RUNTIME_SOURCE,
+            generatedAppId: APP_ID,
+            bindingKind: GENERATED_APP_AGENT_WRAPPER_BINDING_KIND,
+          }),
+        }),
+      );
+      expect(publish).toHaveBeenCalledWith(
+        WRAPPER_ID,
+        expect.objectContaining({ label: expect.any(String) }),
+        USER_ID,
+      );
+      expect(appUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workflowDefinitionId: WRAPPER_ID,
+          agentDefinitionId: V2_AGENT_DEFINITION_ID,
+        }),
+      );
+    });
+
+    it('同一 AppSpec 再次调用时复用已发布的一致版本，不改画布、不重复发布', async () => {
+      const spec = createAgentAppSpecV2Fixture();
+      const graph = buildAgentWrapperWorkflowGraph(spec, { appId: APP_ID });
+      fakeDb.select
+        .mockReturnValueOnce(limitChain([wrapperWorkflowRow()]))
+        .mockReturnValueOnce(limitChain([{ snapshot: { nodes: graph.nodes } }]));
+      fakeDb.update.mockReturnValueOnce(updateChain([{ id: APP_ID }]));
+
+      await expect(
+        service.ensureRuntimeWorkflow({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          appId: APP_ID,
+          appSpec: spec,
+          generationRunId: GENERATION_RUN_ID,
+        }),
+      ).resolves.toEqual({
+        workflowDefinitionId: WRAPPER_ID,
+        workflowVersionId: WRAPPER_VERSION_ID,
+      });
+      expect(publish).not.toHaveBeenCalled();
+      expect(fakeDb.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('AppSpec 变化后更新画布、输入契约版本加 1 并发布新版本', async () => {
+      const spec = createAgentAppSpecV2Fixture();
+      fakeDb.select
+        .mockReturnValueOnce(
+          limitChain([
+            wrapperWorkflowRow({
+              inputSchema: {
+                version: 3,
+                collectionMode: 'form',
+                fields: [{ id: 'topic', type: 'text', label: '主题', required: true }],
+              },
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(limitChain([{ snapshot: { nodes: [] } }]));
+      const definitionUpdate = updateChain();
+      fakeDb.update
+        .mockReturnValueOnce(definitionUpdate)
+        .mockReturnValueOnce(updateChain([{ id: APP_ID }]));
+
+      await expect(
+        service.ensureRuntimeWorkflow({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          appId: APP_ID,
+          appSpec: spec,
+          generationRunId: GENERATION_RUN_ID,
+        }),
+      ).resolves.toEqual({
+        workflowDefinitionId: WRAPPER_ID,
+        workflowVersionId: NEWER_VERSION_ID,
+      });
+      expect(definitionUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inputSchema: expect.objectContaining({
+            version: 4,
+            fields: [expect.objectContaining({ id: 'question' })],
+          }),
+        }),
+      );
+      expect(publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('应用已删除时整体失败', async () => {
+      fakeDb.select.mockReturnValueOnce(limitChain([{ id: WORKFLOW_VERSION_ID }]));
+      fakeDb.update.mockReturnValueOnce(updateChain([]));
+
+      await expect(
+        service.ensureRuntimeWorkflow({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          appId: APP_ID,
+          appSpec: createAppSpecV2Fixture(),
+          generationRunId: GENERATION_RUN_ID,
+        }),
+      ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+    });
   });
 });

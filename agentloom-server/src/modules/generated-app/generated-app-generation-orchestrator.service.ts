@@ -123,12 +123,7 @@ import {
   GeneratedAppGate7PublishCandidateRunner,
   type GeneratedAppPublishCandidateExecutionLevel,
 } from './generated-app.publish-candidate-runner';
-import {
-  buildGeneratedAppRuntimeForm,
-  buildPublicGeneratedAppRuntimeDescription,
-  buildPublicGeneratedAppRuntimeSpec,
-  evaluateGeneratedAppLocalRuntime,
-} from './generated-app.runtime';
+
 import {
   buildGenerationPlan,
   buildStaticContracts,
@@ -168,23 +163,8 @@ import {
   getNonEmptyString,
   isNonEmptyString,
 } from './generated-app.plan-validation.util';
-import {
-  sanitizePublicSubmissionValue,
-  sanitizePublicWorkflowOutputValue,
-  limitPublicWorkflowOutputText,
-  buildPublicWorkflowOutputReportItems,
-  getWorkflowExecutionPublicStatusLabel,
-  limitRepairAttemptText,
-  GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_LIMIT,
-  PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN,
-  PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN,
-} from './generated-app.public-sanitizer.util';
-import {
-  buildGeneratedWorkflowRuntimeNodes,
-  buildGeneratedWorkflowRuntimeEdges,
-  buildGeneratedPrivatePluginRegistrationManifest,
-  buildGeneratedWorkflowRuntimeInputSchema,
-} from './generated-app.runtime-binding.util';
+import { sanitizePublicSubmissionValue, limitRepairAttemptText, PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN, PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN } from './generated-app.public-sanitizer.util';
+
 import type { GeneratedAppPrivatePluginBuildReport } from './generated-app.runtime-binding.util';
 import {
   getPublicRuntimePages,
@@ -1035,23 +1015,11 @@ export class GeneratedAppGenerationOrchestratorService {
                       latestApp = gate7RunResult.app;
                       completedAt = gate7CompletedAt;
                       if (gate7Evaluation.status === 'passed') {
-                        latestApp =
-                          await this.runtimeBindingService.ensureGeneratedPrivatePluginBindings(
-                            tenantId,
-                            userId,
-                            { ...latestApp, appSpec: appSpecV1 },
-                          );
-                        latestApp =
-                          await this.runtimeBindingService.ensureGeneratedWorkflowRuntimeBinding(
-                            tenantId,
-                            userId,
-                            { ...latestApp, appSpec: appSpecV1 },
-                            run.id,
-                          );
+                        // v1 规格没有运行时绑定：公开运行只服务 v2 AppSpec（ADR-0007）
                         completedStatus = 'passed';
                         finalFailureReason = null;
                         completedSummary =
-                          '门禁运行器完成 Gate 0-7；Gate 7 real-local publish candidate contract runner 已签收 release manifest contract、artifact checksum placeholders、Gate 0-6 evidence citations 和 deferred public-share controls，并创建或复用已发布 Generated App runtime Workflow，注册/激活通过硬门槛的租户私有生成插件；当前应用进入 publish_candidate，但不会自动创建 public share token。';
+                          '门禁运行器完成 Gate 0-7；当前应用进入 publish_candidate，但不会自动创建 public share token。';
                       } else {
                         finalFailureReason =
                           gate7Evaluation.failure?.message ??

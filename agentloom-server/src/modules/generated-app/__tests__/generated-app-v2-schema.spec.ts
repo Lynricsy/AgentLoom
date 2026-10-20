@@ -109,7 +109,7 @@ describe('生成应用 v2 创建入参', () => {
   });
 });
 
-describe('GeneratedAppRepository 创建引用校验与 v1 公开路由', () => {
+describe('GeneratedAppRepository 创建引用校验与公开令牌查找', () => {
   let repository: GeneratedAppRepository;
 
   beforeEach(() => {
@@ -243,7 +243,7 @@ describe('GeneratedAppRepository 创建引用校验与 v1 公开路由', () => {
     expect(mockTenantDb.insert).not.toHaveBeenCalled();
   });
 
-  it('v1 公开运行时只返回持有 v1 规格的已发布应用，v2 或尚未生成规格按不存在处理', async () => {
+  it('公开令牌命中已发布应用时直接返回，不再按验收令牌查询；AppSpec 版本由公开运行时判断', async () => {
     const publishedApp = createGeneratedApp({
       status: 'published',
       publicShareEnabled: true,
@@ -251,19 +251,19 @@ describe('GeneratedAppRepository 创建引用校验与 v1 公开路由', () => {
       readiness: createPublishCandidateReadiness(),
     });
 
-    mockTenantDb.select.mockReturnValueOnce(createSelectChain([publishedApp]));
-    await expect(
-      repository.findPublicGeneratedAppRecord('a'.repeat(64)),
-    ).resolves.toMatchObject({ id: publishedApp.id, appSpec: { version: 1 } });
-
     for (const appSpec of [APP_SPEC_V2, null]) {
       mockTenantDb.select.mockReturnValueOnce(
         createSelectChain([{ ...publishedApp, appSpec }]),
       );
       await expect(
-        repository.findPublicGeneratedAppRecord('a'.repeat(64)),
-      ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+        repository.findByPublicOrAcceptanceToken('a'.repeat(64)),
+      ).resolves.toMatchObject({
+        access: 'public',
+        appId: publishedApp.id,
+        app: { appSpec },
+      });
     }
+    expect(mockTenantDb.select).toHaveBeenCalledTimes(2);
   });
 });
 
