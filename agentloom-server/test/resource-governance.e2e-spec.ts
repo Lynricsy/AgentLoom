@@ -334,13 +334,14 @@ describe('Resource Governance E2E', () => {
       .withExposedPorts(6379)
       .start();
     // 本文件把 ioredis 整体替换成桩；节流计数要验证真实的 Lua 语义，单独用真实客户端连容器
-    const { default: RealRedis } =
+    const { Redis: RealRedis } =
       await vi.importActual<typeof IoRedisModule>('ioredis');
-    throttlerRedis = new RealRedis(
+    const realRedis = new RealRedis(
       throttlerRedisContainer.getMappedPort(6379),
       throttlerRedisContainer.getHost(),
     );
-    throttlerOptions = createThrottlerOptions(throttlerRedis);
+    throttlerRedis = realRedis;
+    throttlerOptions = createThrottlerOptions(realRedis);
 
     let moduleBuilder = Test.createTestingModule({
       imports: [AppModule],
