@@ -208,7 +208,7 @@ importers:
         version: 1.2.0(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(@nestjs/throttler@6.5.0(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(reflect-metadata@0.2.2))(ioredis@6.0.0)(reflect-metadata@0.2.2)
       '@nestjs/bullmq':
         specifier: ^11.0.4
-        version: 11.0.5(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(bullmq@6.3.2(ioredis@6.0.0))
+        version: 11.0.5(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(bullmq@6.3.19(ioredis@6.0.0))
       '@nestjs/common':
         specifier: ^11.0.1
         version: 11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -258,8 +258,8 @@ importers:
         specifier: ^7.0.84
         version: 7.0.84(zod@4.4.3)
       bullmq:
-        specifier: ^6.3.2
-        version: 6.3.2(ioredis@6.0.0)
+        specifier: ^6.3.19
+        version: 6.3.19(ioredis@6.0.0)
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.2(@opentelemetry/api@1.9.1)(postgres@3.4.9)
@@ -4721,8 +4721,8 @@ packages:
     resolution: {integrity: sha512-lHblz4ahamxpTmnsk+MNTRWsjYKv965MwOrSJyeD588rR3Jcu7swE+0wN5F+PbL5cjgu/9ObkhfzEPuofEMwLA==}
     engines: {node: '>=10.0.0'}
 
-  bullmq@6.3.2:
-    resolution: {integrity: sha512-jW4mEG1JOKewI2IhtuMery+kNhCs+EZp4qeNXeYRfueW7P4NFOStFGHOdsiJE9EO9Abz+JMrYlymb+r7fCbT7A==}
+  bullmq@6.3.19:
+    resolution: {integrity: sha512-nmTRaSHp5DGLHsTCjZlm4+QlULsXRPOqjj+C4cmjcXp8DdOOT9ATtFuuugwqUX362rClQ0J6R6g33jdJiM2gZg==}
     engines: {node: '>=14.17.0'}
     peerDependencies:
       bullmq-otel: '>=2.0.0'
@@ -5024,8 +5024,8 @@ packages:
     resolution: {integrity: sha512-IBWsY8xznyQrcHn8h4bC8/4ErNke5elzgG8GcqF4RFPw6aHkWWRc7Tgw6upjaTX/CT/yQgqYENkxYsTYN+hW2g==}
     engines: {node: '>=18'}
 
-  cron-parser@5.10.0:
-    resolution: {integrity: sha512-izNAxJyRWUP8ljBoDSub5WyrVOUlT4SLGShswE7eoRBpp6QUsSycYxLBMJlbshgPBMcPT/nrfgjNY2918ayv2A==}
+  cron-parser@5.10.2:
+    resolution: {integrity: sha512-JfAYMY0LZaWQTuict8PhtF/ksSnq8xefSDmQUnnoqvkPYkU/y3UP0DTWzJKFBz0P1IXsDG8q0vY3zHkoFZOhvw==}
     engines: {node: '>=18'}
 
   cronstrue@3.24.0:
@@ -10645,12 +10645,12 @@ snapshots:
       '@nestjs/core': 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/websockets@11.2.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@nestjs/bullmq@11.0.5(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(bullmq@6.3.2(ioredis@6.0.0))':
+  '@nestjs/bullmq@11.0.5(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(bullmq@6.3.19(ioredis@6.0.0))':
     dependencies:
       '@nestjs/bull-shared': 11.0.5(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)
       '@nestjs/common': 11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.2.3(@nestjs/common@11.2.3(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/websockets@11.2.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      bullmq: 6.3.2(ioredis@6.0.0)
+      bullmq: 6.3.19(ioredis@6.0.0)
       tslib: 2.8.1
 
   '@nestjs/cli@11.0.24(@swc/core@1.16.1)(@types/node@22.20.1)(esbuild@0.28.2)(prettier@3.9.6)':
@@ -12987,9 +12987,9 @@ snapshots:
   buildcheck@0.0.7:
     optional: true
 
-  bullmq@6.3.2(ioredis@6.0.0):
+  bullmq@6.3.19(ioredis@6.0.0):
     dependencies:
-      cron-parser: 5.10.0
+      cron-parser: 5.10.2
       msgpackr: 2.1.0
       node-abort-controller: 3.1.1
       semver: 7.8.5
@@ -13256,7 +13256,7 @@ snapshots:
       crc-32: 1.2.2
       readable-stream: 4.7.0
 
-  cron-parser@5.10.0:
+  cron-parser@5.10.2:
     dependencies:
       luxon: 3.7.2
 
