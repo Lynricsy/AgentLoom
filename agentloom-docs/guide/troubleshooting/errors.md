@@ -21,7 +21,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `internal-server-error` | 500 | 未处理的服务端异常 | 记录 `instance` 与发生时间，交给部署管理员查服务端日志 |
 | `not-found` | 404 | 路径或查询参数中的资源 ID 不是合法 UUID，资源不可能存在 | 核对链接或请求中的 ID |
 | `rate-limit-exceeded` | 429 | 超过每分钟请求上限 | 按响应头 `Retry-After` 等待后重试；`X-RateLimit-*` 头给出上限与剩余次数 |
-| `resource-governance-decision-blocked` | 429 或 409 | 被组织的资源治理策略拦截；平台 API Token 超出每分钟调用上限时为 429，其他治理拦截为 409 | 查看 `detail`，联系组织管理员调整配额或策略 |
+| `resource-governance-decision-blocked` | 429 或 409 | 被组织的资源治理策略拦截。超出组织每分钟请求上限（全组织成员与平台 Token 合计）或每日调用额度时为 429，带 `Retry-After`；执行并发、每日执行额度、暂停等其他治理拦截为 409 | 429 按 `Retry-After` 等待后重试；其余查看 `detail`，联系组织 owner 或 admin 调整配额或策略（资源治理页面在配额打满时仍可访问） |
 | `resource-governance-access-denied` | 403 | 资源治理拒绝访问 | 联系组织管理员 |
 
 ## 登录与账户
