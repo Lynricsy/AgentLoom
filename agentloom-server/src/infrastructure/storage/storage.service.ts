@@ -101,6 +101,63 @@ export class StorageService implements OnModuleInit {
     await this.minioClient.removeObject(this.bucket, key);
   }
 
+  /**
+   * 删除前缀下的全部对象，返回删除个数。前缀必须非空且以 `/` 结尾：
+   * 空前缀会清空整个桶，不带 `/` 会连带删除同名开头的兄弟前缀（`app-1` 匹配 `app-10`）。
+   * 任一对象删除失败都抛 StorageUnavailableException；删除是幂等的，调用方可整体重试。
+   */
+  async deletePrefix(prefix: string): Promise<number> {
+    const normalizedPrefix = this.normalizeKey(prefix);
+    if (
+      normalizedPrefix.replace(/\/+$/, '') === '' ||
+      !normalizedPrefix.endsWith('/')
+    ) {
+      throw new StorageKeyInvalidException();
+    }
+
+    const objectNames: string[] = [];
+    try {
+      const stream = this.minioClient.listObjectsV2(
+        this.bucket,
+        normalizedPrefix,
+        true,
+      );
+      for await (const item of stream) {
+        if (item.name) objectNames.push(item.name);
+      }
+    } catch (error) {
+      throw new StorageUnavailableException(
+        'listObjectsV2',
+        normalizedPrefix,
+        error,
+      );
+    }
+    if (objectNames.length === 0) return 0;
+
+    let failures: unknown[];
+    try {
+      // Quiet 模式下 MinIO 只返回删除失败的条目
+      failures = (
+        await this.minioClient.removeObjects(this.bucket, objectNames)
+      ).filter(Boolean);
+    } catch (error) {
+      throw new StorageUnavailableException(
+        'removeObjects',
+        normalizedPrefix,
+        error,
+      );
+    }
+    if (failures.length > 0) {
+      const first = failures[0];
+      throw new StorageUnavailableException(
+        'removeObjects',
+        normalizedPrefix,
+        `${failures.length} 个对象删除失败，首个 ${this.getStringField(first, 'Key') ?? '?'}：${this.getStringField(first, 'Code') ?? this.getStringField(first, 'Message') ?? '未知错误'}`,
+      );
+    }
+    return objectNames.length;
+  }
+
   async removeIncompleteUpload(key: string): Promise<void> {
     await this.minioClient.removeIncompleteUpload(this.bucket, key);
   }
@@ -111,6 +168,22 @@ export class StorageService implements OnModuleInit {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /** 对象大小与最后修改时间；对象不存在返回 null，存储不可用抛 StorageUnavailableException */
+  async stat(
+    key: string,
+  ): Promise<{ size: number; lastModified: Date } | null> {
+    try {
+      const { size, lastModified } = await this.minioClient.statObject(
+        this.bucket,
+        key,
+      );
+      return { size, lastModified };
+    } catch (error) {
+      if (this.isNotFoundError(error)) return null;
+      throw new StorageUnavailableException('statObject', key, error);
     }
   }
 

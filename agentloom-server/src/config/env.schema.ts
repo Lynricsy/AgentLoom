@@ -214,7 +214,6 @@ const baseEnvSchema = z.object({
    * 生成应用门禁。Gate 3–7 执行模式取 real（缺省）/ fixture / disabled，其他值按 disabled 处理；
    * fixture 只用于单测，Gate 7 不会放行 fixture 结果。
    */
-  GENERATED_APP_WORKSPACE_ROOT: optionalStringFromEnv(),
   GENERATED_APP_GATE3_EXECUTOR_MODE: optionalStringFromEnv(),
   GENERATED_APP_GATE4_EXECUTOR_MODE: optionalStringFromEnv(),
   GENERATED_APP_GATE5_EXECUTOR_MODE: optionalStringFromEnv(),

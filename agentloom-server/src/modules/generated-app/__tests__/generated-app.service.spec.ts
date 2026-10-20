@@ -41,7 +41,6 @@ describe('GeneratedAppService facade', () => {
     );
     artifactService = new GeneratedAppArtifactService(
       repository,
-      configService,
       createStorageServiceMock(),
     );
     runtimeBindingService = new GeneratedAppRuntimeBindingService(repository);
@@ -211,8 +210,37 @@ describe('GeneratedAppService facade', () => {
       const remove = vi
         .spyOn(repository, 'delete')
         .mockResolvedValue(undefined);
-      return { listRuntime, remove };
+      const deleteObjects = vi
+        .spyOn(artifactService, 'deleteAppObjects')
+        .mockResolvedValue(undefined);
+      return { listRuntime, remove, deleteObjects };
     }
+
+    it('先清理对象存储前缀，再归档工作流、删除应用', async () => {
+      const { remove, deleteObjects } = stubApp(['wf-1']);
+
+      await service.delete(TENANT_ID, USER_ID, APP_ID);
+
+      expect(deleteObjects).toHaveBeenCalledWith(TENANT_ID, APP_ID);
+      expect(deleteObjects.mock.invocationCallOrder[0]).toBeLessThan(
+        workflowVersionService.archive.mock.invocationCallOrder[0],
+      );
+      expect(deleteObjects.mock.invocationCallOrder[0]).toBeLessThan(
+        remove.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('对象存储清理失败时不归档、不删除应用，可重试', async () => {
+      const { remove, deleteObjects } = stubApp(['wf-1']);
+      const error = new Error('minio down');
+      deleteObjects.mockRejectedValueOnce(error);
+
+      await expect(service.delete(TENANT_ID, USER_ID, APP_ID)).rejects.toBe(
+        error,
+      );
+      expect(workflowVersionService.archive).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+    });
 
     it('先归档自动创建的运行时工作流再删除应用', async () => {
       const { listRuntime, remove } = stubApp(['wf-1', 'wf-2']);

@@ -62,7 +62,7 @@ docType: explanation
 | 0 需求规格 | 生成（按需）→ `GeneratedAppSpecV2Schema` → 绑定解析（目标存在、已发布、创建者可访问、映射与快照兼容）；证据含模型 id、尝试次数、用量 | `app-spec-model-unavailable` / `app-spec-binding-candidates-empty` / `app-spec-model-output-invalid` / `app-spec-binding-invalid` / `app-spec-generation-timeout` |
 | 1 架构计划 | `planVersion: 2`：需求 → 场景 → 字段/结果分区 → 绑定的覆盖矩阵，不含固定字段 | `generation-plan-coverage-gap` |
 | 2 静态合约 | 公开输入 JSON Schema 由表单生成；结果合约由分区生成；与固定版本 `inputSchema` 的兼容性；Agent 绑定的包装工作流图经现有图结构校验 | `static-contract-mismatch` |
-| 3 构建与单元 | 工作区由 v2 物化（`app-spec.ts`、`runtime-form.ts`、`static-contracts.ts`），contract 测试对每个 requirement 场景：步骤值通过提交校验，投影后的 `inputParams` 通过 `validateSubmissionAgainstWorkflowInputSchema`；另有未知字段、缺必填字段两个拒绝用例 | `gate-3-workspace-materialization-failed` / `gate-3-command-failed` |
+| 3 构建与单元 | 工作区由 v2 物化（`app-spec.ts`、`runtime-form.ts`、`static-contracts.ts`、contract 报告与 manifest），写入对象存储 `tenants/<tenantId>/generated-apps/<appId>/runs/<runId>/gate-3/`：生成队列由 server 与 worker 共同消费，本地磁盘既不能跨进程读取、也不能跨容器重启保留（D-176）。contract 测试对每个 requirement 场景：步骤值通过提交校验，投影后的 `inputParams` 通过 `validateSubmissionAgainstWorkflowInputSchema`；另有未知字段、缺必填字段两个拒绝用例 | `gate-3-workspace-materialization-failed` / `gate-3-command-failed` |
 | 4 集成 | 不执行：重新解析绑定（仍发布、固定版本仍是当前版本、创建者仍有权限、Agent 模型配置可用）；Agent 绑定在此创建并发布包装工作流，走发布校验链 | `binding-drifted` / `binding-unavailable` |
 | 5 浏览器验收 | Playwright 真实执行每个 requirement 场景 × 桌面/移动视口：打开公开页 → 按步骤填写/选择 → 提交 → 等待执行结束 → 断言结果分区；收集 console error、同源失败请求、截图与 trace | `gate-5-browser-runner-unavailable` / `gate-5-browser-runner-timeout` / `gate-5-browser-launch-failed` / `gate-5-scenario-failed` |
 | 6 独立审查 | 确定性复核证据：每条 prompt 需求至少一个场景在两个视口都通过、无 console error、无公开 API（`/api/`）失败请求、结果分区非空、artifact 在对象存储中存在；静态资源失败及 Chromium 对应的 `Failed to load resource:` console 记录不阻断 | `verifier-blocking-finding` |
@@ -85,6 +85,7 @@ Gate 6 不调用模型做主观评审：主观评分不可复现，且真实执�
 | 浏览器 | Playwright `chromium`（`playwright` 包精确版本进 server dependencies；`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` 安装，runner 目标里 `playwright install --with-deps chromium` 到 `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`）；`chromiumSandbox: false`，靠容器隔离：非 root、只读根文件系统、无额外 capability、`shm_size: 1gb`；页面请求拦截只放行入口同源 | 启用 Chromium 沙箱：需要宿主允许非特权 user namespace 或放开 seccomp，部署前提不可控 |
 | 资源与超时 | 每容器并发 `APP_GENERATED_APP_BROWSER_CONCURRENCY`（1），场景超时 `APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS`（180000），总超时 `APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS`（900000）；每次最多 5 个场景 × 2 视口；容器 2 CPU / 2GiB | — |
 | 产物 | 每个场景 × 视口一张整页截图与一个 trace zip，上传到 `tenants/<tenantId>/generated-apps/<appId>/runs/<runId>/gate-5/`，证据记 key，创建者经预签名链接查看（D-146）。console 与请求路径在 runner 内脱敏（令牌、宿主路径） | — |
+| 产物生命周期 | Gate 3 与 Gate 5 的对象都在应用前缀 `tenants/<tenantId>/generated-apps/<appId>/` 下；删除应用时先删除整个前缀，再归档包装工作流、删除记录。对象删除失败时整个删除失败（503），应用保留，可重试（D-177） | **先删记录、再尽力删对象**：对象删除失败后无从得知前缀，截图与 trace（含公开页内容）永久残留；**共享卷存工作区**：Helm 需要 RWX 存储类，且仍要单独清理 |
 | 成本 | Gate 5 真实执行绑定的工作流/Agent，消耗创建者租户的模型用量，计入执行记录；场景上限即单次运行的执行上限 | 用 fixture 代替：即 D-148 |
 
 ## 后果
@@ -94,6 +95,7 @@ Gate 6 不调用模型做主观评审：主观评分不可复现，且真实执�
 - 新约束：AppSpec 变化必须同时改 `app-spec-v2.schema.ts` 与单测；绑定一律固定版本；公开路由必须区分公开令牌与验收令牌；v1 规格不再有运行路径。
 - 需要迁移：`generated_app_status` 增加 `app_spec_generating`；`generated_apps` 增加 `generation_model_config_id`、三列验收令牌，`app_spec` 改为可空；`generated_app_submissions` 增加 `origin`、`generation_run_id`；v1 应用关闭公开分享。
 - 新环境变量（同步 env schema、`.env.example`、部署模板与配置参考）：`APP_GENERATED_APP_SPEC_TIMEOUT_MS`、`APP_GENERATED_APP_GENERATION_CONCURRENCY`、`APP_GENERATED_APP_BROWSER_BASE_URL`、`APP_GENERATED_APP_BROWSER_CONCURRENCY`、`APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS`、`APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS`。
+- 删除环境变量 `GENERATED_APP_WORKSPACE_ROOT`：Gate 3 工作区改存对象存储后不再使用本地目录（D-176）。生成运行与删除应用都依赖对象存储可用。
 - 新 HTTP 错误（同步 `guide/troubleshooting/errors.md`）：`generated-app-binding-target-not-found`（422，创建时指定的绑定目标不存在或未发布）、`generated-app-generation-run-in-progress`（409）。
 
 ## 确认方式

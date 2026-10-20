@@ -123,7 +123,10 @@ export interface GeneratedAppContractCaseResult {
 export interface GeneratedAppBuildUnitPlanV2 {
   executionLevel: GeneratedAppGateExecutionLevel;
   workspace: {
-    /** 相对 GENERATED_APP_WORKSPACE_ROOT 的受控路径，不含宿主绝对路径 */
+    /**
+     * 工作区在对象存储中的前缀（`tenants/<t>/generated-apps/<a>/runs/<r>/gate-3`，不带结尾 `/`），
+     * 文件对象 key 为 `<relativePath>/<files[].path>`。只作展示：读取时按租户、应用与运行重新推导前缀。
+     */
     relativePath: string;
     files: GeneratedAppWorkspaceFile[];
   } | null;

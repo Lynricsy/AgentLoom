@@ -52,11 +52,7 @@ describe('GeneratedAppRepository 台账', () => {
     );
     service = new GeneratedAppService(
       repository,
-      new GeneratedAppArtifactService(
-        repository,
-        configService,
-        createStorageServiceMock(),
-      ),
+      new GeneratedAppArtifactService(repository, createStorageServiceMock()),
       runtimeBindingService,
       {
         enqueueRun: vi.fn(),

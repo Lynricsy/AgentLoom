@@ -1,6 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { Readable } from 'node:stream';
 
 import {
   afterAll,
@@ -34,6 +32,11 @@ import { createMockRedisClient } from './support/redis-client.mock';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { ZodValidationPipe } from '../src/common/pipes/zod-validation.pipe';
 import { DRIZZLE } from '../src/database/database.module';
+import { StorageService } from '../src/infrastructure/storage/storage.service';
+import {
+  StorageObjectNotFoundException,
+  StorageUnavailableException,
+} from '../src/infrastructure/storage/storage.exceptions';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
 import {
   GENERATED_APP_GENERATION_QUEUE,
@@ -237,11 +240,46 @@ function buildAppSpec(modelConfigId: string): GeneratedAppSpecV2 {
   });
 }
 
+/**
+ * 对象存储替身：按 key 存在内存里，覆盖生成应用用到的读写与按前缀删除。
+ * Gate 3 工作区与 Gate 5 证据都只经它读写，不落本地磁盘（D-176、D-177）。
+ */
+function createInMemoryStorage() {
+  const objects = new Map<string, Buffer>();
+  const service = {
+    upload: vi.fn(async (key: string, data: Buffer) => {
+      objects.set(key, Buffer.from(data));
+    }),
+    stat: vi.fn(async (key: string) => {
+      const body = objects.get(key);
+      return body ? { size: body.length, lastModified: new Date() } : null;
+    }),
+    download: vi.fn(async (key: string) => {
+      const body = objects.get(key);
+      if (!body) throw new StorageObjectNotFoundException(key);
+      return Readable.from([body]);
+    }),
+    exists: vi.fn(async (key: string) => objects.has(key)),
+    getPresignedUrl: vi.fn(async (key: string) => `http://minio.e2e/${key}`),
+    deletePrefix: vi.fn(async (prefix: string) => {
+      const keys = [...objects.keys()].filter((key) => key.startsWith(prefix));
+      for (const key of keys) objects.delete(key);
+      return keys.length;
+    }),
+  };
+  return {
+    objects,
+    service,
+    keysUnder: (prefix: string) =>
+      [...objects.keys()].filter((key) => key.startsWith(prefix)),
+  };
+}
+
 describe('Generated App v2 (E2E)', () => {
   let ctx: RlsTestContext;
   let app: NestFastifyApplication;
   let pipeline: GeneratedAppGenerationPipelineService;
-  let workspaceRoot: string;
+  const storage = createInMemoryStorage();
   const modelConfigByTenant = new Map<string, string>();
   const pendingRuns: Array<Promise<void>> = [];
 
@@ -305,8 +343,6 @@ describe('Generated App v2 (E2E)', () => {
 
   beforeAll(async () => {
     process.env.APP_JWT_SECRET = JWT_SECRET;
-    workspaceRoot = await mkdtemp(join(tmpdir(), 'e2e-generated-app-'));
-    process.env.GENERATED_APP_WORKSPACE_ROOT = workspaceRoot;
     // e2e 库里没有真实发布的工作流：Gate 4 用 fixture 跳过租户复核，Gate 5 禁用，运行在 Gate 5 停止
     process.env.GENERATED_APP_GATE4_EXECUTOR_MODE = 'fixture';
     process.env.GENERATED_APP_GATE5_EXECUTOR_MODE = 'disabled';
@@ -325,6 +361,8 @@ describe('Generated App v2 (E2E)', () => {
       .useValue(createMockRedisCacheService())
       .overrideProvider(RedisPubSubService)
       .useValue(createMockRedisPubSubService())
+      .overrideProvider(StorageService)
+      .useValue(storage.service)
       .overrideProvider(GeneratedAppSpecGeneratorService)
       .useValue({ generate })
       .overrideProvider(getQueueToken(GENERATED_APP_GENERATION_QUEUE))
@@ -350,14 +388,13 @@ describe('Generated App v2 (E2E)', () => {
     await Promise.allSettled(pendingRuns);
     await app?.close();
     await ctx?.close();
-    await rm(workspaceRoot, { recursive: true, force: true });
-    delete process.env.GENERATED_APP_WORKSPACE_ROOT;
     delete process.env.GENERATED_APP_GATE4_EXECUTOR_MODE;
     delete process.env.GENERATED_APP_GATE5_EXECUTOR_MODE;
   });
 
   beforeEach(async () => {
     await Promise.allSettled(pendingRuns.splice(0));
+    storage.objects.clear();
     await ctx.adminSql`DELETE FROM generated_app_gate_runs`;
     await ctx.adminSql`DELETE FROM generated_app_repair_attempts`;
     await ctx.adminSql`DELETE FROM generated_app_submissions`;
@@ -623,6 +660,22 @@ describe('Generated App v2 (E2E)', () => {
         }),
       ]),
     );
+    // 工作区只在对象存储里：内容经 artifacts API 读回，key 在本次运行的 gate-3 前缀下
+    const workspacePrefix = `tenants/${owner.tenantId}/generated-apps/${created.id}/runs/${created.generationRunId}/gate-3/`;
+    expect(manifest.workspace.relativePath).toBe(workspacePrefix.slice(0, -1));
+    expect(storage.keysUnder(workspacePrefix)).toEqual(
+      expect.arrayContaining([
+        `${workspacePrefix}src/generated-app/app-spec.ts`,
+        `${workspacePrefix}generated-app.manifest.json`,
+      ]),
+    );
+    const content = await app.inject({
+      method: 'GET',
+      url: `/api/v1/generated-apps/${created.id}/artifacts/gate-3-src-generated-app-app-spec-ts`,
+      headers: owner.headers,
+    });
+    expect(content.statusCode).toBe(200);
+    expect(parseJson(content).data.content).toContain('export const appSpec');
 
     // 上一次运行结束后可以再次 start：202 queued，复用已存规格不再调用模型
     const restart = await app.inject({
@@ -858,5 +911,52 @@ describe('Generated App v2 (E2E)', () => {
       403, 403, 403, 403,
     ]);
     expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('删除应用清理对象存储里该应用的整个前缀；对象存储不可用时 503 且应用保留，可重试', async () => {
+    const owner = await seedTenant('delete-owner');
+    const created = await createApp(owner);
+    await waitForRun(created.generationRunId);
+    const appPrefix = `tenants/${owner.tenantId}/generated-apps/${created.id}/`;
+    // Gate 5 证据由 browser-runner 写入；e2e 禁用了 Gate 5，这里直接放一份模拟对象
+    storage.objects.set(
+      `${appPrefix}runs/${created.generationRunId}/gate-5/scenario-ask/desktop/screenshot.png`,
+      Buffer.from('png'),
+    );
+    const otherAppKey = `tenants/${owner.tenantId}/generated-apps/00000000-0000-4000-8000-000000000000/runs/r/gate-3/x.ts`;
+    storage.objects.set(otherAppKey, Buffer.from('keep'));
+    expect(storage.keysUnder(appPrefix).length).toBeGreaterThan(1);
+
+    storage.service.deletePrefix.mockRejectedValueOnce(
+      new StorageUnavailableException('removeObjects', appPrefix, 'minio down'),
+    );
+    const failed = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/generated-apps/${created.id}`,
+      headers: owner.headers,
+    });
+    expect(failed.statusCode).toBe(503);
+    const kept = await app.inject({
+      method: 'GET',
+      url: `/api/v1/generated-apps/${created.id}`,
+      headers: owner.headers,
+    });
+    expect(kept.statusCode).toBe(200);
+
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/generated-apps/${created.id}`,
+      headers: owner.headers,
+    });
+    expect(deleted.statusCode).toBe(204);
+    expect(storage.service.deletePrefix).toHaveBeenLastCalledWith(appPrefix);
+    expect(storage.keysUnder(appPrefix)).toEqual([]);
+    expect(storage.objects.has(otherAppKey)).toBe(true);
+    const gone = await app.inject({
+      method: 'GET',
+      url: `/api/v1/generated-apps/${created.id}`,
+      headers: owner.headers,
+    });
+    expect(gone.statusCode).toBe(404);
   });
 });

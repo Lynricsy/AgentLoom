@@ -47,7 +47,6 @@
 | `APP_GENERATED_APP_BROWSER_CONCURRENCY` | 否 | `1` |  | 每个 runner 进程同时执行的验收任务数（每个任务一个 Chromium） |
 | `APP_GENERATED_APP_BROWSER_SCENARIO_TIMEOUT_MS` | 否 | `180000` |  | 单个场景 × 视口的时限（毫秒），由 worker 写进验收任务 |
 | `APP_GENERATED_APP_BROWSER_TOTAL_TIMEOUT_MS` | 否 | `900000` |  | 一次验收任务的总时限（毫秒）；worker 最多等待它再加 30 秒，验收令牌在它再加 60 秒后过期 |
-| `GENERATED_APP_WORKSPACE_ROOT` | 否 |  |  | 生成工作区根目录，留空使用系统临时目录下的 agentloom-generated-app-workspaces |
 | `GENERATED_APP_GATE3_EXECUTOR_MODE` | 否 |  |  | Gate 3-7 执行模式：real（缺省）\| fixture（仅单测，不能产生发布候选）\| disabled；其他值按 disabled 处理 |
 | `GENERATED_APP_GATE4_EXECUTOR_MODE` | 否 |  |  |  |
 | `GENERATED_APP_GATE5_EXECUTOR_MODE` | 否 |  |  |  |

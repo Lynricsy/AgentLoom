@@ -98,6 +98,8 @@ server 用 `APP_TRUST_PROXY_HOPS` 判断请求的来源 IP：它是 server 前�
 
 runner 只读取 Redis、对象存储和上面两个 runner 变量，不需要也不应配置数据库连接串、`APP_JWT_SECRET` 或 `APP_MASTER_ENCRYPTION_KEY`。runner 未运行或连的不是同一个 Redis 时，生成应用的 Gate 5 会立即失败，失败码为 `gate-5-browser-runner-unavailable`。
 
+生成应用的产物都写在 `APP_MINIO_BUCKET` 的 `tenants/<租户 id>/generated-apps/<应用 id>/` 前缀下：Gate 3 工作区文件（`runs/<运行 id>/gate-3/`，server 或 worker 写入）和 Gate 5 截图与 trace（`runs/<运行 id>/gate-5/`，runner 写入）。生成队列由 server 与 worker 共同消费，产物不落进程本地磁盘，不需要共享卷，容器重启也不会丢失。删除应用时先删除整个前缀，对象存储不可用时删除接口返回 503，应用保留，可稍后重试。
+
 ### Studio 运行时变量
 
 Studio 镜像（`agentloom-deploy/docker/studio.Dockerfile`）构建时把四个 Vite 变量设为占位符，容器启动时由 `/docker-entrypoint.d/40-runtime-env.sh` 在 `/usr/share/nginx/html` 下所有 `.html`、`.js`、`.css` 文件中替换：

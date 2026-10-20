@@ -1,6 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { Readable } from 'node:stream';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,7 +10,6 @@ import {
   GeneratedAppArtifactNotFoundException,
   GeneratedAppArtifactTooLargeException,
 } from '../generated-app.exceptions';
-import { buildGeneratedAppWorkspaceRelativePath } from '../generated-app.gate3-workspace';
 import { GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES } from '../generated-app.internal';
 import { GeneratedAppRepository } from '../generated-app.repository';
 import type { GeneratedAppBrowserScenarioResult } from '../types/browser-acceptance-job.schema';
@@ -30,11 +27,7 @@ import {
   mockTenantDb,
 } from './generated-app-test-support';
 
-const WORKSPACE_RELATIVE_PATH = buildGeneratedAppWorkspaceRelativePath({
-  tenantId: TENANT_ID,
-  appId: APP_ID,
-  generationRunId: GENERATION_RUN_ID,
-});
+const WORKSPACE_RELATIVE_PATH = `tenants/${TENANT_ID}/generated-apps/${APP_ID}/runs/${GENERATION_RUN_ID}/gate-3`;
 const GATE_5_PREFIX = `tenants/${TENANT_ID}/generated-apps/${APP_ID}/runs/${GENERATION_RUN_ID}/gate-5`;
 
 function scenarioResult(
@@ -115,7 +108,7 @@ function createPlan(
 }
 
 describe('GeneratedAppArtifactService（v2 交付物）', () => {
-  let workspaceRoot: string;
+  let objects: Map<string, string>;
   let storage: StorageService;
   let repository: GeneratedAppRepository;
   let service: GeneratedAppArtifactService;
@@ -126,32 +119,36 @@ describe('GeneratedAppArtifactService（v2 交付物）', () => {
     );
   }
 
-  async function writeWorkspaceFile(path: string, content: string) {
-    const target = join(workspaceRoot, WORKSPACE_RELATIVE_PATH, path);
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, content);
+  /** Gate 3 写入对象存储的工作区文件；artifact service 只能从对象存储读到它 */
+  function putWorkspaceObject(path: string, content: string) {
+    objects.set(`${WORKSPACE_RELATIVE_PATH}/${path}`, content);
   }
 
-  beforeEach(async () => {
-    workspaceRoot = await mkdtemp(join(tmpdir(), 'g5-artifacts-'));
-    const configService = createConfigService({
-      GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+  beforeEach(() => {
+    objects = new Map();
+    storage = createStorageServiceMock({
+      stat: vi.fn(async (key: string) => {
+        const content = objects.get(key);
+        return content === undefined
+          ? null
+          : { size: Buffer.byteLength(content), lastModified: NOW };
+      }),
+      download: vi.fn(async (key: string) => {
+        const content = objects.get(key);
+        if (content === undefined) throw new Error(`missing ${key}`);
+        return Readable.from([Buffer.from(content)]);
+      }),
     });
-    storage = createStorageServiceMock();
+    const configService = createConfigService();
     repository = new GeneratedAppRepository(
       mockTenantDb as unknown as DrizzleDB,
       configService,
     );
-    service = new GeneratedAppArtifactService(
-      repository,
-      configService,
-      storage,
-    );
+    service = new GeneratedAppArtifactService(repository, storage);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     vi.restoreAllMocks();
-    await rm(workspaceRoot, { recursive: true, force: true });
   });
 
   it('还没有 v2 生成计划时清单为空，不读工作区也不签名', async () => {
@@ -168,8 +165,8 @@ describe('GeneratedAppArtifactService（v2 交付物）', () => {
     expect(storage.getPresignedUrl).not.toHaveBeenCalled();
   });
 
-  it('按 buildUnitPlan.workspace 列出 Gate 3 文件：已物化的带大小可读，被清理的标为未物化', async () => {
-    await writeWorkspaceFile('src/generated-app/app-spec.ts', 'export {};\n');
+  it('按 buildUnitPlan.workspace 从对象存储列出 Gate 3 文件：已写入的带大小可读，缺失的标为未物化', async () => {
+    putWorkspaceObject('src/generated-app/app-spec.ts', 'export {};\n');
     mockApp({ generationPlan: createPlan() });
 
     const manifest = await service.getArtifactManifest(TENANT_ID, APP_ID);
@@ -273,7 +270,7 @@ describe('GeneratedAppArtifactService（v2 交付物）', () => {
   });
 
   it('按 artifactId 内联读取工作区文本文件', async () => {
-    await writeWorkspaceFile('src/generated-app/app-spec.ts', 'export {};\n');
+    putWorkspaceObject('src/generated-app/app-spec.ts', 'export {};\n');
     mockApp({ generationPlan: createPlan() });
 
     await expect(
@@ -289,7 +286,7 @@ describe('GeneratedAppArtifactService（v2 交付物）', () => {
     });
   });
 
-  it('未知 id、浏览器产物、未物化文件与被篡改到根目录外的工作区路径都按不存在处理', async () => {
+  it('未知 id、浏览器产物、未物化文件与路径越出本次运行前缀的工作区文件都按不存在处理', async () => {
     mockApp({ generationPlan: createPlan() });
     for (const artifactId of [
       '../secret',
@@ -301,26 +298,60 @@ describe('GeneratedAppArtifactService（v2 交付物）', () => {
       ).rejects.toBeInstanceOf(GeneratedAppArtifactNotFoundException);
     }
 
+    // 计划被篡改：工作区前缀指向别的应用、文件路径带 `..`；对象 key 只按本应用本次运行推导
+    const foreignPrefix = `tenants/${TENANT_ID}/generated-apps/other-app/runs/${GENERATION_RUN_ID}/gate-3`;
+    objects.set(`${foreignPrefix}/src/generated-app/app-spec.ts`, 'leak');
+    objects.set(`${WORKSPACE_RELATIVE_PATH}/../x.ts`, 'leak');
     const plan = createPlan();
-    plan.buildUnitPlan = {
-      ...plan.buildUnitPlan!,
-      workspace: {
-        ...plan.buildUnitPlan!.workspace!,
-        relativePath: '../outside',
-      },
+    plan.buildUnitPlan!.workspace = {
+      relativePath: foreignPrefix,
+      files: [
+        ...plan.buildUnitPlan!.workspace!.files,
+        {
+          path: '../x.ts',
+          kind: 'source',
+          sha256: 'd'.repeat(64),
+          sizeBytes: 4,
+        },
+      ],
     };
     mockApp({ generationPlan: plan });
-    await expect(
-      service.getArtifactContent(
-        TENANT_ID,
-        APP_ID,
-        'gate-3-src-generated-app-app-spec-ts',
-      ),
-    ).rejects.toBeInstanceOf(GeneratedAppArtifactNotFoundException);
+    for (const artifactId of [
+      'gate-3-src-generated-app-app-spec-ts',
+      'gate-3--x-ts',
+    ]) {
+      await expect(
+        service.getArtifactContent(TENANT_ID, APP_ID, artifactId),
+      ).rejects.toBeInstanceOf(GeneratedAppArtifactNotFoundException);
+    }
+    expect(storage.download).not.toHaveBeenCalled();
+  });
+
+  it('对象存储不可用时清单照常返回，工作区文件标为未物化', async () => {
+    putWorkspaceObject('src/generated-app/app-spec.ts', 'export {};\n');
+    vi.mocked(storage.stat).mockRejectedValue(new Error('minio down'));
+    mockApp({ generationPlan: createPlan() });
+
+    const manifest = await service.getArtifactManifest(TENANT_ID, APP_ID);
+    expect(manifest.workspace?.materialized).toBe(false);
+    expect(manifest.artifacts[0]).toMatchObject({
+      materialized: false,
+      readable: false,
+    });
+  });
+
+  it('删除应用时清理该应用在对象存储下的整个前缀', async () => {
+    vi.mocked(storage.deletePrefix).mockResolvedValue(7);
+
+    await service.deleteAppObjects(TENANT_ID, APP_ID);
+
+    expect(storage.deletePrefix).toHaveBeenCalledWith(
+      `tenants/${TENANT_ID}/generated-apps/${APP_ID}/`,
+    );
   });
 
   it('超过内联上限的文件拒绝读取内容', async () => {
-    await writeWorkspaceFile(
+    putWorkspaceObject(
       'src/generated-app/app-spec.ts',
       'x'.repeat(GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES + 1),
     );

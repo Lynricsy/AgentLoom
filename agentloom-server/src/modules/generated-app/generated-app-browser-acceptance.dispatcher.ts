@@ -9,6 +9,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { QueueEvents, type Queue } from 'bullmq';
 
 import type { EnvConfig } from '../../config/env.schema';
+import { buildGeneratedAppRunGatePrefix } from './generated-app.internal';
 import { GeneratedAppRepository } from './generated-app.repository';
 import {
   GENERATED_APP_BROWSER_ACCEPTANCE_QUEUE,
@@ -64,7 +65,12 @@ export function buildGate5ArtifactPrefix(
   appId: string,
   generationRunId: string,
 ): string {
-  return `tenants/${tenantId}/generated-apps/${appId}/runs/${generationRunId}/gate-5`;
+  return buildGeneratedAppRunGatePrefix(
+    tenantId,
+    appId,
+    generationRunId,
+    'gate-5',
+  );
 }
 
 /**

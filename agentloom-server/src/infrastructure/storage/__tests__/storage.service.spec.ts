@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StorageService } from '../storage.service';
 import { MINIO_CLIENT } from '../storage.constants';
 import {
+  StorageKeyInvalidException,
   StorageObjectNotFoundException,
   StorageUnavailableException,
 } from '../storage.exceptions';
@@ -17,6 +18,8 @@ const mockMinioClient = {
   putObject: vi.fn(),
   getObject: vi.fn(),
   removeObject: vi.fn(),
+  removeObjects: vi.fn(),
+  listObjectsV2: vi.fn(),
   removeIncompleteUpload: vi.fn(),
   statObject: vi.fn(),
   presignedGetObject: vi.fn(),
@@ -166,6 +169,100 @@ describe('StorageService', () => {
       expect(mockMinioClient.removeObject).toHaveBeenCalledWith(
         BUCKET_NAME,
         key,
+      );
+    });
+  });
+
+  describe('deletePrefix', () => {
+    it('列出前缀下全部对象并批量删除，返回删除个数', async () => {
+      const prefix = 'tenants/t1/generated-apps/a1/';
+      mockMinioClient.listObjectsV2.mockReturnValue(
+        Readable.from([
+          { name: `${prefix}runs/r1/gate-3/app-spec.ts` },
+          { prefix: `${prefix}runs/` },
+          { name: `${prefix}runs/r1/gate-5/s/desktop/screenshot.png` },
+        ]),
+      );
+      mockMinioClient.removeObjects.mockResolvedValue([]);
+
+      await expect(service.deletePrefix(prefix)).resolves.toBe(2);
+
+      expect(mockMinioClient.listObjectsV2).toHaveBeenCalledWith(
+        BUCKET_NAME,
+        prefix,
+        true,
+      );
+      expect(mockMinioClient.removeObjects).toHaveBeenCalledWith(BUCKET_NAME, [
+        `${prefix}runs/r1/gate-3/app-spec.ts`,
+        `${prefix}runs/r1/gate-5/s/desktop/screenshot.png`,
+      ]);
+    });
+
+    it('前缀下没有对象时不发删除请求', async () => {
+      mockMinioClient.listObjectsV2.mockReturnValue(Readable.from([]));
+
+      await expect(service.deletePrefix('tenants/t1/x/')).resolves.toBe(0);
+      expect(mockMinioClient.removeObjects).not.toHaveBeenCalled();
+    });
+
+    it('部分对象删除失败时抛 StorageUnavailableException', async () => {
+      mockMinioClient.listObjectsV2.mockReturnValue(
+        Readable.from([{ name: 'tenants/t1/x/a' }]),
+      );
+      mockMinioClient.removeObjects.mockResolvedValue([
+        { Code: 'AccessDenied', Message: 'denied', Key: 'tenants/t1/x/a' },
+      ]);
+
+      await expect(service.deletePrefix('tenants/t1/x/')).rejects.toThrow(
+        StorageUnavailableException,
+      );
+    });
+
+    it('列举失败时抛 StorageUnavailableException', async () => {
+      mockMinioClient.listObjectsV2.mockImplementationOnce(() => {
+        throw new Error('connect ECONNREFUSED');
+      });
+
+      await expect(service.deletePrefix('tenants/t1/x/')).rejects.toThrow(
+        StorageUnavailableException,
+      );
+    });
+
+    it.each(['', '/', 'tenants/t1/x'])(
+      '空前缀或不以 / 结尾的前缀 %j 拒绝执行，避免误删同名前缀或整个桶',
+      async (prefix) => {
+        await expect(service.deletePrefix(prefix)).rejects.toThrow(
+          StorageKeyInvalidException,
+        );
+        expect(mockMinioClient.listObjectsV2).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('stat', () => {
+    it('返回对象大小与最后修改时间', async () => {
+      const lastModified = new Date('2026-10-20T00:00:00Z');
+      mockMinioClient.statObject.mockResolvedValue({ size: 42, lastModified });
+
+      await expect(service.stat('k')).resolves.toEqual({
+        size: 42,
+        lastModified,
+      });
+    });
+
+    it('对象不存在时返回 null', async () => {
+      mockMinioClient.statObject.mockRejectedValue(
+        Object.assign(new Error('Not Found'), { code: 'NotFound' }),
+      );
+
+      await expect(service.stat('k')).resolves.toBeNull();
+    });
+
+    it('MinIO 不可用时抛 StorageUnavailableException', async () => {
+      mockMinioClient.statObject.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(service.stat('k')).rejects.toThrow(
+        StorageUnavailableException,
       );
     });
   });

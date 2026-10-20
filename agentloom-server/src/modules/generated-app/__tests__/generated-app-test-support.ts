@@ -184,6 +184,9 @@ function createStorageServiceMock(
   return {
     upload: vi.fn().mockResolvedValue(undefined),
     exists: vi.fn().mockResolvedValue(true),
+    stat: vi.fn().mockResolvedValue(null),
+    download: vi.fn().mockRejectedValue(new Error('object not found')),
+    deletePrefix: vi.fn().mockResolvedValue(0),
     getPresignedUrl: vi.fn(
       async (key: string) =>
         `https://minio.example.test/${key}?X-Amz-Signature=sig`,

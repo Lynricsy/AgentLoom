@@ -499,8 +499,9 @@ export interface GeneratedAppRuntimeBindingReadinessResponseDto {
 }
 
 /**
- * 交付物种类：Gate 3 受控工作区内的文件（按 `buildUnitPlan.workspace.files[].kind`）与
- * Gate 5 每个场景 × 视口的截图、trace（对象存储，创建者经预签名链接查看，D-146）。
+ * 交付物种类：Gate 3 工作区文件（按 `buildUnitPlan.workspace.files[].kind`）与
+ * Gate 5 每个场景 × 视口的截图、trace。两者都存在对象存储的应用前缀下（D-176）；
+ * 截图与 trace 由创建者经预签名链接查看（D-146）。
  */
 export type GeneratedAppArtifactKind =
   | 'workspace_source_file'
@@ -514,7 +515,7 @@ export interface GeneratedAppArtifactSummaryDto {
   artifactId: string;
   label: string;
   kind: GeneratedAppArtifactKind;
-  /** 工作区文件为相对工作区根的路径；浏览器产物为对象存储 key */
+  /** 工作区文件为相对工作区前缀的路径；浏览器产物为对象存储 key */
   path: string;
   materialized: boolean;
   sizeBytes: number | null;
@@ -532,6 +533,7 @@ export interface GeneratedAppArtifactSummaryDto {
 export interface GeneratedAppArtifactManifestResponseDto {
   /** 最近一次 Gate 3 物化的工作区；尚未物化时为 null */
   workspace: {
+    /** 工作区在对象存储中的前缀（`tenants/<t>/generated-apps/<a>/runs/<r>/gate-3`） */
     relativePath: string;
     executionLevel: GeneratedAppGateExecutionLevel;
     materialized: boolean;

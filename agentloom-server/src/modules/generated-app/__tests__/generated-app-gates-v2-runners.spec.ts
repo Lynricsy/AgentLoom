@@ -1,19 +1,8 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  type Mock,
-} from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import type { DrizzleDB } from '../../../database/database.module';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
+import type { StorageService } from '../../../infrastructure/storage/storage.service';
 import { generatedAppRuntimeFormBuilder } from '../generated-app.runtime';
 import {
   buildAgentWrapperWorkflowGraph,
@@ -44,6 +33,7 @@ import {
   createAppSpecV2Fixture,
   createConfigService,
   createResolvedBindingFixture,
+  createStorageServiceMock,
   createWorkflowBindingCandidateFixture,
 } from './generated-app-test-support';
 
@@ -75,29 +65,36 @@ function context(
 }
 
 describe('Gate 3 工作区物化与 contract 测试', () => {
-  let workspaceRoot: string;
+  let objects: Map<string, { content: string; contentType?: string }>;
+  let storage: StorageService;
 
-  beforeEach(async () => {
-    workspaceRoot = await mkdtemp(join(tmpdir(), 'gate3-v2-'));
-  });
-
-  afterEach(async () => {
-    await rm(workspaceRoot, { recursive: true, force: true });
+  beforeEach(() => {
+    objects = new Map();
+    storage = createStorageServiceMock({
+      upload: vi.fn(
+        async (
+          key: string,
+          data: Buffer | NodeJS.ReadableStream,
+          _size?: number,
+          contentType?: string,
+        ) => {
+          objects.set(key, { content: String(data), contentType });
+        },
+      ) as unknown as StorageService['upload'],
+    });
   });
 
   function runner(overrides: Record<string, string> = {}) {
     return new GeneratedAppGate3WorkspaceRunner(
-      createConfigService({
-        GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
-        ...overrides,
-      }),
+      createConfigService(overrides),
+      storage,
       generatedAppRuntimeFormBuilder,
       { mapSubmission: mapGeneratedAppSubmission },
       { buildAgentWrapperWorkflowGraph },
     );
   }
 
-  it('物化 app-spec.ts / runtime-form.ts，场景提交与反例都按真实校验器判定', async () => {
+  it('工作区文件与 manifest 写入对象存储本次运行的 gate-3 前缀，场景提交与反例都按真实校验器判定', async () => {
     const evaluation = await runner().run(context());
 
     expect(evaluation.status).toBe('passed');
@@ -110,21 +107,43 @@ describe('Gate 3 工作区物化与 contract 测试', () => {
       'reject-unknown-field:true',
       'reject-missing-required:question:true',
     ]);
-    const relativePath = evaluation.plan?.workspace?.relativePath ?? '';
-    expect(relativePath).toBe(
-      `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+    const prefix = `tenants/${TENANT_ID}/generated-apps/${APP_ID}/runs/${GENERATION_RUN_ID}/gate-3`;
+    const workspace = evaluation.plan?.workspace;
+    expect(workspace?.relativePath).toBe(prefix);
+    expect([...objects.keys()].sort()).toEqual(
+      workspace?.files.map((file) => `${prefix}/${file.path}`).sort(),
     );
-    const appSpecSource = await readFile(
-      join(workspaceRoot, relativePath, 'src/generated-app/app-spec.ts'),
-      'utf8',
+    expect(workspace?.files.map((file) => file.path)).toContain(
+      'generated-app.manifest.json',
     );
-    expect(appSpecSource).toContain('"workflowVersionId"');
-    const form = await readFile(
-      join(workspaceRoot, relativePath, 'src/generated-app/runtime-form.ts'),
-      'utf8',
+    const appSpecSource = objects.get(
+      `${prefix}/src/generated-app/app-spec.ts`,
     );
-    expect(form).toContain('"question"');
-    expect(JSON.stringify(evaluation.evidence)).not.toContain(workspaceRoot);
+    expect(appSpecSource).toMatchObject({ contentType: 'text/typescript' });
+    expect(appSpecSource?.content).toContain('"workflowVersionId"');
+    expect(
+      objects.get(`${prefix}/src/generated-app/runtime-form.ts`)?.content,
+    ).toContain('"question"');
+    for (const file of workspace?.files ?? []) {
+      expect(
+        Buffer.byteLength(objects.get(`${prefix}/${file.path}`)!.content),
+      ).toBe(file.sizeBytes);
+    }
+  });
+
+  it('对象存储写入失败 → gate-3-workspace-materialization-failed，计划里不留工作区', async () => {
+    vi.mocked(storage.upload).mockRejectedValueOnce(
+      new Error('connect ECONNREFUSED'),
+    );
+
+    const evaluation = await runner().run(context());
+
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.code).toBe(
+      'gate-3-workspace-materialization-failed',
+    );
+    expect(evaluation.failure?.message).toContain('ECONNREFUSED');
+    expect(evaluation.plan?.workspace).toBeNull();
   });
 
   it('场景填写值超过字段长度时 contract 用例失败 → gate-3-command-failed', async () => {

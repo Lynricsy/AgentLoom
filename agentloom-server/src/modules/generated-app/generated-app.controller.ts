@@ -521,16 +521,21 @@ export class GeneratedAppController {
     return { data };
   }
 
-  // 硬删除前由仓储在同一事务撤销公开分享，且只有 owner/admin 可执行破坏性操作；
-  // Gate 7 自动创建的运行时工作流同步归档。
+  // 硬删除前先清理对象存储里的应用前缀（Gate 3 工作区、Gate 5 截图与 trace），再归档 Gate 4
+  // 自动创建的运行时工作流；仓储在同一事务撤销公开分享后删除记录。只有 owner/admin 可执行破坏性操作。
   @Delete(':appId')
   @Roles('owner', 'admin')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: '永久删除生成应用任务，并归档其自动创建的运行时工作流',
+    summary:
+      '永久删除生成应用任务：清理其对象存储产物（工作区文件、浏览器验收截图与 trace），并归档其自动创建的运行时工作流',
   })
   @ApiResponse({ status: 204, description: '生成应用任务已删除' })
   @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  @ApiResponse({
+    status: 503,
+    description: '对象存储不可用，产物未清理完；应用保留，可稍后重试删除',
+  })
   async delete(
     @Param('appId', ParseUUIDPipe) appId: string,
     @CurrentTenant() tenantId: string,

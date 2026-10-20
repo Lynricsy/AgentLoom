@@ -90,7 +90,7 @@ Gate 0 失败码写在 gate run 的 `failure.code`，`failure.details` 带问题
 | --- | --- | --- | --- |
 | `gate-1` | 架构计划门禁 | `generated-app.gate1-generation-plan.ts`：`planVersion: 2` 的覆盖矩阵（需求 → 场景 → 字段/结果分区 → 绑定），写入 `generation_plan` | `generation-plan-coverage-gap` |
 | `gate-2` | 静态合约门禁 | `generated-app.gate2-static-contracts.ts`：由表单生成公开输入 JSON Schema、由结果分区生成结果合约，比对固定版本 `inputSchema`；Agent 绑定的包装工作流图经现有图结构校验 | `static-contract-mismatch` |
-| `gate-3` | 构建与单元门禁 | `generated-app.gate3-workspace.ts`：在 `GENERATED_APP_WORKSPACE_ROOT` 下物化 `app-spec.ts`、`runtime-form.ts`、`static-contracts.ts`；对每个 requirement 场景执行真实的提交校验与 `inputSchema` 校验，另跑未知字段、缺必填字段两个拒绝用例 | `gate-3-workspace-materialization-failed` / `gate-3-command-failed` |
+| `gate-3` | 构建与单元门禁 | `generated-app.gate3-workspace.ts`：物化 `app-spec.ts`、`runtime-form.ts`、`static-contracts.ts`、contract 报告与 `generated-app.manifest.json`，写入对象存储 `tenants/<t>/generated-apps/<a>/runs/<r>/gate-3/`（生成队列由 server 与 worker 共同消费，不落进程本地磁盘）；对每个 requirement 场景执行真实的提交校验与 `inputSchema` 校验，另跑未知字段、缺必填字段两个拒绝用例 | `gate-3-workspace-materialization-failed`（对象存储写入失败）/ `gate-3-command-failed` |
 | `gate-4` | 集成门禁 | `generated-app.gate4-integration.ts`：复核目标仍发布、固定版本仍是当前版本、创建者角色可运行、Agent 的模型配置可用；Agent 绑定在这里创建并发布包装工作流（Gate 5 的提交经它执行），绑定已不可用时不创建 | `binding-drifted` / `binding-unavailable` |
 | `gate-5` | 浏览器验收门禁 | `generated-app.gate5-browser-acceptance.ts` + `generated-app-browser-acceptance.dispatcher.ts`：签发验收令牌，把 requirement 场景投递给 browser-runner 在桌面与移动视口真实执行（见 ADR-0007 §6） | `gate-5-browser-runner-unavailable` / `gate-5-browser-runner-timeout` / `gate-5-browser-launch-failed` / `gate-5-scenario-failed` |
 | `gate-6` | 独立审查门禁 | `generated-app.gate6-independent-verifier.ts`：确定性复核 Gate 5 证据——两个视口都通过、无 console error、无失败的公开 API（`/api/`）请求、结果分区非空、截图与 trace 在对象存储中存在。静态资源（字体、图片等）请求失败与 Chromium 为它们写的 `Failed to load resource:` console 记录不阻断，仍保留在 Gate 5 证据中 | `verifier-blocking-finding` |
@@ -117,7 +117,9 @@ v2 不自动打补丁。运行以失败结束且 `maxRepairAttempts > 0` 时，`
 | `trial` | 阻断门禁全过，有 warning | `trial_ready` | 否 |
 | `publish_candidate` | 全过且无 warning | `publish_candidate` | 是 |
 
-`/:appId/artifacts`（`GeneratedAppArtifactService`）按 `buildUnitPlan.workspace` 列出 Gate 3 物化的文件（`/:appId/artifacts/:artifactId` 读内容），并为 Gate 5 的截图与 trace 签发 15 分钟有效的预签名 `downloadUrl`（只签本应用本次运行 `gate-5` 前缀下的 key）。`/:appId/runtime-binding-readiness` 返回运行时绑定状态。
+`/:appId/artifacts`（`GeneratedAppArtifactService`）按 `buildUnitPlan.workspace` 列出 Gate 3 的工作区文件，大小与是否物化取自对象存储（`/:appId/artifacts/:artifactId` 从对象存储读内容）；对象 key 按租户、应用与运行重新推导，不信任计划里记录的前缀。Gate 5 的截图与 trace 签发 15 分钟有效的预签名 `downloadUrl`（只签本应用本次运行 `gate-5` 前缀下的 key）。`/:appId/runtime-binding-readiness` 返回运行时绑定状态。
+
+`DELETE /:appId` 依次：删除对象存储里的应用前缀 `tenants/<t>/generated-apps/<a>/`（全部运行的 Gate 3 工作区与 Gate 5 截图、trace），归档自动创建的包装工作流，最后在同一事务里撤销公开分享并删除记录。对象删除失败返回 503（`storage-unavailable`），归档与删记录都不执行，应用保留，可重试；前两步幂等。对象清理放在最前，是因为记录删除后就无从得知这个前缀。删除时仍在进行的生成运行可能在清理之后写入对象，这一窗口不做处理。
 
 ### 5. 运行时绑定
 
@@ -126,7 +128,7 @@ v2 不自动打补丁。运行以失败结束且 `maxRepairAttempts > 0` 时，`
 - 工作流绑定：直接使用被绑定工作流与 AppSpec 中的固定版本，不创建任何工作流。
 - Agent 绑定：创建或复用本应用的包装工作流 manual-trigger → agent → text-output（`inputSchema` 由表单字段生成，metadata 标 `generatedAppId`）；图与当前 AppSpec 一致的已发布版本存在时原样返回，否则更新画布并经发布校验链发布新版本。
 
-两种绑定都把运行时工作流写入 `generated_apps.workflow_definition_id`。绑定的工作流重新发布后，readiness 报 `workflow_version_drift`（提示，不阻断），应用仍执行固定版本。删除应用时，它自动创建的包装工作流一并归档。生成运行不会自动创建公开链接。
+两种绑定都把运行时工作流写入 `generated_apps.workflow_definition_id`。绑定的工作流重新发布后，readiness 报 `workflow_version_drift`（提示，不阻断），应用仍执行固定版本。删除应用时，它自动创建的包装工作流一并归档（见上文 `DELETE /:appId`）。生成运行不会自动创建公开链接。
 
 ### 6. 公开运行
 
@@ -146,7 +148,7 @@ v2 不自动打补丁。运行以失败结束且 `maxRepairAttempts > 0` 时，`
 | Gate 1–7 | `generated-app.gate1-generation-plan.ts` 至 `generated-app.gate7-publish-candidate.ts`、`generated-app-browser-acceptance.dispatcher.ts`、`generated-app.gate-v2.util.ts`、`generated-app.v2-tokens.ts` | 各门禁的执行、执行级别与注入 |
 | 修复 | `generated-app-generation-repair.service.ts` | 失败运行的修复工单 |
 | 规则 | `generated-app.gates.ts`、`generated-app.app-spec.util.ts`、`generated-app.plan-validation.util.ts` | 门禁定义、就绪度计算、AppSpec 补全与校验（纯函数） |
-| 产物 | `generated-app-artifact.service.ts` | 工作区文件清单与内容、Gate 5 截图/trace 预签名链接 |
+| 产物 | `generated-app-artifact.service.ts` | 从对象存储读取工作区文件清单与内容、Gate 5 截图/trace 预签名链接、删除应用时清理应用前缀 |
 | 运行时 | `generated-app-runtime-binding.service.ts`、`generated-app.runtime.ts`、`generated-app.runtime-binding.util.ts` | 运行时工作流、公开表单构建与提交校验、投影与结果抽取 |
 | 公开运行 | `generated-app-public-runtime.service.ts`、`generated-app-public-submission.util.ts`、`generated-app.public-sanitizer.util.ts` | 公开链接、验收令牌、提交、对外数据脱敏 |
 | 持久化 | `generated-app.repository.ts` | 所有表读写；公开链接发布条件 `assertCanEnablePublicShare` |

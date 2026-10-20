@@ -117,11 +117,7 @@ describe('公开分享与发布候选守卫', () => {
     );
     service = new GeneratedAppService(
       repository,
-      new GeneratedAppArtifactService(
-        repository,
-        configService,
-        createStorageServiceMock(),
-      ),
+      new GeneratedAppArtifactService(repository, createStorageServiceMock()),
       runtimeBindingService,
       {
         enqueueRun: vi.fn(),

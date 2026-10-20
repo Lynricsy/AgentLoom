@@ -103,11 +103,14 @@ export class GeneratedAppService {
   }
 
   /**
-   * 删除应用时归档 Gate 7 为它自动创建并发布的运行时工作流，否则工作流仍为 published、
-   * 可被继续执行。先归档再删应用：归档失败时应用仍在，可重试删除。
+   * 删除应用依次：清理对象存储里的应用前缀（Gate 3 工作区、Gate 5 截图与 trace，含公开页内容），
+   * 归档 Gate 4 为它自动创建并发布的运行时工作流（否则工作流仍为 published、可被继续执行），最后删记录。
+   * 前两步失败都直接抛出、应用记录保留，用户可重试删除；两步都幂等。对象清理放在最前：
+   * 记录一旦删掉就再也找不到该前缀，对象会永久残留（D-177）。
    */
   async delete(tenantId: string, userId: string, appId: string): Promise<void> {
     await this.repository.findOne(tenantId, appId);
+    await this.artifactService.deleteAppObjects(tenantId, appId);
     const workflowIds =
       await this.runtimeBindingService.listActiveGeneratedWorkflowRuntimeIds(
         tenantId,

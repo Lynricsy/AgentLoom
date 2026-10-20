@@ -1,18 +1,20 @@
-// Gate 3 构建与单元（ADR-0007 §4）：把 AppSpec v2 物化到受控工作区（app-spec.ts、runtime-form.ts、
-// static-contracts.ts），并对每个 requirement 场景跑 contract 测试——步骤值经公开提交校验、
+// Gate 3 构建与单元（ADR-0007 §4）：把 AppSpec v2 物化为工作区文件（app-spec.ts、runtime-form.ts、
+// static-contracts.ts、contract 报告与 manifest），写入对象存储本次运行的 gate-3 前缀；
+// 并对每个 requirement 场景跑 contract 测试——步骤值经公开提交校验、
 // 投影后的 inputParams 经工作流 inputSchema 校验（与公开提交、runWorkflow 同一套实现）；
 // 另加未知字段、缺必填字段两类反例，确认校验确实拒绝。
+// 生成队列由 server 与 worker 共同消费，工作区不落执行进程的本地磁盘，
+// 否则另一个进程读不到、容器重启即丢失（D-176）。
 
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve, sep } from 'node:path';
 
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import type { WorkflowInputSchema } from '../workflow/dto/workflow-input-schema.dto';
 import { validateSubmissionAgainstWorkflowInputSchema } from './generated-app-public-submission.util';
+import { buildGeneratedAppRunGatePrefix } from './generated-app.internal';
 import {
   disabledGate,
   failedGate,
@@ -67,37 +69,39 @@ export function buildScenarioSubmission(
   return values;
 }
 
-export function resolveGeneratedAppWorkspaceRoot(
-  configService: Pick<ConfigService, 'get'>,
-): string {
-  const configured = configService.get<string>('GENERATED_APP_WORKSPACE_ROOT');
-  return resolve(
-    configured && configured.trim().length > 0
-      ? configured
-      : join(tmpdir(), 'agentloom-generated-app-workspaces'),
+const WORKSPACE_CONTENT_TYPES: Record<string, string> = {
+  '.ts': 'text/typescript',
+  '.tsx': 'text/typescript',
+  '.json': 'application/json',
+  '.md': 'text/markdown',
+  '.html': 'text/html',
+};
+
+export function resolveWorkspaceFileContentType(path: string): string {
+  return (
+    WORKSPACE_CONTENT_TYPES[path.slice(path.lastIndexOf('.'))] ?? 'text/plain'
   );
 }
 
-export function buildGeneratedAppWorkspaceRelativePath(params: {
+/** 工作区在对象存储中的前缀：与 Gate 5 证据同属应用根前缀，删除应用时一并清理 */
+export function buildGate3WorkspacePrefix(params: {
   tenantId: string;
   appId: string;
   generationRunId: string;
 }): string {
-  const segment = (value: string) => value.replace(/[^a-zA-Z0-9-]/g, '');
-  return [
-    'tenants',
-    segment(params.tenantId),
-    'apps',
-    segment(params.appId),
-    'runs',
-    segment(params.generationRunId),
-  ].join('/');
+  return buildGeneratedAppRunGatePrefix(
+    params.tenantId,
+    params.appId,
+    params.generationRunId,
+    'gate-3',
+  );
 }
 
 @Injectable()
 export class GeneratedAppGate3WorkspaceRunner {
   constructor(
     private readonly configService: ConfigService,
+    private readonly storageService: StorageService,
     @Inject(GENERATED_APP_RUNTIME_FORM_BUILDER)
     private readonly formBuilder: GeneratedAppRuntimeFormBuilder,
     @Inject(GENERATED_APP_RUNTIME_BINDING_ADAPTER)
@@ -149,23 +153,14 @@ export class GeneratedAppGate3WorkspaceRunner {
     }
 
     const contractCases = this.runContractCases(context);
-    const relativePath = buildGeneratedAppWorkspaceRelativePath(context);
+    const relativePath = buildGate3WorkspacePrefix(context);
     let files: GeneratedAppWorkspaceFile[];
     try {
-      files = await this.materializeWorkspace(
-        relativePath,
-        context,
-        contractCases,
-      );
+      files = await this.persistWorkspace(relativePath, context, contractCases);
     } catch (error) {
-      const message = (
-        error instanceof Error ? error.message : String(error)
-      ).replaceAll(
-        resolveGeneratedAppWorkspaceRoot(this.configService),
-        '<workspace-root>',
-      );
+      const message = error instanceof Error ? error.message : String(error);
       return failedGate({
-        summary: 'Gate 3 失败：受控工作区写入失败。',
+        summary: 'Gate 3 失败：工作区写入对象存储失败。',
         code: 'gate-3-workspace-materialization-failed',
         message: `工作区物化失败：${message}`,
         details: { workspaceRef: relativePath },
@@ -179,7 +174,7 @@ export class GeneratedAppGate3WorkspaceRunner {
           }),
         ],
         repairInstructions:
-          '检查 GENERATED_APP_WORKSPACE_ROOT 是否可写，然后重新运行生成。',
+          '检查对象存储（APP_MINIO_*）是否可用、存储桶是否可写，然后重新运行生成。',
         plan: { executionLevel, workspace: null, contractCases },
       });
     }
@@ -195,7 +190,7 @@ export class GeneratedAppGate3WorkspaceRunner {
         id: 'gate-3-workspace',
         label: '工作区物化',
         kind: 'build',
-        summary: `已物化 ${files.length} 个文件到 ${relativePath}。`,
+        summary: `已物化 ${files.length} 个文件到对象存储 ${relativePath}/。`,
         details: { executed: true, workspaceRef: relativePath, files },
       }),
       gateEvidence({
@@ -356,16 +351,11 @@ export class GeneratedAppGate3WorkspaceRunner {
     return cases;
   }
 
-  private async materializeWorkspace(
-    relativePath: string,
+  private async persistWorkspace(
+    prefix: string,
     context: GeneratedAppGateContextV2,
     contractCases: GeneratedAppContractCaseResult[],
   ): Promise<GeneratedAppWorkspaceFile[]> {
-    const root = resolveGeneratedAppWorkspaceRoot(this.configService);
-    const workspacePath = resolve(root, relativePath);
-    if (!workspacePath.startsWith(`${root}${sep}`)) {
-      throw new Error('工作区路径越界');
-    }
     const form = this.formBuilder.buildPublicForm(context.appSpec);
     const header = '// 由生成应用 Gate 3 按 AppSpec v2 物化，请勿手改。\n';
     const contents: Array<
@@ -392,30 +382,32 @@ export class GeneratedAppGate3WorkspaceRunner {
         content: `${JSON.stringify({ generationRunId: context.generationRunId, contractCases }, null, 2)}\n`,
       },
     ];
-    const files: GeneratedAppWorkspaceFile[] = [];
-    for (const file of contents) {
-      const absolute = resolve(workspacePath, file.path);
-      await mkdir(dirname(absolute), { recursive: true });
-      await writeFile(absolute, file.content, 'utf8');
-      files.push({
-        path: file.path,
-        kind: file.kind,
-        sha256: createHash('sha256').update(file.content).digest('hex'),
-        sizeBytes: Buffer.byteLength(file.content),
-      });
-    }
-    const manifest = `${JSON.stringify({ generationRunId: context.generationRunId, files }, null, 2)}\n`;
-    await writeFile(
-      resolve(workspacePath, 'generated-app.manifest.json'),
-      manifest,
-      'utf8',
-    );
-    files.push({
+    const describeFile = (
+      file: (typeof contents)[number],
+    ): GeneratedAppWorkspaceFile => ({
+      path: file.path,
+      kind: file.kind,
+      sha256: createHash('sha256').update(file.content).digest('hex'),
+      sizeBytes: Buffer.byteLength(file.content),
+    });
+    const sourceFiles = contents.map(describeFile);
+    contents.push({
       path: 'generated-app.manifest.json',
       kind: 'manifest',
-      sha256: createHash('sha256').update(manifest).digest('hex'),
-      sizeBytes: Buffer.byteLength(manifest),
+      content: `${JSON.stringify({ generationRunId: context.generationRunId, files: sourceFiles }, null, 2)}\n`,
     });
-    return files;
+
+    await Promise.all(
+      contents.map((file) => {
+        const body = Buffer.from(file.content, 'utf8');
+        return this.storageService.upload(
+          `${prefix}/${file.path}`,
+          body,
+          body.length,
+          resolveWorkspaceFileContentType(file.path),
+        );
+      }),
+    );
+    return contents.map(describeFile);
   }
 }
