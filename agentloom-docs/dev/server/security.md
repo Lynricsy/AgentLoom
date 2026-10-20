@@ -60,7 +60,7 @@ GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token �
 组织角色与权限矩阵定义在 `agentloom-contracts/src/rbac.ts`（`ORG_ROLES`、`RBAC_PERMISSION_MATRIX`、`hasPermission`），server、Studio 与平台 API Token 的 scopes 共用；数据库枚举 `org_role` 取值 `owner`、`admin`、`creator`、`operator`、`viewer`。
 
 - 路由用 `@RequirePermission(permission)` 声明所需权限，`RolesGuard` 取矩阵中该权限的角色集合判定；尚未迁移的路由仍用 `@Roles(...)` 列出角色。两者都是方法级覆盖类级，`@RequirePermission` 优先于 `@Roles`。角色之间**没有继承**，矩阵为每个权限显式列出允许的角色。
-- 未声明 `@RequirePermission` 或 `@Roles` 的路由不经过 `TenantGuard` 与 `RolesGuard` 的检查。
+- 未声明 `@RequirePermission` 或 `@Roles` 的路由不经过 `TenantGuard` 与 `RolesGuard` 的检查：不要求 tenant，也不校验当前成员身份，租户只取 JWT claim。因此读写租户数据的路由必须声明其一（只读接口列出全部 5 个角色），被移出组织的成员持旧 JWT 访问时才会立即得到 403；仍未声明的路由只限用户级数据（`/auth/*`、`/devices/*`）、无租户引导流程（`POST /organizations`、`POST /invitations/:token/accept`）以及自带守卫的 `/evidence-exports/*`。决策见 [ADR 0010](/dev/decisions/0010-tenantless-request-db-fail-closed)。
 - 每条路由的有效角色集合由 `agentloom-server/src/common/guards/__tests__/route-access.snapshot.spec.ts` 固定在快照中；放宽或收紧任何路由都要更新快照。
 - 用户在组织中的角色由 `RbacCacheService`（`agentloom-server/src/common/services/rbac-cache.service.ts`）缓存在 Redis；未命中时查询 `organization_members` 关联 `organizations`。角色变更调用 `invalidateUserRole` 删除缓存并通过 Redis pub/sub 通知其他实例。
 - ACP 网关（stdio，不走 HTTP 守卫）用 `AcpAccessService`（`agentloom-server/src/modules/acp-gateway/services/acp-access.service.ts`）做同一判定：`authenticate` 把 JWT 的 Supabase `sub` 映射为应用用户 id，除 `session/cancel` 外的 `session/*`、`terminal/*`、`fs/*` 每次调用都按 `agent:run` 经 `RbacCacheService` 校验，JWT 里的 `tenant_role` 声明不作数；`session/new` 的 `serverSandbox` 绑定目标须在本租户内存在，绑定工作流执行沙箱（`serverSandbox.executionId`）另需 `execution:control`。绑定对话（`serverSandbox.agentConversationId`）不要求属于本会话的 Agent：ACP 只接受 `no_sandbox` Agent，它自己的对话没有沙箱；调用者在 HTTP 侧凭 `agent:run` 已能向租户内任意对话发消息，绑定别的 Agent 的沙箱对话不会多给权限。见 [ACP 网关](/dev/server/acp#权限)。
@@ -75,8 +75,9 @@ GoTrue 签发的 access token 带 `session_id` 声明。带该声明的 token �
   - `createDirectTenantPolicies(table)`：select / insert / update / delete 四条策略，条件 `tenant_id = get_tenant_id()`。带 `tenant_id` 列的业务表默认使用它。
   - `createAppendOnlyTenantPolicies(table)`：只有 select / insert，用于 `audit_logs` 与 `audit_log_archives`。
   - `createJoinTenantPolicies(...)`：用于没有 `tenant_id` 列、通过父表关联判定租户的子表。
-- 租户事务：`TenantTransactionInterceptor` 对已认证请求开启事务，在事务内执行 `SET LOCAL ROLE authenticated` 与 `set_config('app.current_tenant', <tenantId>, true)`（`agentloom-server/src/common/interceptors/tenant-transaction.context.ts`）。事务提交后响应才发出。服务代码通过 `getTenantDb(this.db)` 取得当前事务连接。
-- 不在请求链里的代码（BullMQ worker、定时任务、事件监听器）没有拦截器建立的事务。`getTenantDb()`（`agentloom-server/src/common/providers/tenant-aware-db.provider.ts`）在事务上下文之外直接返回基础连接，不做角色切换，因此这类代码要么自行调用 `runInTenantTransaction`，要么在查询中显式带租户条件。
+- 租户事务：`TenantTransactionInterceptor` 对带 tenant 的已认证请求开启事务，在事务内执行 `SET LOCAL ROLE authenticated` 与 `set_config('app.current_tenant', <tenantId>, true)`（`agentloom-server/src/common/interceptors/tenant-transaction.context.ts`）。事务提交后响应才发出。服务代码通过 `getTenantDb(this.db)` 取得当前事务连接。
+- 无租户请求 fail-closed：已认证但 JWT 没有 tenant 的 HTTP 请求不开事务，处理器运行在无租户作用域（`tenantlessRequestStorage`）中，作用域内 `getTenantDb()`（`agentloom-server/src/common/providers/tenant-aware-db.provider.ts`）抛 400 `tenant-required`，不再回退到不受 RLS 约束的基础连接。确需无租户访问的服务（`OrganizationService.createOrganization`、`acceptInvitation`）显式使用注入的 `DRIZZLE` 基础连接，或用 `runInTenantTransaction` 显式进入某个租户。决策见 [ADR 0010](/dev/decisions/0010-tenantless-request-db-fail-closed)。
+- 公开路由（没有 `request.user`）与不在请求链里的代码（BullMQ worker、定时任务、事件监听器、沙箱回调）不在上述作用域内，`getTenantDb()` 在事务外直接返回基础连接，不做角色切换，因此这类代码要么自行调用 `runInTenantTransaction`，要么在查询中显式带租户条件。
 
 哪些表没有租户策略、迁移中 `GRANT` 的约定见 [数据库](/dev/server/database)。
 

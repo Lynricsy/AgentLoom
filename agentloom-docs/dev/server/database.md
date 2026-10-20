@@ -267,7 +267,14 @@ RLS 只在租户事务里生效。`runInTenantTransaction(db, tenantId, operatio
 2. `SELECT set_config('app.current_tenant', <tenantId>, true)`，第三个参数 `true` 使设置只在本事务内有效；
 3. 把事务对象放进 `AsyncLocalStorage`，嵌套调用复用同一事务。
 
-HTTP 请求由 `TenantTransactionInterceptor`（`agentloom-server/src/common/interceptors/tenant-transaction.interceptor.ts`）在 `request.user.tenantId` 存在时包一层租户事务，事务提交后才返回响应。Service 通过 `getTenantDb(db)`（`agentloom-server/src/common/providers/tenant-aware-db.provider.ts`）拿到当前事务对象；不在租户事务中时拿到的是原始连接，RLS 不生效（公开路由走这条路径）。Worker 等非 HTTP 入口自行调用 `runInTenantTransaction`。
+HTTP 请求由 `TenantTransactionInterceptor`（`agentloom-server/src/common/interceptors/tenant-transaction.interceptor.ts`）在 `request.user.tenantId` 存在时包一层租户事务，事务提交后才返回响应。Service 通过 `getTenantDb(db)`（`agentloom-server/src/common/providers/tenant-aware-db.provider.ts`）拿到当前事务对象。不在租户事务中时按调用场景区分：
+
+| 场景 | `getTenantDb(db)` 的结果 |
+| --- | --- |
+| 已认证、JWT 没有 tenant 的 HTTP 请求（拦截器把处理器放进 `tenantlessRequestStorage` 作用域） | 抛 400 `tenant-required`（fail-closed），不回退到基础连接 |
+| 公开路由（没有 `request.user`）、Worker、定时任务、事件监听器 | 原始连接，RLS 不生效；调用方自行 `runInTenantTransaction` 或在查询中显式带租户条件 |
+
+在任何场景里显式调用 `runInTenantTransaction` 都会进入对应租户的事务。确需在无租户请求中访问数据的服务（创建组织、接受邀请）直接使用注入的 `DRIZZLE` 原始连接，并在代码中写明理由。决策见 [ADR 0010](/dev/decisions/0010-tenantless-request-db-fail-closed)。
 
 需要在事务提交后才执行的副作用（例如入队）用 `registerAfterCommitHook` 注册，它只能在租户事务内调用。
 
@@ -299,7 +306,7 @@ Drizzle Kit 不生成回滚迁移；需要撤销时写一个新的正向迁移�
 
 > 本页回答：为什么租户隔离由 PostgreSQL RLS 执行，而不是只靠 Service 层的 `WHERE tenant_id = ?`？
 
-Service 层过滤依赖每条查询都记得带条件。RLS 把条件挂在表上：只要请求跑在租户事务里，漏写过滤的查询返回空集，而不是别的租户的数据。代价是两条约束：所有业务查询必须拿 `getTenantDb(db)` 返回的事务对象，否则绕过了 RLS；新表除了声明策略，还要给 `authenticated` 授权。
+Service 层过滤依赖每条查询都记得带条件。RLS 把条件挂在表上：只要请求跑在租户事务里，漏写过滤的查询返回空集，而不是别的租户的数据。代价是两条约束：所有业务查询必须拿 `getTenantDb(db)` 返回的事务对象，否则绕过了 RLS；新表除了声明策略，还要给 `authenticated` 授权。没有租户事务的已认证请求里 `getTenantDb` 直接报错，而不是把绕过 RLS 的原始连接交给业务查询（[ADR 0010](/dev/decisions/0010-tenantless-request-db-fail-closed)）。
 
 租户上下文用事务级会话变量（`set_config(..., true)`）而不是连接级变量，是因为连接来自连接池：事务结束后设置自动失效，下一个借到这条连接的请求不会继承上一个租户。
 

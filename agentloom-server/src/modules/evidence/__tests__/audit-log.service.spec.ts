@@ -16,6 +16,10 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   transactionStorage: {
     getStore: mocks.transactionStorageGetStore,
   },
+  // 这些用例在系统上下文（非无租户请求）中运行
+  tenantlessRequestStorage: {
+    getStore: () => undefined,
+  },
 }));
 
 const TENANT_ID = '550e8400-e29b-41d4-a716-446655440000';

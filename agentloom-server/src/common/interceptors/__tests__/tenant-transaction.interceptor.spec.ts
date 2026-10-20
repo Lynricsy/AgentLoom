@@ -1,9 +1,12 @@
 import { type CallHandler, type ExecutionContext } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { sql } from 'drizzle-orm';
-import { Observable, lastValueFrom, of } from 'rxjs';
+import { Observable, defer, lastValueFrom, of } from 'rxjs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DRIZZLE } from '../../../database/database.module';
+import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
+import { TenantRequiredException } from '../../exceptions/auth.exceptions';
+import { getTenantDb } from '../../providers/tenant-aware-db.provider';
+import { runInTenantTransaction } from '../tenant-transaction.context';
 import {
   TenantTransactionInterceptor,
   transactionStorage,
@@ -83,7 +86,7 @@ describe('TenantTransactionInterceptor', () => {
     interceptor = module.get(TenantTransactionInterceptor);
   });
 
-  it('request.user 没有 tenantId 时直接透传给下游处理器', async () => {
+  it('request.user 没有 tenantId 时不开启事务，不访问数据库的处理器结果原样透传', async () => {
     const context = createMockExecutionContext({ user: {} });
     const next = createMockCallHandler(() => of('passthrough-result'));
 
@@ -166,5 +169,50 @@ describe('TenantTransactionInterceptor', () => {
       lastValueFrom(interceptor.intercept(context, next)),
     ).rejects.toBe(testError);
     expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('已认证但没有 tenantId 的请求不开启事务，下游 getTenantDb fail-closed 抛 tenant-required', async () => {
+    const context = createMockExecutionContext({ user: {} });
+    const next = createMockCallHandler(() =>
+      defer(async () => getTenantDb(mockDb as unknown as DrizzleDB)),
+    );
+
+    await expect(
+      lastValueFrom(interceptor.intercept(context, next)),
+    ).rejects.toBeInstanceOf(TenantRequiredException);
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
+  it('无租户请求中显式 runInTenantTransaction 仍取得租户事务', async () => {
+    const context = createMockExecutionContext({ user: {} });
+    const next = createMockCallHandler(() =>
+      defer(() =>
+        runInTenantTransaction(
+          mockDb as unknown as DrizzleDB,
+          'explicit-tenant-id',
+          async () => getTenantDb(mockDb as unknown as DrizzleDB),
+        ),
+      ),
+    );
+
+    const result = await lastValueFrom(interceptor.intercept(context, next));
+
+    expect(result).toBe(mockTx);
+    expect(mockTx.execute).toHaveBeenNthCalledWith(
+      2,
+      sql`SELECT set_config('app.current_tenant', ${'explicit-tenant-id'}, true)`,
+    );
+  });
+
+  it('公开路由（没有 request.user）不进入无租户作用域，getTenantDb 返回基础连接', async () => {
+    const context = createMockExecutionContext({});
+    const next = createMockCallHandler(() =>
+      defer(async () => getTenantDb(mockDb as unknown as DrizzleDB)),
+    );
+
+    const result = await lastValueFrom(interceptor.intercept(context, next));
+
+    expect(result).toBe(mockDb);
+    expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 });

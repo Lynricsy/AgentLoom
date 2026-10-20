@@ -17,6 +17,7 @@ docType: index
 | [0007](/dev/decisions/0007-generated-app-spec-generation) | 生成应用 v2：模型生成 AppSpec、按规格渲染表单、绑定真实工作流/Agent、Playwright 验收 | 提议 | 2026-10-20 |
 | [0008](/dev/decisions/0008-sandbox-stdio-mcp-in-guest) | 有沙箱 Agent 的 stdio MCP 在 guest 内启动 | 已实施 | 2026-10-20 |
 | [0009](/dev/decisions/0009-plugin-billing-ledger-by-value) | 插件计费账本按值引用插件，新版本就地发布 | 已实施 | 2026-10-20 |
+| [0010](/dev/decisions/0010-tenantless-request-db-fail-closed) | 无租户请求访问租户数据时 fail-closed | 已实施 | 2026-10-20 |
 
 ## 模板
 

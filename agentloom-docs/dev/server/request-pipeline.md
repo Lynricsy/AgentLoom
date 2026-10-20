@@ -142,7 +142,8 @@ sequenceDiagram
 
 源文件：`agentloom-server/src/common/interceptors/tenant-transaction.interceptor.ts`，事务实现在 `agentloom-server/src/common/interceptors/tenant-transaction.context.ts`。
 
-- `req.user.tenantId` 不存在（公开路由、`/agent-api`）时直接放行，不开事务。
+- 没有 `req.user`（公开路由、`/agent-api`）时直接放行，不开事务。
+- 有 `req.user` 但没有 `tenantId`（无组织用户）时不开事务，处理器运行在无租户作用域（`tenantlessRequestStorage`）中；其中调用 `getTenantDb()` 抛 400 `tenant-required`，不回退到不受 RLS 约束的基础连接（[ADR 0010](/dev/decisions/0010-tenantless-request-db-fail-closed)）。
 - 否则调用 `runInTenantTransaction()`：开启事务，执行 `SET LOCAL ROLE authenticated` 和 `set_config('app.current_tenant', <tenantId>, true)`，把事务对象放进 `AsyncLocalStorage`。服务代码通过 `getTenantDb()`（`agentloom-server/src/common/providers/tenant-aware-db.provider.ts`）取到这个事务，RLS 策略据此过滤。
 - handler 的返回值在事务**提交之后**才发给客户端；`registerAfterCommitHook()` 注册的回调在提交后执行。
 

@@ -12,6 +12,14 @@ export interface TenantTransactionContext {
 export const transactionStorage =
   new AsyncLocalStorage<TenantTransactionContext>();
 
+/**
+ * 已认证但没有租户上下文的 HTTP 请求作用域，由 TenantTransactionInterceptor 建立。
+ * 作用域内 getTenantDb() fail-closed，不把绕过 RLS 的基础连接交给业务查询；
+ * 需要无租户访问的调用方（创建组织、接受邀请）显式使用注入的基础连接，
+ * 或用 runInTenantTransaction 显式进入某个租户。见 ADR 0010。
+ */
+export const tenantlessRequestStorage = new AsyncLocalStorage<true>();
+
 export function hasActiveTenantTransaction(): boolean {
   return transactionStorage.getStore() !== undefined;
 }
