@@ -28,6 +28,7 @@ const dialect = new PgDialect();
 
 interface QueryChain {
   from: Mock;
+  innerJoin: Mock;
   where: Mock;
   orderBy: Mock;
   limit: Mock;
@@ -48,6 +49,7 @@ function createTenantDb(rowsByTable: Map<unknown, unknown[]>) {
         chains.push({ table, chain });
         return chain;
       }),
+      innerJoin: vi.fn(() => chain),
       where: vi.fn(() => chain),
       orderBy: vi.fn(() => chain),
       limit: vi.fn(() => Promise.resolve(rows)),
@@ -305,6 +307,7 @@ describe('GeneratedAppBindingResolverService', () => {
         agentVersionId: V2_AGENT_VERSION_ID,
         name: '文档问答 Agent',
         description: '回答问题',
+        knowledge: [],
       },
       {
         kind: 'workflow',
@@ -321,6 +324,7 @@ describe('GeneratedAppBindingResolverService', () => {
             label: '结构化答案',
           },
         ],
+        knowledge: [],
       },
     ]);
     const [workflowWhere] = whereSqlFor(schema.workflowDefinitions);
@@ -329,6 +333,96 @@ describe('GeneratedAppBindingResolverService', () => {
     expect(workflowWhere).toContain(
       `"workflow_definitions"."metadata"->>'generatedAppId' IS NULL`,
     );
+  });
+
+  it('候选带知识范围：工作流快照的知识库节点、所调用 Agent 已发布版本的知识库节点，只列已就绪文档', async () => {
+    const KB_DOCS = '01a15872-5b68-7f9e-b4bd-e5bdbb22a598';
+    const KB_AGENT = '01a15872-5b68-7f9e-b4bd-e5bdbb22a599';
+    rowsByTable.set(schema.workflowDefinitions, [
+      {
+        id: WORKFLOW_DEFINITION_ID,
+        name: '文档问答',
+        description: null,
+        publishedVersionId: WORKFLOW_VERSION_ID,
+        updatedAt: new Date('2026-10-20T10:00:00Z'),
+      },
+    ]);
+    rowsByTable.set(schema.workflowVersions, [
+      {
+        id: WORKFLOW_VERSION_ID,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        snapshot: {
+          ...QA_SNAPSHOT,
+          nodes: [
+            ...QA_SNAPSHOT.nodes,
+            {
+              id: 'kb',
+              position: { x: 0, y: 0 },
+              data: {
+                nodeType: 'knowledge-base',
+                config: { knowledgeBaseId: KB_DOCS },
+              },
+            },
+            {
+              id: 'agent',
+              position: { x: 0, y: 0 },
+              data: {
+                nodeType: 'agent',
+                config: { agentDefinitionId: V2_AGENT_DEFINITION_ID },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    rowsByTable.set(schema.agentVersions, [
+      {
+        agentDefinitionId: V2_AGENT_DEFINITION_ID,
+        snapshot: {
+          nodes: [
+            {
+              id: 'kb-agent',
+              position: { x: 0, y: 0 },
+              data: {
+                nodeType: 'knowledge-base',
+                config: { knowledgeBaseId: KB_AGENT },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    rowsByTable.set(schema.knowledgeBases, [
+      { id: KB_DOCS, name: '系统介绍', description: '产品宣传册' },
+      { id: KB_AGENT, name: 'Agent 资料', description: null },
+    ]);
+    rowsByTable.set(schema.documents, [
+      { knowledgeBaseId: KB_DOCS, fileName: 'AgentLoom-系统介绍.pdf' },
+      { knowledgeBaseId: KB_AGENT, fileName: 'agent-runtime.md' },
+    ]);
+    const { resolver, whereSqlFor } = createResolver();
+
+    const candidates = await resolver.listCandidates(TENANT_ID, {
+      kind: 'workflow',
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].knowledge).toEqual([
+      {
+        name: '系统介绍',
+        description: '产品宣传册',
+        documentNames: ['AgentLoom-系统介绍.pdf'],
+      },
+      {
+        name: 'Agent 资料',
+        description: null,
+        documentNames: ['agent-runtime.md'],
+      },
+    ]);
+    const [documentWhere] = whereSqlFor(schema.documents);
+    expect(documentWhere).toContain('"documents"."tenant_id" = $1');
+    expect(documentWhere).toContain('"documents"."status" = $');
   });
 
   it('指定 Agent 目标时只查询该 Agent，不查工作流', async () => {

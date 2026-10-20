@@ -223,9 +223,11 @@ export const GeneratedAppBrowserStepSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('expectResult'),
     sectionId: idSchema,
-    assertion: z.enum(['nonEmpty', 'contains']),
-    /** assertion=contains 时必填：结果分区文本应包含的片段 */
-    text: z.string().trim().min(1).max(200).optional(),
+    /**
+     * 只断言分区非空：结果来自绑定工作流/Agent 的模型输出，同一输入每次措辞不同，
+     * 断言具体文字会让 Gate 5 随回答措辞时过时不过。
+     */
+    assertion: z.literal('nonEmpty'),
   }),
 ]);
 
@@ -683,9 +685,6 @@ function collectBrowserStepIssues(
       case 'expectResult':
         if (!sectionIds.has(step.sectionId)) {
           issues.push(`步骤 ${index} 断言了不存在的结果分区 ${step.sectionId}`);
-        }
-        if (step.assertion === 'contains' && !step.text) {
-          issues.push(`步骤 ${index} 的 contains 断言缺少 text`);
         }
         if (submitIndex < 0) {
           issues.push(`步骤 ${index} 的结果断言出现在提交之前`);

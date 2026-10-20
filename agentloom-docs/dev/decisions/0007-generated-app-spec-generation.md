@@ -32,11 +32,11 @@ docType: explanation
 | --- | --- | --- |
 | 契约位置 | Zod schema 在 `agentloom-server/src/modules/generated-app/types/app-spec-v2.schema.ts`，层间接口在同目录 `generation-v2.ports.ts`，浏览器任务契约在 `browser-acceptance-job.schema.ts` | **放进 `@agentloom/contracts`**：生成应用的线上形状一直由 server DTO 经 OpenAPI → api-client 输出；browser-runner 与 server 同一代码库，不跨包 |
 | 两层 schema | 模型只产出 `GeneratedAppSpecDraftSchema`（需求、表单、结果视图、绑定选择、带浏览器步骤的 requirement 场景）；服务端补平台需求、页面、数据策略、范围边界、traceability、固定绑定版本、生成元数据，整体用 `GeneratedAppSpecV2Schema` 校验 | **让模型输出完整 AppSpec**：数据策略、traceability 是平台规则，交给模型只会多出可错的字段 |
-| 跨字段规则 | `collectAppSpecReferenceIssues` 同时用于草稿与持久化：字段/分区/需求/场景 id 唯一；工作流绑定的每个字段都映射、每个结果分区都有输出；Agent 绑定恰好一个分区；requirement 场景填写全部必填字段、先 submit 后 expectResult、选择值在选项内；每条 prompt 需求至少一条 requirement 场景 | **只做结构校验**：D-147 正是结构完整、语义空洞 |
+| 跨字段规则 | `collectAppSpecReferenceIssues` 同时用于草稿与持久化：字段/分区/需求/场景 id 唯一；工作流绑定的每个字段都映射、每个结果分区都有输出；Agent 绑定恰好一个分区；requirement 场景填写全部必填字段、先 submit 后 expectResult、选择值在选项内；每条 prompt 需求至少一条 requirement 场景。结果断言只有 `nonEmpty`：本地验收（D-147）中模型写出「答案包含 草稿」这类断言，绑定目标的回答每次措辞不同，Gate 5 随之时过时不过 | **只做结构校验**：D-147 正是结构完整、语义空洞；**允许 `contains` 断言具体文字**：措辞由绑定目标的模型决定，断言不可复现 |
 | 何时生成 | 生成运行的 Gate 0 第一步：AppSpec 缺失、v1、或 `start` 请求带 `regenerateAppSpec: true` / `triggerSource: 'retry'` 时生成，否则复用已存规格 | **创建请求内同步生成**：模型 10–120 秒，违背 F5 |
 | 模型 | 创建 DTO 可选 `modelConfigId`（必须是本租户 chat 模型），否则用租户默认 chat 模型；都没有时 Gate 0 失败 `app-spec-model-unavailable`。选用的 id 写入新列 `generated_apps.generation_model_config_id`，repair 复用 | **固定平台模型**：租户自带密钥，平台没有可用的全局模型 |
 | 调用 | `OutputFormatService.executeStructuredOutput`，`outputSchema = JSON.stringify(z.toJSONSchema(GeneratedAppSpecDraftSchema, { io: 'input' }))`，strictness strict、允许降级到 L2；超时 `APP_GENERATED_APP_SPEC_TIMEOUT_MS`（默认 120000）经 AbortSignal 取消 | 新写一套结构化输出：重复 F6 已有能力 |
-| 提示词 | `generated-app.app-spec-prompt.ts` 中文系统提示：角色与输出规则（只能用候选 id、字段 id camelCase、每条需求给出可执行的浏览器步骤与具体填写值、医疗/法律等高风险领域不输出诊断或建议类字段）；用户消息 = prompt 原文 + 候选目录 JSON（≤20 个、≤16KB，含输入字段与输出节点）+ 上一次的问题列表 | — |
+| 提示词 | `generated-app.app-spec-prompt.ts` 中文系统提示：角色与输出规则（只能用候选 id、字段 id camelCase、每条需求给出可执行的浏览器步骤与具体填写值、问答/检索类场景的输入落在候选知识库覆盖的主题内、医疗/法律等高风险领域不输出诊断或建议类字段）；用户消息 = prompt 原文 + 候选目录 JSON（≤20 个、≤16KB，含输入字段、输出节点与知识范围：挂接的知识库名称、描述、已就绪文档名）+ 上一次的问题列表。知识范围在本地验收中补上：只给工作流名称与描述时，模型把需求本身改写成问题（「如何创建问答应用…」），知识库检索不到，引用分区为空 | — |
 | 失败与自我修复 | Zod/引用/绑定解析的问题列表作为反馈重试，同一 Gate 0 内最多 `GENERATED_APP_SPEC_MAX_ATTEMPTS`（3）次；仍失败则 Gate 0 失败，failure 带问题列表、用量、模型输出前 2000 字符（脱敏）。原始输出不另存 | **失败即放弃**：结构化输出偶发不合规，带具体问题重试的成功率高 |
 | v1 存量 | 迁移 0089 把 v1 应用的公开分享关闭，0090 清空 v1 的 `app_spec` 与 `generation_plan`，下一次运行由 Gate 0 按需求重新生成。删除 v1 类型、模板、医疗/通用固定字段与本地 deterministic 报告 | **保留 v1 运行路径**：两套运行时并存，且 v1 本身就是缺陷 |
 

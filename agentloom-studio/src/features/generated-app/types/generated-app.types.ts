@@ -155,8 +155,7 @@ export type GeneratedAppBrowserStep =
   | {
       action: 'expectResult'
       sectionId: string
-      assertion: 'nonEmpty' | 'contains'
-      text?: string
+      assertion: 'nonEmpty'
     }
 
 export interface GeneratedAppAcceptanceScenario {

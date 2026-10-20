@@ -8,12 +8,16 @@ import {
 } from './types/app-spec-v2.schema';
 import type {
   AppSpecRepairFeedback,
-  GeneratedAppBindingCandidate,
+  GeneratedAppCandidateKnowledge,
+  GeneratedAppCatalogCandidate,
 } from './types/generation-v2.ports';
 
 /** 交给模型的候选目录上限：条数与序列化后的 UTF-8 字节数 */
 export const APP_SPEC_CANDIDATES_MAX = 20;
 export const APP_SPEC_CANDIDATE_CATALOG_MAX_BYTES = 16 * 1024;
+/** 每个候选列出的知识库数，与每个知识库列出的文档名数 */
+export const APP_SPEC_CANDIDATE_KNOWLEDGE_MAX = 5;
+export const APP_SPEC_CANDIDATE_KNOWLEDGE_DOCUMENTS_MAX = 10;
 
 const CANDIDATE_DESCRIPTION_MAX_LENGTH = 300;
 
@@ -39,8 +43,9 @@ export const GENERATED_APP_SPEC_SYSTEM_PROMPT = `你是 AgentLoom 的生成应�
 ## 需求与验收场景
 - requirements 只写从创建者需求拆出的、终端用户可验证的行为，source 固定为 prompt，id 形如 req-xxx，最多 ${L.requirementsMax} 条。不要写数据保存、登录、门禁等平台需求，也不要使用 req-platform- 开头的 id，服务端会补。
 - acceptanceScenarios 全部为 scope=requirement，id 形如 scenario-xxx，最多 ${L.scenariosMax} 条；每条需求至少被一个场景的 requirementIds 引用。
-- 每个场景的 browserSteps 必须能在真实浏览器里执行：先用 fill（text/textarea/number，number 写十进制字符串）或 select（single_select 一个值、multi_select 一到多个值，取字段 options 的 value）填写全部 required 字段，再 submit 一次，然后用 expectResult 断言结果分区。填写值要具体、真实、与绑定目标的业务相关，能让工作流或 Agent 给出有内容的结果（例如问答类就写一个知识范围内的具体问题），不要写「测试」「示例」之类的占位值。
-- expectResult 默认用 assertion=nonEmpty；只有确定结果一定包含某段文字时才用 contains 并给出 text。
+- 每个场景的 browserSteps 必须能在真实浏览器里执行：先用 fill（text/textarea/number，number 写十进制字符串）或 select（single_select 一个值、multi_select 一到多个值，取字段 options 的 value）填写全部 required 字段，再 submit 一次，然后用 expectResult 断言结果分区。填写值要具体、真实、与绑定目标的业务相关，能让工作流或 Agent 给出有内容的结果，不要写「测试」「示例」之类的占位值，也不要把创建者需求本身改写成问题。
+- 候选带 knowledge（知识库名称、描述、文档名）时，问答、检索类场景的输入必须落在这些资料明确覆盖的主题内（例如就文档名或描述中出现的产品、功能提一个具体问题），保证知识库能检索到原文、结果分区（尤其引用）有内容。
+- expectResult 只有 assertion=nonEmpty 一种：结果来自模型生成，每次措辞不同，验收只检查分区有内容，不断言具体文字。
 - given/when/then 用简短中文句子描述场景。
 
 ## 高风险领域
@@ -66,12 +71,14 @@ type CatalogEntry =
         max?: number;
       }> | null;
       outputs: Array<{ nodeId: string; nodeType: string; label: string }>;
+      knowledge: GeneratedAppCandidateKnowledge[];
     }
   | {
       kind: 'agent';
       agentDefinitionId: string;
       name: string;
       description: string | null;
+      knowledge: GeneratedAppCandidateKnowledge[];
     };
 
 /**
@@ -79,20 +86,29 @@ type CatalogEntry =
  * 至少保留一个候选。
  */
 export function buildAppSpecCandidateCatalog(
-  candidates: readonly GeneratedAppBindingCandidate[],
+  candidates: readonly GeneratedAppCatalogCandidate[],
 ): { json: string; includedIds: string[] } {
   const entries: CatalogEntry[] = candidates
     .slice(0, APP_SPEC_CANDIDATES_MAX)
     .map((candidate) => {
-      const description = candidate.description
-        ? candidate.description.slice(0, CANDIDATE_DESCRIPTION_MAX_LENGTH)
-        : null;
+      const description = truncateDescription(candidate.description);
+      const knowledge = candidate.knowledge
+        .slice(0, APP_SPEC_CANDIDATE_KNOWLEDGE_MAX)
+        .map((item) => ({
+          name: item.name,
+          description: truncateDescription(item.description),
+          documentNames: item.documentNames.slice(
+            0,
+            APP_SPEC_CANDIDATE_KNOWLEDGE_DOCUMENTS_MAX,
+          ),
+        }));
       if (candidate.kind === 'agent') {
         return {
           kind: 'agent',
           agentDefinitionId: candidate.agentDefinitionId,
           name: candidate.name,
           description,
+          knowledge,
         };
       }
       const fields = candidate.inputSchema?.fields ?? [];
@@ -125,6 +141,7 @@ export function buildAppSpecCandidateCatalog(
           nodeType: node.nodeType,
           label: node.label,
         })),
+        knowledge,
       };
     });
 
@@ -145,6 +162,12 @@ export function buildAppSpecCandidateCatalog(
         : entry.agentDefinitionId,
     ),
   };
+}
+
+function truncateDescription(description: string | null): string | null {
+  return description
+    ? description.slice(0, CANDIDATE_DESCRIPTION_MAX_LENGTH)
+    : null;
 }
 
 export function buildAppSpecUserMessage(params: {

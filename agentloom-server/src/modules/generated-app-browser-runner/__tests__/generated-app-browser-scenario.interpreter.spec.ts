@@ -104,12 +104,7 @@ const QA_STEPS: GeneratedAppBrowserStep[] = [
   { action: 'fill', fieldId: 'question', value: '最多几个子 Agent？' },
   { action: 'select', fieldId: 'tone', values: ['brief'] },
   { action: 'submit' },
-  {
-    action: 'expectResult',
-    sectionId: 'answer',
-    assertion: 'contains',
-    text: '10',
-  },
+  { action: 'expectResult', sectionId: 'answer', assertion: 'nonEmpty' },
   { action: 'expectResult', sectionId: 'citations', assertion: 'nonEmpty' },
 ];
 
@@ -199,12 +194,6 @@ describe('interpretGeneratedAppBrowserScenario', () => {
       qaState({ resultStatus: 'failed' }),
       2,
       'result-failed',
-    ],
-    [
-      '分区不包含期望文本',
-      qaState({ sections: { answer: '可以同时运行多个', citations: 'x' } }),
-      3,
-      'assertion-failed',
     ],
     [
       '分区为空白',

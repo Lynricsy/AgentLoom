@@ -64,8 +64,8 @@ Gate 0 由 `GeneratedAppGate0Service.evaluate`（`generated-app-gate0.service.ts
 生成由 `GeneratedAppSpecGeneratorService`（`generated-app-spec-generator.service.ts`）执行：
 
 1. 模型：应用的 `generation_model_config_id`，否则租户默认 chat 模型；必须是已启用的 chat 模型。经 `PiAiAdapter.getModel` 实例化。
-2. 候选：`GeneratedAppBindingResolverService.listCandidates`（`generated-app-binding-resolver.service.ts`）。指定了 `binding_target` 时只取该目标；否则取本租户最近更新的已发布工作流（排除 `metadata.generatedAppId` 非空的生成应用自建工作流）与已发布 Agent，合计最多 20 个。工作流候选带已发布版本快照的 `inputSchema` 与顶层 `text-output` / `json-output` 节点。
-3. 调用：`OutputFormatService.executeStructuredOutput`，输出 schema 为 `z.toJSONSchema(GeneratedAppSpecDraftSchema, { io: 'input' })`，strict、允许降级到 L2。提示词在 `generated-app.app-spec-prompt.ts`：系统提示规定只能使用候选 id、字段 id 格式、每条需求给出可执行的浏览器步骤与具体填写值、高风险领域不设诊断/建议类字段；用户消息为 prompt 原文、候选目录 JSON（不超过 20 个、16KB，不含版本 id）与上一次的问题列表。
+2. 候选：`GeneratedAppBindingResolverService.listCandidates`（`generated-app-binding-resolver.service.ts`）。指定了 `binding_target` 时只取该目标；否则取本租户最近更新的已发布工作流（排除 `metadata.generatedAppId` 非空的生成应用自建工作流）与已发布 Agent，合计最多 20 个。工作流候选带已发布版本快照的 `inputSchema` 与顶层 `text-output` / `json-output` 节点。每个候选还带知识范围 `knowledge`：工作流快照的 `knowledge-base` 节点、工作流 `agent` 节点所调用 Agent 与 Agent 候选本身的已发布版本中的 `knowledge-base` 节点，取知识库名称、描述与已就绪文档名（每个候选最多 5 个知识库、每个知识库 10 个文档名）。
+3. 调用：`OutputFormatService.executeStructuredOutput`，输出 schema 为 `z.toJSONSchema(GeneratedAppSpecDraftSchema, { io: 'input' })`，strict、允许降级到 L2。提示词在 `generated-app.app-spec-prompt.ts`：系统提示规定只能使用候选 id、字段 id 格式、每条需求给出可执行的浏览器步骤与具体填写值、问答/检索类场景的输入落在候选 `knowledge` 覆盖的主题内、高风险领域不设诊断/建议类字段；用户消息为 prompt 原文、候选目录 JSON（不超过 20 个、16KB，不含版本 id）与上一次的问题列表。浏览器步骤的结果断言只有 `expectResult` + `assertion: 'nonEmpty'`：结果来自模型生成，措辞每次不同，草稿 schema 不接受断言具体文字。
 4. 校验：草稿 schema（含 `collectAppSpecReferenceIssues`）→ 绑定目标必须在候选目录中，固定为候选当前的已发布版本 → `resolve` 校验映射与固定版本快照兼容（见下）→ `buildAppSpecV2FromDraft`（`generated-app.app-spec.util.ts`）补平台需求 `req-platform-persist` 与平台场景、页面、数据策略、范围边界、traceability、生成元数据后整体用 `GeneratedAppSpecV2Schema` 复核。
 5. 任一步有问题就把问题列表作为反馈重试，同一次 Gate 0 最多 `GENERATED_APP_SPEC_MAX_ATTEMPTS`（3）次。总超时 `APP_GENERATED_APP_SPEC_TIMEOUT_MS`（默认 120000）经 AbortSignal 取消模型调用。
 

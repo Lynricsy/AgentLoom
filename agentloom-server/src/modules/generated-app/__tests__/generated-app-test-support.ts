@@ -471,8 +471,7 @@ function createAppSpecV2Fixture(
           {
             action: 'expectResult',
             sectionId: 'answer',
-            assertion: 'contains',
-            text: '10',
+            assertion: 'nonEmpty',
           },
           {
             action: 'expectResult',

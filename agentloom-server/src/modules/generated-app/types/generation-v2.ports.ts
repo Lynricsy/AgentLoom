@@ -112,6 +112,19 @@ export interface AgentBindingCandidate {
 export type GeneratedAppBindingCandidate =
   WorkflowBindingCandidate | AgentBindingCandidate;
 
+/** 候选（及其调用的 Agent）挂接的知识库：模型据此为验收场景写出落在知识范围内的具体输入 */
+export interface GeneratedAppCandidateKnowledge {
+  name: string;
+  description: string | null;
+  /** 已就绪文档的文件名，最多 APP_SPEC_CANDIDATE_KNOWLEDGE_DOCUMENTS_MAX 个 */
+  documentNames: string[];
+}
+
+/** listCandidates 的结果：绑定候选 + 只用于提示词目录的知识范围 */
+export type GeneratedAppCatalogCandidate = GeneratedAppBindingCandidate & {
+  knowledge: GeneratedAppCandidateKnowledge[];
+};
+
 export type ResolvedGeneratedAppBinding =
   | {
       kind: 'workflow';
@@ -128,11 +141,12 @@ export interface GeneratedAppBindingResolver {
   /**
    * target 非空时只返回该目标（不存在、未发布或无权访问返回空数组）；
    * 否则返回租户内最近更新的已发布工作流（排除生成应用运行时工作流）与已发布 Agent，最多 20 个。
+   * 每个候选带它（工作流快照中的知识库节点、所调用 Agent 已发布版本的知识库节点）挂接的知识库。
    */
   listCandidates(
     tenantId: string,
     target: GeneratedAppBindingTargetRef | null,
-  ): Promise<GeneratedAppBindingCandidate[]>;
+  ): Promise<GeneratedAppCatalogCandidate[]>;
   /**
    * 校验 AppSpec 的绑定（Gate 0 与 Gate 4 复用）：目标存在、已发布、版本仍是固定版本或可重新固定；
    * 工作流：每个 required 输入被映射、类型兼容（text/textarea→text、number→number、

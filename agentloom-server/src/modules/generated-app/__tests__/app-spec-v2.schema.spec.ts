@@ -69,8 +69,7 @@ function qaDraft(): z.input<typeof GeneratedAppSpecDraftSchema> {
           {
             action: 'expectResult',
             sectionId: 'answer',
-            assertion: 'contains',
-            text: '10',
+            assertion: 'nonEmpty',
           },
           {
             action: 'expectResult',
@@ -195,6 +194,25 @@ describe('GeneratedAppSpecDraftSchema', () => {
         '场景没有填写必填字段 question',
         '场景缺少提交后的 expectResult 断言',
       ]),
+    );
+  });
+
+  it('结果断言只检查分区非空：依赖回答措辞的 contains 断言被拒绝', () => {
+    const draft = qaDraft();
+    draft.acceptanceScenarios[0].browserSteps[2] = {
+      action: 'expectResult',
+      sectionId: 'answer',
+      assertion: 'contains',
+      text: '10',
+    } as unknown as (typeof draft.acceptanceScenarios)[0]['browserSteps'][2];
+
+    const result = GeneratedAppSpecDraftSchema.safeParse(draft);
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toContainEqual(
+      expect.objectContaining({
+        path: ['acceptanceScenarios', 0, 'browserSteps', 2, 'assertion'],
+      }),
     );
   });
 

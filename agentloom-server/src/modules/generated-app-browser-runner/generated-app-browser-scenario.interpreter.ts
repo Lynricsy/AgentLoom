@@ -203,22 +203,6 @@ export async function interpretGeneratedAppBrowserScenario(
             `结果分区 ${step.sectionId} 为空。`,
           );
         }
-        if (step.assertion === 'contains') {
-          if (step.text === undefined) {
-            return fail(
-              stepIndex,
-              'assertion-failed',
-              `结果分区 ${step.sectionId} 的 contains 断言缺少期望文本。`,
-            );
-          }
-          if (!normalized.includes(step.text)) {
-            return fail(
-              stepIndex,
-              'assertion-failed',
-              `结果分区 ${step.sectionId} 不包含「${step.text}」。`,
-            );
-          }
-        }
         break;
       }
     }

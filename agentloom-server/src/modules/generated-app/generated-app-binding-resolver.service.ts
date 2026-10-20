@@ -9,7 +9,11 @@ import {
   workflowInputSchemaSchema,
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
-import { APP_SPEC_CANDIDATES_MAX } from './generated-app.app-spec-prompt';
+import {
+  APP_SPEC_CANDIDATE_KNOWLEDGE_DOCUMENTS_MAX,
+  APP_SPEC_CANDIDATE_KNOWLEDGE_MAX,
+  APP_SPEC_CANDIDATES_MAX,
+} from './generated-app.app-spec-prompt';
 import type {
   AppSpecReferenceIssue,
   GeneratedAppBinding,
@@ -21,6 +25,8 @@ import type {
   GeneratedAppBindingCandidate,
   GeneratedAppBindingResolver,
   GeneratedAppBindingTargetRef,
+  GeneratedAppCandidateKnowledge,
+  GeneratedAppCatalogCandidate,
   ResolvedGeneratedAppBinding,
   WorkflowBindingCandidate,
 } from './types/generation-v2.ports';
@@ -28,6 +34,18 @@ import type {
 type WorkflowBinding = Extract<GeneratedAppBinding, { kind: 'workflow' }>;
 type AgentBinding = Extract<GeneratedAppBinding, { kind: 'agent' }>;
 type WorkflowInputField = WorkflowInputSchema['fields'][number];
+
+/** 候选在快照中引用的知识来源：直接挂接的知识库节点，与调用的 Agent（取其已发布版本的知识库节点） */
+interface CandidateKnowledgeRefs {
+  knowledgeBaseIds: string[];
+  agentDefinitionIds: string[];
+}
+
+interface ListedCandidate<T extends GeneratedAppBindingCandidate> {
+  updatedAt: Date;
+  candidate: T;
+  refs: CandidateKnowledgeRefs;
+}
 
 const OUTPUT_NODE_TYPES: Record<string, true> = {
   'text-output': true,
@@ -57,7 +75,7 @@ export class GeneratedAppBindingResolverService implements GeneratedAppBindingRe
   async listCandidates(
     tenantId: string,
     target: GeneratedAppBindingTargetRef | null,
-  ): Promise<GeneratedAppBindingCandidate[]> {
+  ): Promise<GeneratedAppCatalogCandidate[]> {
     return runInTenantTransaction(this.db, tenantId, async () => {
       const [workflows, agents] = await Promise.all([
         target?.kind === 'agent'
@@ -74,10 +92,17 @@ export class GeneratedAppBindingResolverService implements GeneratedAppBindingRe
             ),
       ]);
 
-      return [...workflows, ...agents]
+      const listed = [...workflows, ...agents]
         .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-        .slice(0, APP_SPEC_CANDIDATES_MAX)
-        .map((entry) => entry.candidate);
+        .slice(0, APP_SPEC_CANDIDATES_MAX);
+      const knowledgeFor = await this.loadCandidateKnowledge(
+        tenantId,
+        listed.map((entry) => entry.refs),
+      );
+      return listed.map((entry) => ({
+        ...entry.candidate,
+        knowledge: knowledgeFor(entry.refs),
+      }));
     });
   }
 
@@ -106,7 +131,7 @@ export class GeneratedAppBindingResolverService implements GeneratedAppBindingRe
   private async listPublishedWorkflowCandidates(
     tenantId: string,
     workflowDefinitionId: string | null,
-  ): Promise<Array<{ updatedAt: Date; candidate: WorkflowBindingCandidate }>> {
+  ): Promise<ListedCandidate<WorkflowBindingCandidate>[]> {
     const definitions = await this.tenantDb
       .select({
         id: schema.workflowDefinitions.id,
@@ -166,6 +191,7 @@ export class GeneratedAppBindingResolverService implements GeneratedAppBindingRe
         {
           updatedAt: definition.updatedAt,
           candidate: buildWorkflowCandidate(definition, version),
+          refs: collectKnowledgeRefs(version.snapshot.nodes ?? []),
         },
       ];
     });
@@ -174,7 +200,7 @@ export class GeneratedAppBindingResolverService implements GeneratedAppBindingRe
   private async listPublishedAgentCandidates(
     tenantId: string,
     agentDefinitionId: string | null,
-  ): Promise<Array<{ updatedAt: Date; candidate: AgentBindingCandidate }>> {
+  ): Promise<ListedCandidate<AgentBindingCandidate>[]> {
     const definitions = await this.tenantDb
       .select({
         id: schema.agentDefinitions.id,
@@ -209,10 +235,125 @@ export class GeneratedAppBindingResolverService implements GeneratedAppBindingRe
                 name: definition.name,
                 description: definition.description,
               },
+              refs: {
+                knowledgeBaseIds: [],
+                agentDefinitionIds: [definition.id],
+              },
             },
           ]
         : [],
     );
+  }
+
+  /**
+   * 一次查出全部候选引用的 Agent 已发布版本与知识库（名称、描述、已就绪文档名），
+   * 返回按引用取知识列表的函数；无引用时不查库。
+   */
+  private async loadCandidateKnowledge(
+    tenantId: string,
+    refsList: readonly CandidateKnowledgeRefs[],
+  ): Promise<
+    (refs: CandidateKnowledgeRefs) => GeneratedAppCandidateKnowledge[]
+  > {
+    const agentIds = [
+      ...new Set(refsList.flatMap((refs) => refs.agentDefinitionIds)),
+    ];
+    const agentKnowledgeBaseIds = new Map<string, string[]>();
+    if (agentIds.length > 0) {
+      const agentVersions = await this.tenantDb
+        .select({
+          agentDefinitionId: schema.agentVersions.agentDefinitionId,
+          snapshot: schema.agentVersions.snapshot,
+        })
+        .from(schema.agentVersions)
+        .innerJoin(
+          schema.agentDefinitions,
+          eq(
+            schema.agentDefinitions.publishedVersionId,
+            schema.agentVersions.id,
+          ),
+        )
+        .where(
+          and(
+            eq(schema.agentVersions.tenantId, tenantId),
+            inArray(schema.agentVersions.agentDefinitionId, agentIds),
+          ),
+        );
+      for (const version of agentVersions) {
+        agentKnowledgeBaseIds.set(
+          version.agentDefinitionId,
+          collectKnowledgeRefs(version.snapshot.nodes ?? []).knowledgeBaseIds,
+        );
+      }
+    }
+
+    const knowledgeBaseIdsOf = (refs: CandidateKnowledgeRefs): string[] =>
+      [
+        ...new Set([
+          ...refs.knowledgeBaseIds,
+          ...refs.agentDefinitionIds.flatMap(
+            (agentId) => agentKnowledgeBaseIds.get(agentId) ?? [],
+          ),
+        ]),
+      ].slice(0, APP_SPEC_CANDIDATE_KNOWLEDGE_MAX);
+    const knowledgeBaseIds = [...new Set(refsList.flatMap(knowledgeBaseIdsOf))];
+    if (knowledgeBaseIds.length === 0) {
+      return () => [];
+    }
+
+    const [knowledgeBases, documents] = await Promise.all([
+      this.tenantDb
+        .select({
+          id: schema.knowledgeBases.id,
+          name: schema.knowledgeBases.name,
+          description: schema.knowledgeBases.description,
+        })
+        .from(schema.knowledgeBases)
+        .where(
+          and(
+            eq(schema.knowledgeBases.tenantId, tenantId),
+            inArray(schema.knowledgeBases.id, knowledgeBaseIds),
+          ),
+        ),
+      this.tenantDb
+        .select({
+          knowledgeBaseId: schema.documents.knowledgeBaseId,
+          fileName: schema.documents.fileName,
+        })
+        .from(schema.documents)
+        .where(
+          and(
+            eq(schema.documents.tenantId, tenantId),
+            inArray(schema.documents.knowledgeBaseId, knowledgeBaseIds),
+            eq(schema.documents.status, 'ready'),
+          ),
+        )
+        .orderBy(desc(schema.documents.updatedAt)),
+    ]);
+
+    const documentNames = new Map<string, string[]>();
+    for (const document of documents) {
+      const names = documentNames.get(document.knowledgeBaseId) ?? [];
+      if (names.length < APP_SPEC_CANDIDATE_KNOWLEDGE_DOCUMENTS_MAX) {
+        names.push(document.fileName);
+      }
+      documentNames.set(document.knowledgeBaseId, names);
+    }
+    const knowledgeById = new Map(
+      knowledgeBases.map((knowledgeBase) => [
+        knowledgeBase.id,
+        {
+          name: knowledgeBase.name,
+          description: knowledgeBase.description,
+          documentNames: documentNames.get(knowledgeBase.id) ?? [],
+        },
+      ]),
+    );
+    return (refs) =>
+      knowledgeBaseIdsOf(refs).flatMap((id) => {
+        const knowledge = knowledgeById.get(id);
+        return knowledge ? [knowledge] : [];
+      });
   }
 
   private async resolveWorkflowBinding(
@@ -370,6 +511,39 @@ function failure(
   message: string,
 ): { ok: false; issues: AppSpecReferenceIssue[] } {
   return { ok: false, issues: [{ path, message }] };
+}
+
+/**
+ * 快照中的知识来源：knowledge-base 节点的 knowledgeBaseId（配置在 data.config 或 data 上），
+ * 与工作流 agent 节点调用的 agentDefinitionId。
+ */
+function collectKnowledgeRefs(
+  nodes: readonly schema.ReactFlowNode[],
+): CandidateKnowledgeRefs {
+  const knowledgeBaseIds = new Set<string>();
+  const agentDefinitionIds = new Set<string>();
+  for (const node of nodes) {
+    const nodeType = node.data?.nodeType ?? node.data?.node_type;
+    const config =
+      node.data?.config && typeof node.data.config === 'object'
+        ? (node.data.config as Record<string, unknown>)
+        : {};
+    const read = (key: string) => {
+      const value = config[key] ?? node.data?.[key];
+      return typeof value === 'string' && value ? value : null;
+    };
+    if (nodeType === 'knowledge-base') {
+      const id = read('knowledgeBaseId') ?? read('knowledge_base_id');
+      if (id) knowledgeBaseIds.add(id);
+    } else if (nodeType === 'agent') {
+      const id = read('agentDefinitionId') ?? read('selectedAgentId');
+      if (id) agentDefinitionIds.add(id);
+    }
+  }
+  return {
+    knowledgeBaseIds: [...knowledgeBaseIds],
+    agentDefinitionIds: [...agentDefinitionIds],
+  };
 }
 
 /** 从版本快照取输入契约与顶层 text-output / json-output 节点 */

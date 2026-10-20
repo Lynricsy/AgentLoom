@@ -121,7 +121,9 @@ describe('GeneratedAppSpecGeneratorService', () => {
     candidates = [createWorkflowBindingCandidateFixture()];
     // 解析器的读库部分换成固定候选，映射兼容性用真实规则
     resolver = {
-      listCandidates: vi.fn(async () => candidates),
+      listCandidates: vi.fn(async () =>
+        candidates.map((candidate) => ({ ...candidate, knowledge: [] })),
+      ),
       resolve: vi.fn(async (_tenantId: string, spec) => {
         const candidate = candidates.find(
           (item) =>

@@ -150,12 +150,7 @@ const ASK_STEPS: GeneratedAppBrowserAcceptanceJob['scenarios'][number]['steps'] 
     { action: 'select', fieldId: 'tone', values: ['brief'] },
     { action: 'select', fieldId: 'topics', values: ['pricing', 'limits'] },
     { action: 'submit' },
-    {
-      action: 'expectResult',
-      sectionId: 'answer',
-      assertion: 'contains',
-      text: '10',
-    },
+    { action: 'expectResult', sectionId: 'answer', assertion: 'nonEmpty' },
     { action: 'expectResult', sectionId: 'citations', assertion: 'nonEmpty' },
   ];
 
