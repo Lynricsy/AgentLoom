@@ -294,6 +294,7 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 | `runtime-plugin-unsupported-dsh-version` | 422 | runtime 插件声明的 dsh 版本不受支持 | 按[开发 runtime 插件](/api/plugins/runtime)改用支持的 `dshVersion` |
 | `marketplace-listing-not-found` | 404 | 市场条目不存在、未上架或无权访问 | 确认条目仍在市场中 |
 | `marketplace-listing-conflict` | 409 | 市场条目当前状态不允许该操作，响应带 `currentStatus` | 刷新后按当前状态操作 |
+| `runtime-plugin-inactive` | 422 | Agent 引用的 runtime 插件未处于启用状态（`detail` 带插件名称、版本与记录 id）。对话运行前（含已在运行的会话的下一轮）检查，作为对话失败原因和对外 API run 的 `error.type` 出现 | 在「Runtime 插件」页启用该插件后重新发送；或从 Agent 画布移除该插件节点并重新发布 |
 | `marketplace-workflow-version-not-found` | 404 | 提交到市场的工作流版本不存在 | 选择已发布的工作流版本 |
 | `marketplace-review-failed` | 422 | 上架审查未通过，响应带 `reviewResult` | 按未通过的检查项修正后重新提交 |
 | `marketplace-review-conflict` | 409 | 你已评价过该条目 | 每个账号对同一条目只能评价一次 |

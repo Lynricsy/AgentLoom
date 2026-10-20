@@ -109,6 +109,17 @@ const HARNESS_PROFILE_PATCH_MAX_LENGTH = 65_536;
 const RUNTIME_PLUGIN_RECORD_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** harness 中启用的 package 插件引用（去重）；npm 插件与停用节点不走插件库。 */
+function collectEnabledPackagePluginRefs(
+  harness: HarnessConfig | undefined,
+): Set<string> {
+  return new Set(
+    (harness?.plugins ?? [])
+      .filter((plugin) => plugin.source === 'package' && plugin.enabled)
+      .map((plugin) => plugin.ref),
+  );
+}
+
 export interface ApplyAgentCanvasSnapshotOptions {
   canvasNodes: schema.ReactFlowNode[];
   canvasEdges: schema.ReactFlowEdge[];
@@ -2529,13 +2540,8 @@ export class AgentDefinitionService {
       undefined,
       runtimeMode,
     );
-    const packageRefs = new Set(
-      (harness?.plugins ?? [])
-        .filter((plugin) => plugin.source === 'package' && plugin.enabled)
-        .map((plugin) => plugin.ref),
-    );
     const reasons: string[] = [];
-    for (const ref of packageRefs) {
+    for (const ref of collectEnabledPackagePluginRefs(harness)) {
       try {
         await this.runtimePluginService.findActiveById(ref, tenantId);
       } catch (error) {
@@ -2552,6 +2558,22 @@ export class AgentDefinitionService {
 
     if (reasons.length > 0) {
       throw new AgentPublishValidationException(reasons);
+    }
+  }
+
+  /**
+   * 对话每轮运行前校验 harness 引用的 package 插件仍存在且处于 active 状态，
+   * 不满足时原样抛出 RuntimePluginNotFoundException / RuntimePluginInactiveException
+   * （type 为 runtime-plugin-not-found / runtime-plugin-inactive）。
+   * 复用已有 sandbox 会话（loadSession）不会重新解析插件，停用插件只能靠这里对已在运行的会话止损；
+   * 需在租户事务内调用。
+   */
+  async assertHarnessRuntimePluginsActive(
+    harness: HarnessConfig | undefined,
+    tenantId: string,
+  ): Promise<void> {
+    for (const ref of collectEnabledPackagePluginRefs(harness)) {
+      await this.runtimePluginService.findActiveById(ref, tenantId);
     }
   }
 

@@ -8,6 +8,7 @@ import { AgentSandboxNotConnectedException } from '../../agent-definition/agent-
 import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import { SkillResolverService } from '../../skill/skill-resolver.service';
 import { LlmCostService } from '../../llm/llm-cost.service';
+import { RuntimePluginInactiveException } from '../../runtime-plugin/runtime-plugin.exceptions';
 
 const {
   mockDb,
@@ -89,6 +90,7 @@ const {
   mockAgentDefinitionService: {
     compileCanvas: vi.fn(),
     buildRuntimeConfigFromNodes: vi.fn(),
+    assertHarnessRuntimePluginsActive: vi.fn(),
   },
   mockMemoryToolsService: {
     createSessionToolProvider: vi.fn(),
@@ -3718,6 +3720,29 @@ describe('AgentExecutionWorker', () => {
       });
     });
 
+    it('DomainException 取 detail 作为错误信息并保留 type/title（而不是只剩 title）', () => {
+      expect(
+        workerInternals.describeConversationExecutionError(
+          new RuntimePluginInactiveException({
+            id: 'runtime-plugin-1',
+            name: 'Greeter',
+            pluginId: 'com.example.greeter',
+            version: '0.1.1',
+            status: 'disabled',
+          }),
+        ),
+      ).toEqual({
+        errorMessage:
+          'Runtime 插件「Greeter」（com.example.greeter@0.1.1，记录 runtime-plugin-1）当前状态为 disabled，未处于启用状态',
+        rawErrorMessage:
+          'Runtime 插件「Greeter」（com.example.greeter@0.1.1，记录 runtime-plugin-1）当前状态为 disabled，未处于启用状态',
+        problem: {
+          type: 'https://agentloom.dev/errors/runtime-plugin-inactive',
+          title: 'Runtime 插件未启用',
+        },
+      });
+    });
+
     it('emits preparation defaults and optional failure metadata', () => {
       workerInternals.emitPreparationPhase(
         'tenant-1',
@@ -3930,6 +3955,94 @@ describe('AgentExecutionWorker', () => {
           title: 'Run failed',
           detail: 'Runtime init failed',
         },
+      });
+    });
+
+    const harnessConfig = {
+      engine: 'dsh',
+      plugins: [
+        {
+          nodeId: 'rp-node',
+          source: 'package',
+          ref: 'runtime-plugin-1',
+          enabled: true,
+        },
+      ],
+    };
+    const harnessContext = () =>
+      makeActiveContext({ runtimeConfig: { harness: harnessConfig } });
+    const inactivePluginError = () =>
+      new RuntimePluginInactiveException({
+        id: 'runtime-plugin-1',
+        name: 'Greeter',
+        pluginId: 'com.example.greeter',
+        version: '0.1.1',
+        status: 'disabled',
+      });
+    const inactiveRunError = {
+      type: 'https://agentloom.dev/errors/runtime-plugin-inactive',
+      title: 'Runtime 插件未启用',
+      detail:
+        'Runtime 插件「Greeter」（com.example.greeter@0.1.1，记录 runtime-plugin-1）当前状态为 disabled，未处于启用状态',
+    };
+
+    it('harness 插件已停用时在准备阶段（创建 microVM 之前）失败，run error 保留 runtime-plugin-inactive 与 detail', async () => {
+      setupLoopMocks(apiInternals, { context: harnessContext() });
+      mockAgentDefinitionService.assertHarnessRuntimePluginsActive.mockRejectedValueOnce(
+        inactivePluginError(),
+      );
+
+      await expect(apiWorker.executeAgentLoop('c-1', 't-1')).rejects.toThrow(
+        'Runtime 插件未启用',
+      );
+
+      expect(
+        mockAgentDefinitionService.assertHarnessRuntimePluginsActive,
+      ).toHaveBeenCalledWith(harnessConfig, 't-1');
+      expect(apiInternals.prepareRuntimeSession).not.toHaveBeenCalled();
+      expect(mockSandboxService.endConversationSandbox).not.toHaveBeenCalled();
+      expect(apiInternals.safeUpdateExecutionMetadata).toHaveBeenCalledWith(
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          runningState: 'failed',
+          errorMessage: inactiveRunError.detail,
+          failedPhase: 'preparing',
+        }),
+      );
+      expect(mockAgentApiRunService.failActiveRuns).toHaveBeenCalledWith({
+        tenantId: 't-1',
+        conversationId: 'c-1',
+        error: inactiveRunError,
+      });
+    });
+
+    it('同一 loop 复用会话的下一轮前重新校验插件，停用后该轮失败而不是继续使用已停用插件', async () => {
+      setupLoopMocks(apiInternals, {
+        context: harnessContext(),
+        pendingMessages: [
+          [{ id: 'msg-1', content: '第一轮', createdAt: new Date() }],
+          [{ id: 'msg-2', content: '停用后第二轮', createdAt: new Date() }],
+        ],
+      });
+      mockAgentDefinitionService.assertHarnessRuntimePluginsActive
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(inactivePluginError());
+      apiInternals.runConversationTurn = vi.fn(async () => turnResult());
+
+      await expect(apiWorker.executeAgentLoop('c-1', 't-1')).rejects.toThrow(
+        'Runtime 插件未启用',
+      );
+
+      expect(
+        mockAgentDefinitionService.assertHarnessRuntimePluginsActive,
+      ).toHaveBeenCalledTimes(2);
+      expect(apiInternals.runConversationTurn).toHaveBeenCalledTimes(1);
+      expect(mockAgentApiRunService.markRunning).toHaveBeenCalledTimes(1);
+      expect(mockAgentApiRunService.failActiveRuns).toHaveBeenCalledWith({
+        tenantId: 't-1',
+        conversationId: 'c-1',
+        error: inactiveRunError,
       });
     });
 

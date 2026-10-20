@@ -3541,7 +3541,13 @@ describe('AgentDefinitionService', () => {
         return c;
       });
       mockRuntimePluginService.findActiveById.mockRejectedValueOnce(
-        new RuntimePluginInactiveException(RUNTIME_PLUGIN_RECORD_ID),
+        new RuntimePluginInactiveException({
+          id: RUNTIME_PLUGIN_RECORD_ID,
+          name: 'Demo RT',
+          pluginId: 'com.example.demo-rt',
+          version: '0.1.0',
+          status: 'disabled',
+        }),
       );
 
       const error = await service
@@ -3753,6 +3759,43 @@ describe('AgentDefinitionService', () => {
           'sandbox 运行态的 Agent 必须将一个 Sandbox 节点连接到 agent-main 的 sandbox-in 端口',
       });
       expect(mockTxClient.insert).not.toHaveBeenCalled();
+    });
+  });
+  describe('assertHarnessRuntimePluginsActive', () => {
+    it('只校验启用的 package 插件（去重），停用插件原样抛出 RuntimePluginInactiveException', async () => {
+      const inactive = new RuntimePluginInactiveException({
+        id: RUNTIME_PLUGIN_RECORD_ID,
+        name: 'Demo RT',
+        pluginId: 'com.example.demo-rt',
+        version: '0.1.0',
+        status: 'disabled',
+      });
+      mockRuntimePluginService.findActiveById.mockRejectedValueOnce(inactive);
+
+      await expect(
+        service.assertHarnessRuntimePluginsActive(
+          {
+            engine: 'dsh',
+            plugins: [
+              { nodeId: 'a', source: 'package', ref: RUNTIME_PLUGIN_RECORD_ID, enabled: true },
+              { nodeId: 'b', source: 'package', ref: RUNTIME_PLUGIN_RECORD_ID, enabled: true },
+              { nodeId: 'c', source: 'package', ref: 'skipped-disabled-node', enabled: false },
+              { nodeId: 'd', source: 'npm', ref: 'some-npm-plugin', version: '1.0.0', enabled: true },
+            ],
+          } as never,
+          'tenant-1',
+        ),
+      ).rejects.toBe(inactive);
+      expect(mockRuntimePluginService.findActiveById).toHaveBeenCalledTimes(1);
+      expect(mockRuntimePluginService.findActiveById).toHaveBeenCalledWith(
+        RUNTIME_PLUGIN_RECORD_ID,
+        'tenant-1',
+      );
+    });
+
+    it('没有 harness 时不查询插件库', async () => {
+      await service.assertHarnessRuntimePluginsActive(undefined, 'tenant-1');
+      expect(mockRuntimePluginService.findActiveById).not.toHaveBeenCalled();
     });
   });
   describe('CRUD、资源来源、OCC 与事务边界补充', () => {

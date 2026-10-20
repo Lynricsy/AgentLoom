@@ -1155,6 +1155,7 @@ export class AgentExecutionWorker
 
     let runtime: IAgentRuntime | null = null;
     let failureDetail: string | undefined;
+    let failureProblem: { type: string; title: string } | undefined;
     let session: AgentSession | null = null;
     let executionMetadata: ConversationExecutionMetadata = {};
     let conversationMetadata: Record<string, unknown> = {};
@@ -1255,6 +1256,13 @@ export class AgentExecutionWorker
         );
       }
 
+      // microVM 创建之前预检 harness 插件：停用后的新会话不再白白创建 VM，
+      // 复用旧会话（loadSession 不会重新解析插件）的下一轮也在这里止损。
+      await this.runtimeService.assertConversationRuntimePluginsActive(
+        context,
+        tenantId,
+      );
+
       let seededPendingMessages: PendingMessage[] = [];
       if (
         !executionMetadata.sessionId &&
@@ -1354,6 +1362,8 @@ export class AgentExecutionWorker
         },
       );
 
+      // 首批消息刚在准备阶段校验过插件；同一 loop 内后续每轮复用会话前重新校验
+      let runtimePluginsVerified = true;
       while (!abort.signal.aborted && !this.draining) {
         currentPendingMessages =
           seededPendingMessages.length > 0
@@ -1387,6 +1397,14 @@ export class AgentExecutionWorker
 
           break;
         }
+
+        if (!runtimePluginsVerified) {
+          await this.runtimeService.assertConversationRuntimePluginsActive(
+            context,
+            tenantId,
+          );
+        }
+        runtimePluginsVerified = false;
 
         const claim = await this.agentApiRunService?.markRunning({
           tenantId,
@@ -1479,6 +1497,7 @@ export class AgentExecutionWorker
         this.runtimeService.describeConversationExecutionError(error);
       const errorMessage = errorSummary.errorMessage;
       failureDetail = errorMessage;
+      failureProblem = errorSummary.problem;
 
       if (
         error instanceof ConversationTurnFailedError &&
@@ -1600,6 +1619,7 @@ export class AgentExecutionWorker
         conversationId,
         terminalStatus,
         failureDetail,
+        failureProblem,
       );
       this.eventEmitter?.emit(AGENT_CONVERSATION_LOOP_ENDED_EVENT, {
         conversationId,
@@ -1658,6 +1678,7 @@ export class AgentExecutionWorker
     conversationId: string,
     terminalStatus: 'completed' | 'cancelled' | 'failed',
     failureDetail: string | undefined,
+    failureProblem: { type: string; title: string } | undefined,
   ): Promise<void> {
     if (!this.agentApiRunService || terminalStatus === 'completed') {
       return;
@@ -1668,7 +1689,7 @@ export class AgentExecutionWorker
         await this.agentApiRunService.failActiveRuns({
           tenantId,
           conversationId,
-          error: buildAgentApiRunFailedError(failureDetail),
+          error: buildAgentApiRunFailedError(failureDetail, failureProblem),
         });
       } else {
         await this.agentApiRunService.cancelActiveRuns({

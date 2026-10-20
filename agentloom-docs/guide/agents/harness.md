@@ -80,6 +80,8 @@ docType: howto
 
 打开与该 Agent 的对话并发送消息。插件注册的工具会像内置工具一样出现在工具卡片中；插件要求人工确认的工具调用会出现审批卡片，30 秒内没有处理按拒绝处理。
 
+发布后在「Runtime 插件」页停用或删除某个已挂载的插件，会立即影响所有使用它的对话：每条新消息在执行前都会检查插件状态，已在进行的对话从下一条消息起失败，提示「Runtime 插件「<名称>」（<插件 ID>@<版本>，记录 <id>）当前状态为 disabled，未处于启用状态」，新对话在创建沙箱前就失败。正在执行的那一轮不会被中断。重新启用插件后，同一对话再次发送消息即可继续。
+
 ## 6. 查看 Harness 事件
 
 对话页右栏顶部有「电脑」与「Harness」两个标签。切到「Harness」，Agent 执行时按轮次列出运行时事件，每次收到 `turn/start` 开一个新的 `Turn N` 分组。同一对话的后续消息通常复用同一个 dsh 会话，编号依次递增；会话被重建（例如由另一个 worker 处理、沙箱重建）时编号会从 `Turn 1` 重新开始，分组仍按出现顺序往下排。事件包括 `turn/start`、`step/start`、`tool/call`、`tool/result`、`step/end`、`turn/end`：`tool/call` 行显示工具名，`tool/result` 行显示「成功」或「失败」，`turn/end` 行显示结束原因，`assistant/message` 行显示输入与输出 token 数。还没有事件时显示「等待 dsh 事件…」。
@@ -92,5 +94,6 @@ docType: howto
 | --- | --- |
 | 编译或发布时报 `agent-canvas-invalid-harness` | 按 `detail` 修正：profile patch 不是 YAML 列表、npm 节点缺版本或包名不合法、已上传插件节点未选择插件、harness 节点用在了无沙箱 Agent 上 |
 | 发布时报 `runtime 插件 <id> 不存在或未启用` | 到「Runtime 插件」页启用该插件，或在节点中重新选择 |
+| 对话中报「Runtime 插件「<名称>」…未处于启用状态」（对外 API 的 run `error.type` 为 `…/runtime-plugin-inactive`） | 插件在发布后被停用；到「Runtime 插件」页启用后重新发送，或移除该插件节点并重新发布 |
 | 对话开始时报 `runtime 插件 <名称>@<版本> 安装失败: …` | npm 包名或版本不存在，或沙箱无法访问 npm registry |
 | 对话开始时报 `dsh 运行时启动失败: …` | 插件加载失败或 profile patch 写错；错误后附运行时输出，交给插件开发者排查 |

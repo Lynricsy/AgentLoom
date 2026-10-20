@@ -61,10 +61,21 @@ Agent 画布上，`runtime-plugin` 节点经 `plugins-in` 端口连到 `harness`
 
 会话创建时 `SandboxModelConfigService.buildContainerSessionPayload`（`agentloom-server/src/modules/agent/sandbox-model-config.service.ts`）组装 `harness` 载荷：
 
-- 启用的 `package` 插件：在租户事务中 `findActiveById`，补上 `pluginId`；事务外下载归档，把每个文件（含 `manifest.json`）以 UTF-8 严格解码后写入 `files['plugins/<pluginId>/<path>']`。插件发布后被停用或删除，新会话在这一步失败。
+- 启用的 `package` 插件：在租户事务中 `findActiveById`，补上 `pluginId`；事务外下载归档，把每个文件（含 `manifest.json`）以 UTF-8 严格解码后写入 `files['plugins/<pluginId>/<path>']`。
 - 停用的节点与 `npm` 插件原样下发，分别由 guest 跳过与安装。
 
 `files` 是文本通道，所以 runtime 插件包只能包含 UTF-8 文本文件，否则 422 `sandbox-runtime-plugin-unsupported-file`。插件文件与技能文件共用会话文件上限（单文件 1 MiB、合计 16 MiB），超出时 422 `sandbox-skill-payload-too-large`。每个启用的 npm 插件把会话初始化的请求超时加 180 s。
+
+### 停用后的止损
+
+复用已有 sandbox 会话（`runtime.loadSession`）不会重新组装载荷，guest 内已加载的插件继续生效，所以只靠下发时的 `findActiveById` 无法让停用作用到已在运行的会话。`AgentExecutionWorker.executeAgentLoop`（`agentloom-server/src/modules/agent-execution/agent-execution.worker.ts`）因此在两处调用 `assertConversationRuntimePluginsActive` → `AgentDefinitionService.assertHarnessRuntimePluginsActive`，对 harness 中每个启用的 `package` 插件执行 `findActiveById`：
+
+- `preparing` 阶段、`prepareRuntimeSession` 之前：新会话不会先创建 microVM 再失败，复用会话的首轮也在这里拦下；失败的 `failedPhase` 为 `preparing`，不回收已有沙箱。
+- 同一 loop 内后续每轮 `markRunning` 之前：loop 在空闲等待期间收到的新消息同样会被拦下。
+
+不满足时抛出原始的 `RuntimePluginInactiveException` / `RuntimePluginNotFoundException`。`describeConversationExecutionError` 对 `DomainException` 取 `detail` 作为对话失败信息，并把 `type`/`title` 交给 `buildAgentApiRunFailedError`，对外 API 的 run `error` 因此是 `…/runtime-plugin-inactive` 而不是通用的 `…/run-failed`。
+
+选择「每轮重新校验」而不是「停用时结束相关会话」：前者只需按 id 查一次 `runtime_plugins`，不必从 `runtime_plugins` 反查所有引用它的 Agent 版本快照与活跃对话，也不会因为一次误停用就销毁用户的沙箱工作区；重新启用后同一对话可以继续。代价是正在执行的一轮会跑完，空闲的 microVM 按 `conversationIdleAutoEndMinutes` 回收。
 
 ## guest 内加载
 

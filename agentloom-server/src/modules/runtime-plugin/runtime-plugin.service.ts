@@ -247,7 +247,7 @@ export class RuntimePluginService {
     const record = await this.findById(id, tenantId);
 
     if (record.status !== 'active') {
-      throw new RuntimePluginInactiveException(id);
+      throw new RuntimePluginInactiveException(record);
     }
 
     return record;

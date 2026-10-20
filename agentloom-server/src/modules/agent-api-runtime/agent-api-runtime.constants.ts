@@ -37,10 +37,17 @@ export const AGENT_API_RUN_WORKER_LOST_ERROR: AgentApiRunError = {
   title: 'Run worker lost',
 };
 
-export function buildAgentApiRunFailedError(detail?: string): AgentApiRunError {
+/**
+ * run 失败时的 error：根因是 DomainException 时沿用它的 type/title（如 `…/runtime-plugin-inactive`），
+ * 其余情况为通用的 `…/run-failed`。
+ */
+export function buildAgentApiRunFailedError(
+  detail?: string,
+  problem?: { type: string; title: string },
+): AgentApiRunError {
   return {
-    type: 'https://agentloom.dev/errors/run-failed',
-    title: 'Run failed',
+    type: problem?.type ?? 'https://agentloom.dev/errors/run-failed',
+    title: problem?.title ?? 'Run failed',
     ...(detail ? { detail } : {}),
   };
 }

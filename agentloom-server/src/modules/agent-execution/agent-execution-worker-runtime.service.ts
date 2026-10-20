@@ -29,6 +29,7 @@ import {
   type AgentRuntimeMode,
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
+import { DomainException } from '../../common/exceptions/domain.exception';
 import { isRecoverableAgentRuntimeErrorMessage } from '../agent/agent-runtime-error.utils';
 import { memorySessions, type MemorySession } from '../../database/schema';
 import { AgentAdapterFactory } from '../agent/agent-adapter.factory';
@@ -633,6 +634,26 @@ export class AgentExecutionWorkerRuntimeService {
     };
   }
 
+  /**
+   * harness 引用的 package 插件必须仍处于 active：worker 在创建 microVM 之前、以及复用
+   * 同一会话的后续每轮之前调用，插件停用后已在运行的会话也会以 runtime-plugin-inactive 失败。
+   */
+  public async assertConversationRuntimePluginsActive(
+    context: ConversationExecutionContext,
+    tenantId: string,
+  ): Promise<void> {
+    const harness = context.runtimeConfig.harness;
+    if (!harness) {
+      return;
+    }
+    await runInTenantTransaction(this.db, tenantId, () =>
+      this.agentDefinitionService.assertHarnessRuntimePluginsActive(
+        harness,
+        tenantId,
+      ),
+    );
+  }
+
   public resolveConversationRuntime(
     context: ConversationExecutionContext,
   ): IAgentRuntime {
@@ -880,11 +901,22 @@ export class AgentExecutionWorkerRuntimeService {
     errorMessage: string;
     errorCode?: string;
     rawErrorMessage?: string;
+    /** DomainException 的 RFC 7807 type/title，透传到对外 API 的 run error。 */
+    problem?: { type: string; title: string };
   } {
     const target =
       error instanceof ConversationTurnFailedError && error.cause
         ? error.cause
         : error;
+
+    // DomainException 的 message 是 title（如「Runtime 插件未启用」），可行动的信息在 detail 里
+    if (target instanceof DomainException) {
+      return {
+        errorMessage: target.detail,
+        rawErrorMessage: target.detail,
+        problem: { type: target.type, title: target.message },
+      };
+    }
 
     if (!(target instanceof Error)) {
       return {

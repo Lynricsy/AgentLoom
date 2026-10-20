@@ -57,12 +57,18 @@ export class RuntimePluginUnsupportedDshVersionException extends DomainException
 }
 
 export class RuntimePluginInactiveException extends DomainException {
-  constructor(id: string) {
+  constructor(record: {
+    id: string;
+    name: string;
+    pluginId: string;
+    version: string;
+    status: string;
+  }) {
     super({
       type: problemType('runtime-plugin-inactive'),
       title: 'Runtime 插件未启用',
       status: HttpStatus.UNPROCESSABLE_ENTITY,
-      detail: `Runtime 插件 ${id} 当前未处于启用状态`,
+      detail: `Runtime 插件「${record.name}」（${record.pluginId}@${record.version}，记录 ${record.id}）当前状态为 ${record.status}，未处于启用状态`,
     });
   }
 }

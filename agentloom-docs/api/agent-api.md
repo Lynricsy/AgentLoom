@@ -391,7 +391,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X DELETE \
 | `input` | `{ messageId, content }` |
 | `output` | 结束前为 `null`；完成后为 `{ messageId, content, toolCalls[] }`，`toolCalls` 每项为 `{ id, tool, status }` |
 | `stopReason` | `end_turn`、`max_tokens`、`cancelled` 或 `null` |
-| `error` | `failed` 时为 `{ type, title, detail? }`，例如 `…/run-failed`；执行进程丢失时为 `…/run-worker-lost` |
+| `error` | `failed` 时为 `{ type, title, detail? }`。失败原因是平台的领域错误时沿用该错误的 `type` 与 `title`，`detail` 为可行动的说明，例如 Agent 引用的 runtime 插件已停用时为 `…/runtime-plugin-inactive`（`detail` 带插件名称、版本与记录 id，见[错误码](/guide/troubleshooting/errors)）；其余失败为 `…/run-failed`；执行进程丢失时为 `…/run-worker-lost` |
 | `createdAt`、`startedAt`、`completedAt` | ISO 8601 时间 |
 
 ## 错误速查
