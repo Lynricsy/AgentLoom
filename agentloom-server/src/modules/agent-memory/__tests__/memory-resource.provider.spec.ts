@@ -38,6 +38,7 @@ import {
   MemoryResourceProvider,
 } from '../memory-resource.provider';
 import { AgentMemoryModule } from '../agent-memory.module';
+import { MemoryInstanceNotFoundException } from '../agent-memory.exceptions';
 
 type MockDb = ReturnType<typeof mocks.createMockDb>;
 
@@ -154,6 +155,59 @@ describe('MemoryResourceProvider', () => {
           fusionPriority: 9,
         },
       });
+    });
+
+    it('记忆实例已删除时（外键违例）应抛 memory-instance-not-found，而不是原始 SQL 错误', async () => {
+      const returning = vi.fn().mockRejectedValue(
+        Object.assign(
+          new Error('Failed query: insert into "memory_sessions"'),
+          {
+            cause: {
+              code: '23503',
+              constraint:
+                'memory_sessions_memory_instance_id_agent_memory_instances_id_fk',
+            },
+          },
+        ),
+      );
+      tenantDb.insert.mockReturnValueOnce({
+        values: vi.fn().mockReturnValue({ returning }),
+      });
+
+      await expect(
+        provider.create({
+          memoryInstanceId: INSTANCE_ID,
+          role: 'primary',
+          bootUris: [],
+          fusionPriority: 1,
+          tenantId: TENANT_ID,
+        }),
+      ).rejects.toBeInstanceOf(MemoryInstanceNotFoundException);
+    });
+
+    it('其他外键违例原样抛出', async () => {
+      const original = Object.assign(new Error('Failed query'), {
+        cause: {
+          code: '23503',
+          constraint:
+            'memory_sessions_agent_conversation_id_agent_conversations_id_fk',
+        },
+      });
+      tenantDb.insert.mockReturnValueOnce({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockRejectedValue(original),
+        }),
+      });
+
+      await expect(
+        provider.create({
+          memoryInstanceId: INSTANCE_ID,
+          role: 'primary',
+          bootUris: [],
+          fusionPriority: 1,
+          tenantId: TENANT_ID,
+        }),
+      ).rejects.toBe(original);
     });
 
     it('should throw when the insert does not return a created session', async () => {

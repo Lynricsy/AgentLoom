@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { getPostgresConstraintName } from '../../common/utils/postgres-error.utils';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
   memorySessions,
@@ -9,8 +10,13 @@ import {
   type MemorySessionConfig,
 } from '../../database/schema';
 import type { SharedResourceProvider } from '../shared-resources/shared-resource-registry';
+import { MemoryInstanceNotFoundException } from './agent-memory.exceptions';
 
 export const MEMORY_RESOURCE_TYPE = 'memory' as const;
+
+const FOREIGN_KEY_VIOLATION = '23503';
+const MEMORY_INSTANCE_FOREIGN_KEY =
+  'memory_sessions_memory_instance_id_agent_memory_instances_id_fk';
 
 export interface MemoryResourceConfig {
   memoryInstanceId: string;
@@ -54,21 +60,33 @@ export class MemoryResourceProvider implements SharedResourceProvider<
   async create(config: MemoryResourceConfig): Promise<MemoryResourceInstance> {
     const tenantDb = getTenantDb(this.db);
 
-    const [session] = await tenantDb
-      .insert(memorySessions)
-      .values({
-        memoryInstanceId: config.memoryInstanceId,
-        executionId: config.executionId,
-        agentConversationId: config.agentConversationId,
-        tenantId: config.tenantId,
-        role: config.role,
-        status: 'active',
-        config: {
-          bootUris: config.bootUris,
-          fusionPriority: config.fusionPriority,
-        },
-      })
-      .returning();
+    let session: MemorySession | undefined;
+    try {
+      [session] = await tenantDb
+        .insert(memorySessions)
+        .values({
+          memoryInstanceId: config.memoryInstanceId,
+          executionId: config.executionId,
+          agentConversationId: config.agentConversationId,
+          tenantId: config.tenantId,
+          role: config.role,
+          status: 'active',
+          config: {
+            bootUris: config.bootUris,
+            fusionPriority: config.fusionPriority,
+          },
+        })
+        .returning();
+    } catch (error) {
+      // 已发布 Agent / 工作流引用的记忆实例之后被删除：给出可行动的领域错误，而不是含 SQL 的内部错误
+      if (
+        getPostgresConstraintName(error, FOREIGN_KEY_VIOLATION) ===
+        MEMORY_INSTANCE_FOREIGN_KEY
+      ) {
+        throw new MemoryInstanceNotFoundException(config.memoryInstanceId);
+      }
+      throw error;
+    }
 
     if (!session) {
       throw new Error('Failed to create memory session resource');

@@ -674,7 +674,8 @@ export class AgentDefinitionService {
         updatedDraft.edges ?? [],
         updatedDraft.sandboxConfig,
       );
-      await this.assertRuntimePluginsPublishable(
+      await this.assertReferencedResourcesPublishable(
+        dbClient,
         updatedDraft.tenantId,
         updatedDraft.runtimeMode,
         updatedDraft.nodes,
@@ -1175,7 +1176,8 @@ export class AgentDefinitionService {
         agent.nodes ?? [],
         agent.edges ?? [],
       );
-      await this.assertRuntimePluginsPublishable(
+      await this.assertReferencedResourcesPublishable(
+        dbClient,
         agent.tenantId,
         agent.runtimeMode,
         agent.nodes ?? [],
@@ -1371,7 +1373,8 @@ export class AgentDefinitionService {
           existingVersion.snapshot.edges ?? [],
           existingVersion.snapshot.sandboxConfig ?? agent.sandboxConfig,
         );
-        await this.assertRuntimePluginsPublishable(
+        await this.assertReferencedResourcesPublishable(
+          dbClient,
           agent.tenantId,
           existingVersion.snapshot.runtimeMode ?? agent.runtimeMode,
           existingVersion.snapshot.nodes ?? [],
@@ -1420,7 +1423,8 @@ export class AgentDefinitionService {
           agent.edges ?? [],
           agent.sandboxConfig,
         );
-        await this.assertRuntimePluginsPublishable(
+        await this.assertReferencedResourcesPublishable(
+          dbClient,
           agent.tenantId,
           agent.runtimeMode,
           agent.nodes ?? [],
@@ -2521,38 +2525,49 @@ export class AgentDefinitionService {
   }
 
   /**
-   * 发布 / 创建版本时确认 harness 引用的 package 插件存在且 active；
-   * 画布草稿保存不做此校验，允许先连线再上传或启用插件。
+   * 发布 / 创建版本时确认画布引用的外部资源可用：
+   * - harness 引用的 package 插件存在且 active（仅 sandbox 运行态）；
+   * - 记忆节点引用的记忆实例在当前租户内存在（否则运行时创建记忆会话失败）。
+   * 画布草稿保存不做此校验，允许先连线再创建资源。
    */
-  private async assertRuntimePluginsPublishable(
+  private async assertReferencedResourcesPublishable(
+    dbClient: AgentDbClient,
     tenantId: string,
     runtimeMode: AgentRuntimeMode,
     nodes: unknown[],
     edges: unknown[],
   ): Promise<void> {
-    if (runtimeMode !== 'sandbox') {
-      return;
+    const { harness, memoryInstanceIds = [] } =
+      this.buildRuntimeConfigFromNodes(nodes, edges, undefined, runtimeMode);
+    const reasons: string[] = [];
+
+    if (runtimeMode === 'sandbox') {
+      for (const ref of collectEnabledPackagePluginRefs(harness)) {
+        try {
+          await this.runtimePluginService.findActiveById(ref, tenantId);
+        } catch (error) {
+          if (
+            error instanceof RuntimePluginNotFoundException ||
+            error instanceof RuntimePluginInactiveException
+          ) {
+            reasons.push(`runtime 插件 ${ref} 不存在或未启用`);
+            continue;
+          }
+          throw error;
+        }
+      }
     }
 
-    const { harness } = this.buildRuntimeConfigFromNodes(
-      nodes,
-      edges,
-      undefined,
-      runtimeMode,
-    );
-    const reasons: string[] = [];
-    for (const ref of collectEnabledPackagePluginRefs(harness)) {
-      try {
-        await this.runtimePluginService.findActiveById(ref, tenantId);
-      } catch (error) {
-        if (
-          error instanceof RuntimePluginNotFoundException ||
-          error instanceof RuntimePluginInactiveException
-        ) {
-          reasons.push(`runtime 插件 ${ref} 不存在或未启用`);
-          continue;
+    if (memoryInstanceIds.length > 0) {
+      const existing = await dbClient
+        .select({ id: schema.agentMemoryInstances.id })
+        .from(schema.agentMemoryInstances)
+        .where(inArray(schema.agentMemoryInstances.id, memoryInstanceIds));
+      const existingIds = new Set(existing.map((row) => row.id));
+      for (const id of memoryInstanceIds) {
+        if (!existingIds.has(id)) {
+          reasons.push(`记忆实例 ${id} 不存在或已删除，请在记忆节点重新选择`);
         }
-        throw error;
       }
     }
 

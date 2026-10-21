@@ -138,7 +138,7 @@ AgentLoom 的 REST API 出错时返回 `application/problem+json`（RFC 9457）�
 | `agent-not-found` | 404 | Agent 不存在或不属于当前组织 | 确认链接与当前组织 |
 | `agent-archived` | 409 | Agent 已归档 | 使用其他 Agent |
 | `agent-version-conflict` | 409 | Agent 已被其他用户或其他标签页修改 | 刷新页面后重新编辑 |
-| `agent-publish-validation` | 422 | Agent 发布校验未通过 | 按 `detail` 修正 Agent 画布 |
+| `agent-publish-validation` | 422 | Agent 发布校验未通过，例如画布为空、sandbox 未连接、引用的 Runtime 插件未启用，或记忆节点引用的记忆实例已删除 | 按 `detail` 修正 Agent 画布（记忆实例已删除时在记忆节点重新选择） |
 | `agent-sandbox-not-connected` | 409 | 有沙箱的 Agent 画布上没有连接沙箱，无法开始对话 | 在 Agent 画布上把 Sandbox 节点连到 Agent Main |
 | `agent-canvas-invalid-mcp-tool-binding` | 422 | Agent 画布上的 MCP 节点配置不完整 | 在 MCP 节点中选择服务与工具 |
 | `agent-canvas-invalid-harness` | 422 | Harness 或 Runtime 插件节点配置无效，或无沙箱 Agent 使用了 Harness | 按 `detail` 修正节点，见 [用 Harness 定制 Agent 运行时](/guide/agents/harness) |
@@ -170,7 +170,7 @@ Agent 对外 API 的错误类型见 [Agent 对外 API](/api/agent-api)。
 
 | type | HTTP 状态 | 含义 | 处理建议 |
 | --- | --- | --- | --- |
-| `memory-instance-not-found` | 404 | 记忆实例不存在或不属于当前组织 | 确认链接与当前组织 |
+| `memory-instance-not-found` | 404 | 记忆实例不存在或不属于当前组织；作为 run 错误出现时，表示已发布 Agent 引用的记忆实例在发布后被删除 | 确认链接与当前组织；run 报此错时在 Agent 记忆节点重新选择实例并重新发布 |
 | `memory-node-not-found` | 404 | 记忆节点不存在，或不属于路由中的记忆实例 | 确认节点 ID 与实例 ID 对应 |
 | `memory-edge-not-found` | 404 | 记忆边不存在，或不属于路由中的记忆实例 | 刷新图谱后重试 |
 | `memory-path-not-found` | 404 | 记忆路径（URI）不存在 | 确认 URI 拼写，或先创建路径 |

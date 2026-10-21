@@ -3567,6 +3567,65 @@ describe('AgentDefinitionService', () => {
       expect(mockTxClient.insert).not.toHaveBeenCalled();
     });
 
+    it('记忆节点引用的记忆实例不存在时应拒绝发布，并列出缺失的实例', async () => {
+      const agent = makeAgent({
+        runtimeMode: 'no_sandbox',
+        nodes: [
+          { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
+          {
+            id: 'memory-a',
+            type: 'memory',
+            data: {
+              nodeType: 'memory',
+              config: { memoryInstanceId: 'mem-live' },
+            },
+          },
+          {
+            id: 'memory-b',
+            type: 'memory',
+            data: {
+              nodeType: 'memory',
+              config: { memoryInstanceId: 'mem-gone' },
+            },
+          },
+        ],
+        edges: [
+          {
+            id: 'e-a',
+            source: 'memory-a',
+            target: 'main',
+            targetHandle: 'memory-in',
+          },
+          {
+            id: 'e-b',
+            source: 'memory-b',
+            target: 'main',
+            targetHandle: 'memory-in',
+          },
+        ],
+      });
+      // 第 1 次 select 读 Agent，第 2 次查记忆实例：只有 mem-live 存在
+      let selectCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCount += 1;
+        const rows = selectCount === 1 ? [agent] : [{ id: 'mem-live' }];
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue(rows);
+        return c;
+      });
+
+      const error = await service
+        .publish('agent-1', makePublishAgentDto(), 'user-1')
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(AgentPublishValidationException);
+      expect(error).toMatchObject({
+        detail: '记忆实例 mem-gone 不存在或已删除，请在记忆节点重新选择',
+      });
+      expect(mockTxClient.insert).not.toHaveBeenCalled();
+    });
+
     it('指定 versionId 时应直接重新发布历史版本', async () => {
       const agent = makeAgent({
         nodes: [{ id: 'n1', type: 'llm-model', data: {} }],
