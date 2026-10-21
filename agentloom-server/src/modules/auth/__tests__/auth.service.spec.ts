@@ -422,6 +422,18 @@ describe('AuthService', () => {
       }
     });
 
+    it('账号已被封禁（user_banned）: 与密码错误同为 invalid-credentials 401，不暴露账号状态', async () => {
+      // GoTrue 在校验密码之前就返回 user_banned，单独的状态码会让任何人探测出被封禁的邮箱
+      supabaseService.signIn.mockRejectedValue(
+        new AuthApiError('User is banned', 400, 'user_banned'),
+      );
+
+      await expect(authService.login(loginDto)).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/invalid-credentials',
+        status: HttpStatus.UNAUTHORIZED,
+      });
+    });
+
     it('Supabase 登录 API 返回 5xx 时: login-failed で 500', async () => {
       supabaseService.signIn.mockRejectedValue(
         new AuthApiError('Upstream auth outage', 500, 'unexpected_failure'),
@@ -617,6 +629,17 @@ describe('AuthService', () => {
         expect(de.getStatus()).toBe(HttpStatus.UNAUTHORIZED);
         expect(de.type).toBe('https://agentloom.dev/errors/refresh-invalid');
       }
+    });
+
+    it('账号已被封禁（user_banned）: refresh-invalid で 401', async () => {
+      supabaseService.refreshToken.mockRejectedValue(
+        new AuthApiError('User is banned', 400, 'user_banned'),
+      );
+
+      await expect(authService.refreshToken(refreshDto)).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/refresh-invalid',
+        status: HttpStatus.UNAUTHORIZED,
+      });
     });
 
     it('GoTrue 不可达时透传 503 auth-unavailable（带 Retry-After）', async () => {

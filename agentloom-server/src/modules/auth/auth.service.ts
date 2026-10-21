@@ -196,7 +196,10 @@ export class AuthService {
       if (error instanceof DomainException) throw error;
 
       if (error instanceof AuthApiError) {
-        if (this.isInvalidCredentialsError(error)) {
+        if (
+          this.isInvalidCredentialsError(error) ||
+          this.isBannedUserError(error)
+        ) {
           throw new DomainException({
             type: 'https://agentloom.dev/errors/invalid-credentials',
             title: 'Unauthorized',
@@ -234,7 +237,10 @@ export class AuthService {
       if (error instanceof DomainException) throw error;
 
       if (error instanceof AuthApiError) {
-        if (this.isInvalidRefreshTokenError(error)) {
+        if (
+          this.isInvalidRefreshTokenError(error) ||
+          this.isBannedUserError(error)
+        ) {
           throw new DomainException({
             type: 'https://agentloom.dev/errors/refresh-invalid',
             title: 'Unauthorized',
@@ -759,6 +765,14 @@ export class AuthService {
       code === 'invalid_credentials' ||
       message.includes('invalid login credentials')
     );
+  }
+
+  /**
+   * GoTrue 对被封禁账号在校验密码之前就返回 user_banned。
+   * 登录与刷新都把它当作凭证无效处理，避免对外暴露「该邮箱存在且被封禁」。
+   */
+  private isBannedUserError(error: AuthApiError): boolean {
+    return error.code?.toLowerCase() === 'user_banned';
   }
 
   private isInvalidRefreshTokenError(error: AuthApiError): boolean {
