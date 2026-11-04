@@ -144,7 +144,8 @@ export function registerWriteDiagnostics(
         { warmMs: POST_WRITE_WAIT_MS, coldMs: POST_WRITE_COLD_WAIT_MS },
         exec.signal,
       );
-      if (!collected) return decision;
+      // 等待窗口内没有新一轮 publish 时，缓存的是上一版本内容的诊断，追加会误导模型
+      if (!collected?.fresh) return decision;
       const relevant = sortDiagnostics(
         (collected.diagnostics ?? []).filter((d) => (d.severity ?? 1) <= 2),
       );

@@ -18,6 +18,8 @@ const connection = createMessageConnection(
 const documents = new Map();
 /** 模拟冷启动：首轮诊断推迟这么久（毫秒）才发布 */
 let firstPublishDelayMs = Number(process.env.FAKE_LSP_FIRST_PUBLISH_DELAY_MS ?? 0);
+/** 模拟 tsserver 被 OOM 杀掉而语言服务器进程仍存活：发布这么多轮后不再发布诊断 */
+let publishesLeft = Number(process.env.FAKE_LSP_MAX_PUBLISHES ?? Infinity);
 
 function lines(text) {
   return text.split(/\r\n|\r|\n/);
@@ -47,6 +49,8 @@ function publish(uri) {
       });
     }
   });
+  if (publishesLeft <= 0) return;
+  publishesLeft -= 1;
   const send = () =>
     void connection.sendNotification('textDocument/publishDiagnostics', { uri, diagnostics });
   if (firstPublishDelayMs > 0) {

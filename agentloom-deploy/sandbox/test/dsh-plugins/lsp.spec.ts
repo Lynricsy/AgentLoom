@@ -26,16 +26,18 @@ interface Harness {
 const tempDirs: string[] = [];
 let callSeq = 0;
 
-async function createWorkdir(firstPublishDelayMs = 0): Promise<string> {
+async function createWorkdir(serverEnv: Record<string, string> = {}): Promise<string> {
   const workdir = await fs.mkdtemp(path.join(os.tmpdir(), 'agentloom-lsp-'));
   tempDirs.push(workdir);
   await fs.writeFile(path.join(workdir, 'package.json'), '{}\n');
   const binDir = path.join(workdir, 'node_modules', '.bin');
   await fs.mkdir(binDir, { recursive: true });
   const wrapper = path.join(binDir, 'typescript-language-server');
-  // firstPublishDelayMs > 0 时让 fake server 推迟首轮诊断，模拟冷启动
-  const delayEnv = firstPublishDelayMs > 0 ? `FAKE_LSP_FIRST_PUBLISH_DELAY_MS=${firstPublishDelayMs} ` : '';
-  await fs.writeFile(wrapper, `#!/bin/sh\n${delayEnv}exec "${process.execPath}" "${FAKE_SERVER}" "$@"\n`, {
+  // serverEnv 传给 fake server：FAKE_LSP_FIRST_PUBLISH_DELAY_MS 模拟冷启动，FAKE_LSP_MAX_PUBLISHES 模拟停止发布
+  const envPrefix = Object.entries(serverEnv)
+    .map(([key, value]) => `${key}=${value} `)
+    .join('');
+  await fs.writeFile(wrapper, `#!/bin/sh\n${envPrefix}exec "${process.execPath}" "${FAKE_SERVER}" "$@"\n`, {
     mode: 0o755,
   });
   await fs.writeFile(
@@ -45,8 +47,11 @@ async function createWorkdir(firstPublishDelayMs = 0): Promise<string> {
   return workdir;
 }
 
-async function createHarness(allowEdits: boolean, firstPublishDelayMs = 0): Promise<Harness> {
-  const workdir = await createWorkdir(firstPublishDelayMs);
+async function createHarness(
+  allowEdits: boolean,
+  serverEnv: Record<string, string> = {},
+): Promise<Harness> {
+  const workdir = await createWorkdir(serverEnv);
   const ctx = new Context();
   const fibers = [
     ctx.plugin(SystemPrompt, {}),
@@ -111,16 +116,35 @@ afterAll(async () => {
   await Promise.all(tempDirs.map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
-describe('agentloom-lsp 冷启动', () => {
+describe('agentloom-lsp 写后诊断时序', () => {
   it('写操作触发 server 冷启动、首轮诊断晚于 1.5 s 时仍附带诊断', async () => {
     // microVM 中 tsserver 冷启动首轮诊断约 5 s；这里用 2.5 s 越过已就绪时的 1.5 s 窗口
-    const harness = await createHarness(true, 2500);
+    const harness = await createHarness(true, { FAKE_LSP_FIRST_PUBLISH_DELAY_MS: '2500' });
     try {
       const result = await run(harness.ctx, 'write', {
         file_path: 'demo.ts',
         content: 'export const n: number = ERROR;\n',
       });
       expect(textOf(result)).toContain('[lsp diagnostics for demo.ts] 1 error(s), 0 warning(s):');
+    } finally {
+      await harness.dispose();
+    }
+  }, 20_000);
+
+  it('server 不再发布新一轮诊断时，写后不追加上一版本的旧诊断', async () => {
+    // 只发布一轮：模拟 microVM 内 tsserver 被 OOM 杀掉、typescript-language-server 仍存活
+    const harness = await createHarness(true, { FAKE_LSP_MAX_PUBLISHES: '1' });
+    try {
+      const dirty = await run(harness.ctx, 'write', {
+        file_path: 'demo.ts',
+        content: 'export const n: number = ERROR;\n',
+      });
+      expect(textOf(dirty)).toContain('[lsp diagnostics for demo.ts] 1 error(s), 0 warning(s):');
+      const clean = await run(harness.ctx, 'write', {
+        file_path: 'demo.ts',
+        content: 'export const n: number = 1;\n',
+      });
+      expect(textOf(clean)).toBe('Wrote demo.ts');
     } finally {
       await harness.dispose();
     }
