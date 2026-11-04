@@ -1,15 +1,15 @@
+/**
+ * 把模型给出的路径（相对 workdir 或绝对）解析为绝对路径，并要求位于 workdir
+ * 之内（workdir 即 profile 中 sandbox-policy 的 workspaceRoot，生产为 /workspace），
+ * 越界即抛错。
+ */
 import path from 'node:path';
 
-const WORKSPACE_ROOT = path.resolve('/workspace');
-
-/**
- * 把模型给出的路径（相对 workdir 或绝对）解析为绝对路径，并要求位于
- * /workspace/ 下（与 bridge 的 PTY cwd 规则一致），越界即抛错。
- */
 export function resolveWorkspacePath(workdir: string, input: string): string {
-  const resolved = path.resolve(workdir, input);
-  if (resolved !== WORKSPACE_ROOT && !resolved.startsWith(`${WORKSPACE_ROOT}${path.sep}`)) {
-    throw new Error(`path must be under /workspace/ — got: ${resolved}`);
+  const root = path.resolve(workdir);
+  const resolved = path.resolve(root, input);
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`path must be under ${root}/ — got: ${resolved}`);
   }
   return resolved;
 }
