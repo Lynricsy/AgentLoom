@@ -78,6 +78,7 @@ import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
+import { BuiltinToolsProvider } from '../builtin-tools/builtin-tools.provider';
 import type { SkillPromptPayload } from '../skill/skill.types';
 import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
 import {
@@ -149,6 +150,9 @@ export class AgentTaskWorkerSupportService {
     @Optional()
     @Inject(SkillResolverService)
     protected readonly skillResolverService?: SkillResolverService,
+    @Optional()
+    @Inject(BuiltinToolsProvider)
+    protected readonly builtinToolsProvider?: BuiltinToolsProvider,
   ) {
     void throttleService;
   }
@@ -558,6 +562,27 @@ export class AgentTaskWorkerSupportService {
       sessionId,
       this.skillResolverService.createLoadSkillToolProvider(skills),
     );
+  }
+
+  /**
+   * 注册服务端内置工具（web_search / generate_image）。工作流 Agent 节点没有画布 runtimeConfig，
+   * 内置工具按缺省策略全部启用；sandbox 步骤的图片内联回 guest，否则写入对象存储。
+   */
+  public async registerBuiltinToolsProvider(params: {
+    runtime: IAgentRuntime;
+    sessionId: string | null | undefined;
+    tenantId: string;
+    hasSandbox: boolean;
+  }): Promise<void> {
+    if (!params.sessionId || !this.builtinToolsProvider) {
+      return;
+    }
+    await this.builtinToolsProvider.register({
+      runtime: params.runtime,
+      sessionId: params.sessionId,
+      tenantId: params.tenantId,
+      delivery: params.hasSandbox ? 'inline' : 'storage',
+    });
   }
 
   public cleanupMemoryToolsProvider(

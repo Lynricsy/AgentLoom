@@ -24,6 +24,8 @@ import { SkillResolverService } from '../skill/skill-resolver.service';
 import { McpModule } from '../mcp/mcp.module';
 import { SubAgentToolsProvider } from '../agent-execution/subagent';
 import { WorkspaceIntegrationModule } from '../agent-execution/workspace-integration.module';
+import { BuiltinToolsModule } from '../builtin-tools/builtin-tools.module';
+import { BuiltinToolsProvider } from '../builtin-tools/builtin-tools.provider';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { ExecutionController } from './execution.controller';
 import { ExecutionService } from './execution.service';
@@ -86,6 +88,7 @@ import {
     SkillModule,
     McpModule,
     WorkspaceIntegrationModule,
+    BuiltinToolsModule,
     BullModule.registerQueue({
       name: EXECUTION_QUEUE,
       defaultJobOptions: EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
@@ -143,6 +146,7 @@ import {
         llmCostService,
         executionCancellation,
         modelRoutingService,
+        builtinToolsProvider,
       ) =>
         new AgentAdapterFactory(
           db,
@@ -156,6 +160,7 @@ import {
           llmCostService,
           executionCancellation,
           modelRoutingService,
+          builtinToolsProvider,
         ),
       inject: [
         DRIZZLE,
@@ -168,6 +173,7 @@ import {
         LlmCostService,
         ExecutionCancellationService,
         ModelRoutingService,
+        { token: BuiltinToolsProvider, optional: true },
       ],
     },
     RbacCacheService,

@@ -136,6 +136,7 @@ import {
   type ConversationTurnPersistedEvent,
 } from './agent-execution.events';
 import type { TeamToolsProvider } from '../team/team-tools.provider';
+import type { BuiltinToolsProvider } from '../builtin-tools/builtin-tools.provider';
 
 type ConversationSource = AgentConversation['source'];
 
@@ -224,6 +225,7 @@ export class AgentExecutionWorkerPersistenceService {
     protected readonly llmCostService?: LlmCostService,
     protected readonly eventEmitter?: EventEmitter2,
     protected readonly teamToolsProvider?: TeamToolsProvider,
+    protected readonly builtinToolsProvider?: BuiltinToolsProvider,
   ) {}
 
   public async persistConversationTurn(
@@ -1008,6 +1010,13 @@ export class AgentExecutionWorkerPersistenceService {
         nextSessionId,
         skillPrompt.skills,
       );
+      await this.registerBuiltinToolsProvider({
+        runtime,
+        sessionId: nextSessionId,
+        tenantId: params.parentContext.tenantId,
+        runtimeConfig,
+        usesSandboxRuntime,
+      });
       await this.registerSelfEvolutionToolsProvider({
         runtime,
         sessionId: nextSessionId,
@@ -1316,6 +1325,29 @@ export class AgentExecutionWorkerPersistenceService {
       sessionId,
       this.skillResolverService.createLoadSkillToolProvider(skills),
     );
+  }
+
+  /**
+   * 注册服务端内置工具（web_search / generate_image）。sandbox 运行态的结果经远程工具回调
+   * 内联回 guest（图片落盘到 /workspace/generated/），no_sandbox 运行态的图片写入对象存储。
+   */
+  public async registerBuiltinToolsProvider(params: {
+    runtime: IAgentRuntime;
+    sessionId: string;
+    tenantId: string;
+    runtimeConfig: AgentRuntimeConfig;
+    usesSandboxRuntime: boolean;
+  }): Promise<void> {
+    if (!this.builtinToolsProvider) {
+      return;
+    }
+    await this.builtinToolsProvider.register({
+      runtime: params.runtime,
+      sessionId: params.sessionId,
+      tenantId: params.tenantId,
+      policy: params.runtimeConfig.builtinToolPolicy,
+      delivery: params.usesSandboxRuntime ? 'inline' : 'storage',
+    });
   }
 
   public async cleanupConversationMemorySessions(

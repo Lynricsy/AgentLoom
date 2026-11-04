@@ -44,6 +44,8 @@ import { SkillResolverService } from '../skill/skill-resolver.service';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
 import { TeamModule } from '../team/team.module';
 import { TeamToolsProvider } from '../team/team-tools.provider';
+import { BuiltinToolsModule } from '../builtin-tools/builtin-tools.module';
+import { BuiltinToolsProvider } from '../builtin-tools/builtin-tools.provider';
 import { WorkspaceIntegrationService } from './workspace-integration.service';
 import { SubAgentToolsProvider } from './subagent';
 import {
@@ -97,6 +99,7 @@ const agentExecutionWorkerProvider: Provider = {
     eventEmitter?: EventEmitter2,
     teamToolsProvider?: TeamToolsProvider,
     configService?: ConfigService<EnvConfig, true>,
+    builtinToolsProvider?: BuiltinToolsProvider,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -123,6 +126,7 @@ const agentExecutionWorkerProvider: Provider = {
       undefined,
       undefined,
       configService,
+      builtinToolsProvider,
     ),
   inject: [
     DRIZZLE,
@@ -147,6 +151,7 @@ const agentExecutionWorkerProvider: Provider = {
     EventEmitter2,
     { token: TeamToolsProvider, optional: true },
     ConfigService,
+    { token: BuiltinToolsProvider, optional: true },
   ],
 };
 
@@ -165,6 +170,7 @@ const agentExecutionWorkerProvider: Provider = {
     SelfEvolutionModule,
     AgentApiRuntimeModule,
     TeamModule,
+    BuiltinToolsModule,
     BullModule.registerQueue({
       name: AGENT_CONVERSATION_EXECUTION_QUEUE,
       defaultJobOptions: AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,

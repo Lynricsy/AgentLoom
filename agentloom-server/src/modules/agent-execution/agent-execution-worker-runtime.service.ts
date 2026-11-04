@@ -496,6 +496,13 @@ export class AgentExecutionWorkerRuntimeService {
             await this.persistence.resolveSkillPayloads(context),
           );
         }
+        await this.persistence.registerBuiltinToolsProvider({
+          runtime,
+          sessionId: session.id,
+          tenantId,
+          runtimeConfig: context.runtimeConfig,
+          usesSandboxRuntime: hasSandboxRuntime,
+        });
         await this.persistence.registerSelfEvolutionToolsProvider({
           runtime,
           sessionId: session.id,
@@ -570,6 +577,13 @@ export class AgentExecutionWorkerRuntimeService {
       nextSessionId,
       skillPrompt.skills,
     );
+    await this.persistence.registerBuiltinToolsProvider({
+      runtime,
+      sessionId: nextSessionId,
+      tenantId,
+      runtimeConfig: context.runtimeConfig,
+      usesSandboxRuntime: hasSandboxRuntime,
+    });
     await this.persistence.registerSelfEvolutionToolsProvider({
       runtime,
       sessionId: nextSessionId,

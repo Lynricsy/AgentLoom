@@ -115,6 +115,9 @@ function createAdapter(
   if (deps.modelRoutingService) {
     adapterDeps.modelRoutingService = deps.modelRoutingService;
   }
+  if (deps.builtinToolsProvider) {
+    adapterDeps.builtinToolsProvider = deps.builtinToolsProvider;
+  }
 
   return new WorkflowAgentAdapter(adapterDeps as never, config as never);
 }
@@ -359,6 +362,80 @@ describe('WorkflowAgentAdapter', () => {
     ).not.toBe(mockSandboxRuntime.createSession.mock.calls[1]?.[0]?.sessionId);
     expect(mockEventBridge.emitOutputChunk).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ content: 'parent-output' });
+  });
+
+  it('按运行态向 BuiltinToolsProvider 注册内置工具：无 sandbox 走 storage，sandbox 走 inline', async () => {
+    const builtinToolsProvider = {
+      register: vi.fn().mockResolvedValue(undefined),
+    };
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockImplementation(
+      (nodes: Array<{ id?: string }>) => ({
+        modelConfig: { modelId: 'model-builtin' },
+        ...(nodes[0]?.id === 'parent-node'
+          ? { sandboxConfig: { cpu: 2, memory: 1024, disk: 4, timeout: 5 } }
+          : { runtimeMode: 'no_sandbox' }),
+        builtinToolPolicy: {
+          webSearchEnabled: false,
+          imageGenerationEnabled: true,
+        },
+        subAgents: [],
+      }),
+    );
+    mockSandboxRuntime.prompt.mockImplementation(() =>
+      emit([
+        { type: 'message_chunk', content: 'builtin-output' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+      builtinToolsProvider,
+    });
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'hello' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'hello' },
+      tenantId: TENANT_ID,
+      versionSnapshot: parentSnapshot,
+      sandboxBinding: { executionId: EXECUTION_ID },
+    });
+
+    const sessionIds = mockSandboxRuntime.createSession.mock.calls.map(
+      ([params]) => params.sessionId,
+    );
+    expect(builtinToolsProvider.register.mock.calls).toEqual([
+      [
+        {
+          runtime: mockSandboxRuntime,
+          sessionId: sessionIds[0],
+          tenantId: TENANT_ID,
+          policy: { webSearchEnabled: false, imageGenerationEnabled: true },
+          delivery: 'storage',
+        },
+      ],
+      [
+        {
+          runtime: mockSandboxRuntime,
+          sessionId: sessionIds[1],
+          tenantId: TENANT_ID,
+          policy: { webSearchEnabled: false, imageGenerationEnabled: true },
+          delivery: 'inline',
+        },
+      ],
+    ]);
   });
 
   it('没有工作流 sandbox 时会按 Agent 全局 sandboxConfig 新建执行级沙箱，并保留多模态输入块', async () => {

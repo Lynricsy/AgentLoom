@@ -50,6 +50,12 @@ env:
     APP_TYPESAFE_BASE_URL: https://api.typesafe.ai
     APP_TYPESAFE_MODEL: jev-1.13.0
     APP_TYPESAFE_TIMEOUT_MS: "3000"
+    # Agent 内置 web_search 工具的搜索后端链（逗号分隔，按顺序回退）：duckduckgo（免 key）/ tavily / brave / exa。
+    # DuckDuckGo 常拦截数据中心 IP，生产部署建议至少配置一个带 key 的后端，例如 tavily,duckduckgo（Key 经 server-secret 下发）。
+    APP_WEB_SEARCH_PROVIDERS: duckduckgo
+    APP_WEB_SEARCH_TAVILY_API_KEY: ""
+    APP_WEB_SEARCH_BRAVE_API_KEY: ""
+    APP_WEB_SEARCH_EXA_API_KEY: ""
   server:
     APP_JWT_SECRET: change-me-jwt-secret
     APP_MASTER_ENCRYPTION_KEY: REPLACE_WITH_BASE64_32_BYTES

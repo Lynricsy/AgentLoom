@@ -13,6 +13,7 @@ import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import { SkillResolverService } from '../../skill/skill-resolver.service';
 import { LlmCostService } from '../../llm/llm-cost.service';
 import { RuntimePluginInactiveException } from '../../runtime-plugin/runtime-plugin.exceptions';
+import { BuiltinToolsProvider } from '../../builtin-tools/builtin-tools.provider';
 
 const {
   mockDb,
@@ -2045,6 +2046,152 @@ describe('AgentExecutionWorker', () => {
       expect(
         await loadSkillTool!.execute!({ name: 'other-skill' }, {} as never),
       ).toMatch(/not bound/);
+    });
+
+    describe('内置服务工具注册', () => {
+      type PrepareRuntimeSession = (
+        context: Record<string, unknown>,
+        conversationId: string,
+        tenantId: string,
+        parentAbortSignal: AbortSignal,
+        subAgentTracker: { abortControllers: Map<string, AbortController> },
+        currentAgentDefinitionId: string,
+      ) => Promise<unknown>;
+
+      const createWorkerWithBuiltinTools = (
+        builtinToolsProvider: Pick<BuiltinToolsProvider, 'register'>,
+      ) =>
+        new AgentExecutionWorker(
+          mockDb as never,
+          mockRuntime as never,
+          mockAdapterFactory as never,
+          mockExecutionService as never,
+          mockEventBridge as never,
+          mockSandboxService as never,
+          mockWorkspaceIntegrationService as never,
+          mockAgentDefinitionService as never,
+          mockMemoryToolsService as never,
+          mockMemoryFusionService as never,
+          mockMemoryResourceProvider as never,
+          mockSkillResolverService as never,
+          undefined,
+          mockConversationTitleService as never,
+          mockSelfEvolutionToolsProvider as never,
+          mockSmartRoutingService as never,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          builtinToolsProvider as BuiltinToolsProvider,
+        ) as unknown as { prepareRuntimeSession: PrepareRuntimeSession };
+
+      const createRealBuiltinToolsProvider = () =>
+        new BuiltinToolsProvider(
+          { search: vi.fn() } as never,
+          { resolveTenantImageModel: vi.fn().mockResolvedValue(null) } as never,
+          {} as never,
+        );
+
+      const prepareNoSandboxSession = async (
+        builtinToolPolicy?: Record<string, boolean>,
+      ) => {
+        mockAdapterFactory.selectAdapter.mockImplementation((hasSandbox) =>
+          hasSandbox ? mockSandboxRuntime : mockRuntime,
+        );
+        const registeredProviders = new Map<string, SessionToolProvider[]>();
+        mockRuntime.registerSessionToolProvider.mockImplementation(
+          (sessionId: string, provider: SessionToolProvider) => {
+            registeredProviders.set(sessionId, [
+              ...(registeredProviders.get(sessionId) ?? []),
+              provider,
+            ]);
+          },
+        );
+
+        await createWorkerWithBuiltinTools(
+          createRealBuiltinToolsProvider(),
+        ).prepareRuntimeSession(
+          makeActiveContext({
+            hasSandbox: false,
+            runtimeConfig: {
+              runtimeMode: 'no_sandbox',
+              modelConfig: { modelId: 'model-1' },
+              ...(builtinToolPolicy ? { builtinToolPolicy } : {}),
+            },
+          }),
+          'conversation-1',
+          'tenant-1',
+          new AbortController().signal,
+          { abortControllers: new Map() },
+          'agent-1',
+        );
+
+        const createParams = mockRuntime.createSession.mock.calls[0]?.[0];
+        const toolSets = await Promise.all(
+          (registeredProviders.get(createParams?.sessionId) ?? []).map(
+            (provider) => provider(),
+          ),
+        );
+        return toolSets.flatMap((tools) => Object.keys(tools));
+      };
+
+      it('无 sandbox 对话新建会话时注册 web_search', async () => {
+        await expect(prepareNoSandboxSession()).resolves.toContain(
+          'web_search',
+        );
+      });
+
+      it('builtinToolPolicy.webSearchEnabled=false 时不注册 web_search', async () => {
+        await expect(
+          prepareNoSandboxSession({
+            webSearchEnabled: false,
+            imageGenerationEnabled: true,
+          }),
+        ).resolves.not.toContain('web_search');
+      });
+
+      it('sandbox 对话以 inline 交付注册内置工具并透传策略', async () => {
+        const builtinToolsProvider = {
+          register: vi.fn().mockResolvedValue(undefined),
+        };
+        mockSandboxRuntime.createSession.mockResolvedValue(
+          makeSession({ id: 'sandbox-session-builtin' }),
+        );
+
+        await createWorkerWithBuiltinTools(
+          builtinToolsProvider,
+        ).prepareRuntimeSession(
+          makeActiveContext({
+            runtimeConfig: {
+              sandboxConfig: { image: 'agentloom/sandbox:latest' },
+              modelConfig: { modelId: 'model-1' },
+              builtinToolPolicy: {
+                webSearchEnabled: true,
+                imageGenerationEnabled: false,
+              },
+            },
+          }),
+          'conversation-1',
+          'tenant-1',
+          new AbortController().signal,
+          { abortControllers: new Map() },
+          'agent-1',
+        );
+
+        const createParams =
+          mockSandboxRuntime.createSession.mock.calls[0]?.[0];
+        expect(builtinToolsProvider.register).toHaveBeenCalledWith({
+          runtime: mockSandboxRuntime,
+          sessionId: createParams?.sessionId,
+          tenantId: 'tenant-1',
+          policy: { webSearchEnabled: true, imageGenerationEnabled: false },
+          delivery: 'inline',
+        });
+      });
     });
   });
 

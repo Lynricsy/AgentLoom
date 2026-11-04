@@ -11,6 +11,7 @@ import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
 import { EventBridgeService } from '../services/event-bridge.service';
 import type { ExecutionCancellationService } from '../services/execution-cancellation.service';
 import type { ModelRoutingService } from '../../smart-routing/model-routing.service';
+import type { BuiltinToolsProvider } from '../../builtin-tools/builtin-tools.provider';
 
 export class AgentAdapterFactory {
   constructor(
@@ -25,6 +26,7 @@ export class AgentAdapterFactory {
     private readonly llmCostService?: LlmCostService,
     private readonly executionCancellation?: ExecutionCancellationService,
     private readonly modelRoutingService?: ModelRoutingService,
+    private readonly builtinToolsProvider?: BuiltinToolsProvider,
   ) {}
 
   createFromAgentDefinition(
@@ -44,6 +46,7 @@ export class AgentAdapterFactory {
         llmCostService: this.llmCostService,
         executionCancellation: this.executionCancellation,
         modelRoutingService: this.modelRoutingService,
+        builtinToolsProvider: this.builtinToolsProvider,
       },
       {
         agentDefinitionId,

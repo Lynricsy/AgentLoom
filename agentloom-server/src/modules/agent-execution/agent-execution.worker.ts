@@ -133,6 +133,7 @@ import {
   turnResultHasPersistableOutput,
 } from './conversation-turn-values';
 import { TeamToolsProvider } from '../team/team-tools.provider';
+import { BuiltinToolsProvider } from '../builtin-tools/builtin-tools.provider';
 import {
   AGENT_CONVERSATION_LOOP_ENDED_EVENT,
   type ConversationLoopEndedEvent,
@@ -946,6 +947,8 @@ export class AgentExecutionWorker
     injectedRuntimeService?: AgentExecutionWorkerRuntimeService,
     @Optional()
     private readonly configService?: ConfigService<EnvConfig, true>,
+    @Optional()
+    builtinToolsProvider?: BuiltinToolsProvider,
   ) {
     super();
     this.persistenceService =
@@ -971,6 +974,7 @@ export class AgentExecutionWorker
         llmCostService,
         eventEmitter,
         teamToolsProvider,
+        builtinToolsProvider,
       );
     this.runtimeService =
       injectedRuntimeService ??

@@ -84,6 +84,7 @@ import { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
 import type { LlmCostService } from '../llm/llm-cost.service';
 import type { ModelRoutingService } from '../smart-routing/model-routing.service';
+import type { BuiltinToolsProvider } from '../builtin-tools/builtin-tools.provider';
 import {
   appendTextConversationMessageSegment,
   appendThinkingConversationMessageSegment,
@@ -106,6 +107,7 @@ interface WorkflowAgentAdapterDependencies {
   readonly llmCostService?: LlmCostService;
   readonly executionCancellation?: ExecutionCancellationService;
   readonly modelRoutingService?: ModelRoutingService;
+  readonly builtinToolsProvider?: BuiltinToolsProvider;
 }
 
 interface WorkflowAgentAdapterConfig {
@@ -312,6 +314,13 @@ export class WorkflowAgentAdapter {
         ),
       );
     }
+    await this.dependencies.builtinToolsProvider?.register({
+      runtime,
+      sessionId: nextSessionId,
+      tenantId: params.tenantId,
+      policy: effectiveRuntimeConfig.builtinToolPolicy,
+      delivery: usesSandboxRuntime ? 'inline' : 'storage',
+    });
 
     const subAgentEnvelope = params.subAgentInvocation
       ? this.createSubAgentEnvelope(params.subAgentInvocation, currentDepth)

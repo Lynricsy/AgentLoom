@@ -73,6 +73,7 @@ import { MemoryToolsService } from '../agent-memory/memory-tools.service';
 import { MemoryFusionService } from '../agent-memory/services/memory-fusion.service';
 import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-protocol.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
+import { BuiltinToolsProvider } from '../builtin-tools/builtin-tools.provider';
 import type { SkillPromptPayload } from '../skill/skill.types';
 import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
 import {
@@ -685,6 +686,9 @@ export class AgentTaskWorker extends WorkerHost {
     injectedSupportService?: AgentTaskWorkerSupportService,
     @Optional()
     injectedRuntimeService?: AgentTaskWorkerRuntimeService,
+    @Optional()
+    @Inject(BuiltinToolsProvider)
+    builtinToolsProvider?: BuiltinToolsProvider,
   ) {
     super();
     void throttleService;
@@ -712,6 +716,7 @@ export class AgentTaskWorker extends WorkerHost {
         memoryToolsService,
         memoryFusionService,
         skillResolverService,
+        builtinToolsProvider,
       );
     this.runtimeService =
       injectedRuntimeService ??
@@ -848,6 +853,12 @@ export class AgentTaskWorker extends WorkerHost {
           sessionId,
           upstreamSkills,
         );
+        await this.supportService.registerBuiltinToolsProvider({
+          runtime,
+          sessionId,
+          tenantId,
+          hasSandbox: Boolean(hasSandbox),
+        });
         const toolLoopState =
           this.supportService.loadToolLoopStateFromCheckpoint(step);
         accumulatedContent = toolLoopState.partialContent;
@@ -954,6 +965,12 @@ export class AgentTaskWorker extends WorkerHost {
             nextSessionId,
             upstreamSkills,
           );
+          await this.supportService.registerBuiltinToolsProvider({
+            runtime,
+            sessionId: nextSessionId,
+            tenantId,
+            hasSandbox: Boolean(hasSandbox),
+          });
           let session;
           try {
             session = await runtime.createSession({
@@ -997,6 +1014,12 @@ export class AgentTaskWorker extends WorkerHost {
             sessionId,
             upstreamSkills,
           );
+          await this.supportService.registerBuiltinToolsProvider({
+            runtime,
+            sessionId,
+            tenantId,
+            hasSandbox: Boolean(hasSandbox),
+          });
         }
 
         await this.supportService.startStepWorkspaceWatcher({
