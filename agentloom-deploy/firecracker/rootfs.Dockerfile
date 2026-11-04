@@ -4,8 +4,9 @@ ARG ARCH_SNAPSHOT=2026/08/01
 RUN printf 'Server = https://archive.archlinux.org/repos/%s/$repo/os/$arch\n' "$ARCH_SNAPSHOT" > /etc/pacman.d/mirrorlist \
     && pacman -Syu --noconfirm \
     && pacman -S --noconfirm --needed \
-      base ca-certificates curl fd gcc git iproute2 iputils make nodejs npm \
-      python ripgrep systemd tar unzip uv zstd \
+      base ca-certificates chromium curl fd gcc git iproute2 iputils make nodejs \
+      noto-fonts-cjk npm pyright python ripgrep systemd tar ttf-dejavu typescript \
+      typescript-language-server unzip uv zstd \
     && pacman -Scc --noconfirm
 
 COPY agentloom-guestd /usr/local/bin/agentloom-guestd
