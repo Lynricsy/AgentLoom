@@ -43,6 +43,10 @@
 | `APP_TYPESAFE_BASE_URL` | 否 | `https://api.typesafe.ai` |  | TypeSafe API 基址 |
 | `APP_TYPESAFE_MODEL` | 否 | `jev-1.13.0` |  | 钉版的 Jev 模型名 |
 | `APP_TYPESAFE_TIMEOUT_MS` | 否 | `3000` |  | 单次 Jev 影子调用超时（毫秒） |
+| `APP_WEB_SEARCH_PROVIDERS` | 否 | `duckduckgo` |  | Agent 内置 web_search 工具：搜索后端链（逗号分隔，按顺序回退），可选 duckduckgo（免 key）/ tavily / brave / exa DuckDuckGo 可能拦截数据中心 IP，生产部署建议至少配置一个带 key 的后端，如 tavily,duckduckgo |
+| `APP_WEB_SEARCH_TAVILY_API_KEY` | 否 |  |  | Tavily Search API Key；留空即跳过 tavily |
+| `APP_WEB_SEARCH_BRAVE_API_KEY` | 否 |  |  | Brave Search API 订阅 Token；留空即跳过 brave |
+| `APP_WEB_SEARCH_EXA_API_KEY` | 否 |  |  | Exa API Key；留空即跳过 exa |
 | `FIREBASE_SERVICE_ACCOUNT` | 否 |  |  | Firebase Cloud Messaging（推送通知） Firebase 服务账号 JSON 字符串，留空即禁用推送，例如 {"type":"service_account","project_id":"...","private_key":"...","client_email":"..."} |
 | `APP_GENERATED_APP_BROWSER_BASE_URL` | 否 |  |  | Gate 5 浏览器验收（browser-runner 进程，见 agentloom-deploy 的 generated-app-browser-runner 服务） runner 打开的 Studio 公开页基址（runner 拼接 /generated-apps/public/<验收令牌>）；只有 runner 读取，本地开发填 Studio 地址 |
 | `APP_GENERATED_APP_BROWSER_CONCURRENCY` | 否 | `1` |  | 每个 runner 进程同时执行的验收任务数（每个任务一个 Chromium） |

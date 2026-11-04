@@ -72,6 +72,10 @@
 | `APP_TRUST_PROXY_HOPS` | `1` | server 前方可信反向代理跳数：compose 自带 reverse-proxy 为 1；外层再套一层 TLS 终止代理时改为 2 |
 | `APP_SANDBOX_CALLBACK_BASE_URL_SERVER` | `http://server:3000/api/v1` | sandbox 容器需要回调到创建 session 的同一进程，server / worker 不能共用同一个地址 |
 | `APP_SANDBOX_CALLBACK_BASE_URL_WORKER` | `http://worker:3000/api/v1` |  |
+| `APP_WEB_SEARCH_PROVIDERS` | `duckduckgo` | Agent 内置 web_search 工具的搜索后端链（逗号分隔，按顺序回退）：duckduckgo（免 key）/ tavily / brave / exa。 DuckDuckGo 常拦截数据中心 IP，生产部署建议至少配置一个带 key 的后端，例如 tavily,duckduckgo。 |
+| `APP_WEB_SEARCH_TAVILY_API_KEY` |  |  |
+| `APP_WEB_SEARCH_BRAVE_API_KEY` |  |  |
+| `APP_WEB_SEARCH_EXA_API_KEY` |  |  |
 | `APP_SUPABASE_URL` |  | private 模式下这 3 个变量必须"全部留空"或"全部提供" 使用自托管 Supabase 时，由 generate-secrets.sh 自动填充 |
 | `APP_SUPABASE_ANON_KEY` |  |  |
 | `APP_SUPABASE_SERVICE_KEY` |  |  |

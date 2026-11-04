@@ -190,6 +190,36 @@ const baseEnvSchema = z.object({
     emptyStringToUndefined,
     z.coerce.number().int().positive().default(3000),
   ),
+  /**
+   * Agent 内置 web_search 工具的搜索后端链（逗号分隔，按顺序回退）：duckduckgo（免 key）/
+   * tavily / brave / exa；未配置 key 的后端自动跳过。
+   */
+  APP_WEB_SEARCH_PROVIDERS: z.preprocess(
+    emptyStringToUndefined,
+    z
+      .string()
+      .default('duckduckgo')
+      .refine(
+        (value) =>
+          value
+            .split(',')
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0)
+            .every((item) =>
+              ['duckduckgo', 'tavily', 'brave', 'exa'].includes(item),
+            ),
+        {
+          message:
+            'APP_WEB_SEARCH_PROVIDERS 只能是逗号分隔的 duckduckgo / tavily / brave / exa',
+        },
+      ),
+  ),
+  /** Tavily Search API Key；留空时 web_search 跳过 tavily */
+  APP_WEB_SEARCH_TAVILY_API_KEY: optionalStringFromEnv(),
+  /** Brave Search API 订阅 Token；留空时 web_search 跳过 brave */
+  APP_WEB_SEARCH_BRAVE_API_KEY: optionalStringFromEnv(),
+  /** Exa API Key；留空时 web_search 跳过 exa */
+  APP_WEB_SEARCH_EXA_API_KEY: optionalStringFromEnv(),
   /** Firebase 服务账号 JSON；缺省时推送通知禁用 */
   FIREBASE_SERVICE_ACCOUNT:
     optionalNonEmptyStringFromEnv('Firebase 服务账号不能为空'),
