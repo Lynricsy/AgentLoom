@@ -25,6 +25,7 @@ export type {
   AgentInputPreprocessor,
   AgentRoutingConfig,
   AgentNativeToolPolicy,
+  AgentBuiltinToolPolicy,
   AgentSelfEvolutionPolicy,
   AgentRuntimeConfig,
 } from "@agentloom/contracts";

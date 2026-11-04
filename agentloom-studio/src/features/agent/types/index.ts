@@ -14,6 +14,7 @@ export type {
   AgentInputPreprocessor,
   AgentRoutingConfig,
   AgentNativeToolPolicy,
+  AgentBuiltinToolPolicy,
   AgentSelfEvolutionPolicy,
 } from './agent.types'
 
