@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Context } from '@deepseek-ai/cordis';
@@ -8,6 +8,7 @@ import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import * as astPlugin from '../../src/dsh-plugins/ast/index.js';
+import { resolveWorkspacePath } from '../../src/dsh-plugins/shared/workspace-path.js';
 
 const A_TS = `export function greet(name: string): void {
   console.log('hello');
@@ -106,6 +107,44 @@ describe('agentloom-ast', () => {
     const result = await run('ast_grep', { pattern: '$X', path: '../' });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('path must be under');
+  });
+
+  describe('符号链接越界', () => {
+    let outside: string;
+
+    beforeEach(() => {
+      outside = mkdtempSync(join(tmpdir(), 'agentloom-outside-'));
+      writeFileSync(join(outside, 'x.ts'), "console.log('secret');\n");
+      symlinkSync(outside, join(workdir, 'escape'));
+      symlinkSync(join(outside, 'gone.ts'), join(workdir, 'dangling.ts'));
+    });
+
+    afterEach(() => {
+      rmSync(outside, { recursive: true, force: true });
+    });
+
+    it('经工作区内符号链接读取外部文件被拒绝', async () => {
+      const result = await run('ast_grep', { pattern: 'console.log($X)', path: 'escape/x.ts' });
+      expect(result.isError).toBe(true);
+      expect(textOf(result)).toContain('path must be under');
+    });
+
+    it('经工作区内符号链接改写外部文件被拒绝且外部文件不变', async () => {
+      const result = await run('ast_edit', {
+        pattern: 'console.log($X)',
+        rewrite: 'void $X',
+        path: 'escape/x.ts',
+        dry_run: false,
+      });
+      expect(result.isError).toBe(true);
+      expect(readFileSync(join(outside, 'x.ts'), 'utf8')).toBe("console.log('secret');\n");
+    });
+
+    it('外部目录下尚不存在的新目标与悬空链接同样被拒绝', () => {
+      expect(() => resolveWorkspacePath(workdir, 'escape/new/file.ts')).toThrow('path must be under');
+      expect(() => resolveWorkspacePath(workdir, 'dangling.ts')).toThrow('dangling symlink');
+      expect(resolveWorkspacePath(workdir, 'new/dir/file.ts')).toBe(join(workdir, 'new/dir/file.ts'));
+    });
   });
 
   it('ast_edit dry_run previews without writing', async () => {

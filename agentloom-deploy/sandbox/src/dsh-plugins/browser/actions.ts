@@ -6,6 +6,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { KeyInput, Page, PuppeteerLifeCycleEvent } from 'puppeteer-core';
 import { capText } from '../shared/output-cap.js';
+import { resolveWorkspacePath } from '../shared/workspace-path.js';
 import { formatAccessibilityTree } from './a11y.js';
 import {
   BrowserLaunchError,
@@ -97,10 +98,11 @@ async function navigate(tab: BrowserTab, url: string, args: BrowserArgs, timeout
 
 /** 截图文件路径：<workdir>/browser-output/<tab>-<n>.png，n 按 tab 递增 */
 async function screenshotPath(workdir: string, tab: BrowserTab): Promise<string> {
-  const dir = path.join(workdir, 'browser-output');
+  // browser-output 可能被替换成指向工作区外的符号链接，写前同样做边界校验
+  const dir = resolveWorkspacePath(workdir, 'browser-output');
   await mkdir(dir, { recursive: true });
   tab.screenshots += 1;
-  return path.join(dir, `${tab.id}-${tab.screenshots}.png`);
+  return resolveWorkspacePath(workdir, path.join(dir, `${tab.id}-${tab.screenshots}.png`));
 }
 
 async function runPageAction(

@@ -69,7 +69,7 @@ Compose 部署写进 `agentloom-deploy/` 下的 `.env` 后执行 `docker compose
 
 ## 各工具的参数与输出
 
-路径参数都可以写成工作区相对路径或绝对路径，必须位于沙箱工作区 `/workspace` 之内，否则报 `path must be under /workspace/ — got: …`。
+路径参数都可以写成工作区相对路径或绝对路径，必须位于沙箱工作区 `/workspace` 之内（经符号链接指向工作区外的路径同样拒绝），否则报 `path must be under /workspace/ — got: …`。
 
 ### `lsp`
 

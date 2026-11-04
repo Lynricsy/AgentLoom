@@ -151,7 +151,7 @@ guest 的 `server.ts` 算出 `dist/dsh-plugins` 的绝对路径（`pluginsDir`�
 
 - **关闭即不插入**：与读写编辑终端四项靠 bridge 的 guard 拒绝不同，这四项关闭时条目不进 profile，工具根本不存在，模型调用得到 dsh 的未知工具错误。
 - **激活核对**：插入的条目 id 以 `{ id, plugin: id }` 排在 runtime 插件条目之前交给 bridge 的 [激活核对](/dev/server/runtime-plugins#激活核对)，内置插件加载失败时会话创建以 422 失败（`runtime 插件未能加载:` 后列出 `agentloom-lsp` 等条目），而不是静默缺席。
-- **路径边界**：插件接受的路径一律经 `resolveWorkspacePath(workdir, input)`（`agentloom-deploy/sandbox/src/dsh-plugins/shared/workspace-path.ts`）解析，边界是会话 `workdir`，与平台层 `sandbox-policy` 的 `workspaceRoot` 相同（生产即 `/workspace`），越界报 `path must be under <workdir>/ — got: <resolved>`。
+- **路径边界**：插件接受的路径一律经 `resolveWorkspacePath(workdir, input)`（`agentloom-deploy/sandbox/src/dsh-plugins/shared/workspace-path.ts`）解析，边界是会话 `workdir`，与平台层 `sandbox-policy` 的 `workspaceRoot` 相同（生产即 `/workspace`），越界报 `path must be under <workdir>/ — got: <resolved>`。除字面前缀外还对目标（不存在时取最近存在的祖先）做 `realpath` 校验，经工作区内符号链接指向外部的读写与悬空符号链接都会被拒绝（fail-closed）；目录遍历跳过符号链接。
 - **写盘约束**：`ast_edit` 的 `dry_run=false` 与 `lsp` 的 `rename` / `code_actions` 带 `apply=true` 在 `allowEdits` 为假时返回固定文案（`… is disabled by the agent's native tool policy (editEnabled=false)`）；允许时以临时文件加 rename 原子写回。
 - **图片输出**：`browser` 截图（写到 `<workdir>/browser-output/`）与 `eval` 的 `show()`（写到 `<workdir>/eval-output/`）经 `agentloom-deploy/sandbox/src/dsh-plugins/shared/image-output.ts` 的 `attachImages` 处理：当前路由模型的 `inputModalities` 含 `image`、且 `attachments` 服务已挂载时存为附件并在 `render` 中输出 image 块，否则只回文本里的文件路径。工具输出 schema 为 `{ text, images? }`，与远程工具相同。
 
