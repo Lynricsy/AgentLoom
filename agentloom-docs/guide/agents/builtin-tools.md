@@ -97,7 +97,7 @@ language server 按文件扩展名选择：TypeScript / JavaScript 用 `typescri
 | `pattern` | 必填 | 必填 |
 | `rewrite` | — | 必填，可引用模式中的元变量 |
 | `path` | 文件或目录，默认工作区根 | 必填 |
-| `lang` | 省略时按扩展名推断 | 同左 |
+| `lang` | `auto` 或省略时按每个文件的扩展名推断 | 同左 |
 | `include` | 目录模式下的 glob，如 `*.ts` | 同左 |
 | `limit` | 最多返回的匹配数，1–500，默认 100 | — |
 | `dry_run` | — | 默认 `true` 只预览；`false` 写盘 |

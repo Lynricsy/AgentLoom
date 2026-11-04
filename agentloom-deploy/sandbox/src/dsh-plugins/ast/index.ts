@@ -20,8 +20,9 @@ const AST_SECTION_ORDER = 2250;
 
 const LANG_PARAMETER = {
   type: 'string',
-  enum: AST_LANGUAGES,
-  description: 'Language of the sources. Omit to infer from file extensions.',
+  enum: ['auto', ...AST_LANGUAGES],
+  description:
+    'Language of the sources. "auto" (or omit) infers per file from its extension, so a directory search covers every supported language.',
 } as const;
 
 const INCLUDE_PARAMETER = {

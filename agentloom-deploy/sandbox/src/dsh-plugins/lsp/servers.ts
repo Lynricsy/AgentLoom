@@ -175,6 +175,11 @@ export class LspServerPool {
     return parts.join(', ');
   }
 
+  /** 该文件对应的 server 实例是否已启动就绪（冷启动时需要更长的首轮诊断等待） */
+  isReady(resolved: ResolvedServer): boolean {
+    return this.ready.has(`${resolved.spec.id}\u0000${resolved.root}`);
+  }
+
   /** 取（必要时启动）server 实例 */
   async acquire(resolved: ResolvedServer): Promise<LspClient> {
     if (this.disposed) throw new Error('lsp plugin is disposed');

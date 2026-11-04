@@ -16,6 +16,8 @@ const connection = createMessageConnection(
 );
 /** uri → 文本 */
 const documents = new Map();
+/** 模拟冷启动：首轮诊断推迟这么久（毫秒）才发布 */
+let firstPublishDelayMs = Number(process.env.FAKE_LSP_FIRST_PUBLISH_DELAY_MS ?? 0);
 
 function lines(text) {
   return text.split(/\r\n|\r|\n/);
@@ -45,7 +47,14 @@ function publish(uri) {
       });
     }
   });
-  void connection.sendNotification('textDocument/publishDiagnostics', { uri, diagnostics });
+  const send = () =>
+    void connection.sendNotification('textDocument/publishDiagnostics', { uri, diagnostics });
+  if (firstPublishDelayMs > 0) {
+    setTimeout(send, firstPublishDelayMs);
+    firstPublishDelayMs = 0;
+  } else {
+    send();
+  }
 }
 
 function wordAt(uri, position) {

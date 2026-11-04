@@ -277,9 +277,15 @@ export function createLspTool(options: LspToolOptions): ToolDefinition {
     const file = resolveWorkspacePath(workdir, args.file);
     const stat = await fs.stat(file).catch(() => undefined);
     if (!stat?.isFile()) throw new Error(`file not found: ${show(file)}`);
-    const waitMs = Math.min(timeoutMs, 5000);
-    const collected = await collectDiagnostics(pool, file, waitMs, signal);
+    // server 已就绪时最多等 5 s；冷启动时用满 timeout，等首轮项目加载完成
+    const collected = await collectDiagnostics(
+      pool,
+      file,
+      { warmMs: Math.min(timeoutMs, 5000), coldMs: timeoutMs },
+      signal,
+    );
     if (!collected) return unavailable(file);
+    const waitMs = collected.waitedMs;
     const display = show(file);
     if (!collected.diagnostics) {
       return `No diagnostics published for ${display} within ${waitMs / 1000}s (the server may still be analyzing; retry).`;

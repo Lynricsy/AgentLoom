@@ -12,8 +12,10 @@ import { languageIdFor, type LspServerPool } from './servers.js';
 
 /** 收到第一轮 publish 后再等这么久，吸收分批发布（语法 → 语义）的后续轮次 */
 const DIAGNOSTICS_SETTLE_MS = 400;
-/** 写后诊断最多等待新一轮诊断的时长 */
+/** 写后诊断最多等待新一轮诊断的时长（server 已就绪） */
 const POST_WRITE_WAIT_MS = 1500;
+/** 写操作触发 server 冷启动时的等待上限：microVM 中 tsserver 首轮诊断实测约 5 s */
+const POST_WRITE_COLD_WAIT_MS = 10_000;
 /** 写后诊断追加的条数上限 */
 const POST_WRITE_LIMIT = 20;
 /** 改写文件、需要附带诊断的 dsh 文件工具 */
@@ -37,16 +39,17 @@ export function displayPath(workdir: string, file: string): string {
 
 /**
  * 同步文件内容并等待新一轮诊断。文件没有可用 server 时返回 undefined。
- * @param waitMs 等待新一轮 publish 的上限
+ * @param wait 等待新一轮 publish 的上限：server 已就绪用 warmMs，本次需冷启动用 coldMs
  */
 export async function collectDiagnostics(
   pool: LspServerPool,
   file: string,
-  waitMs: number,
+  wait: { warmMs: number; coldMs: number },
   signal?: AbortSignal,
-): Promise<CollectedDiagnostics | undefined> {
+): Promise<(CollectedDiagnostics & { waitedMs: number }) | undefined> {
   const resolved = await pool.resolveForFile(file);
   if (!resolved) return undefined;
+  const waitMs = pool.isReady(resolved) ? wait.warmMs : wait.coldMs;
   const client = await pool.acquire(resolved);
   const deadline = Date.now() + waitMs;
   let seq = client.currentDiagnosticsSeq();
@@ -65,7 +68,7 @@ export async function collectDiagnostics(
     );
     if (!more) break;
   }
-  return { diagnostics: client.latestDiagnostics(uri), fresh };
+  return { diagnostics: client.latestDiagnostics(uri), fresh, waitedMs: waitMs };
 }
 
 /** 按严重度（error 优先）再按位置排序 */
@@ -135,7 +138,12 @@ export function registerWriteDiagnostics(
       return decision;
     }
     try {
-      const collected = await collectDiagnostics(pool, file, POST_WRITE_WAIT_MS, exec.signal);
+      const collected = await collectDiagnostics(
+        pool,
+        file,
+        { warmMs: POST_WRITE_WAIT_MS, coldMs: POST_WRITE_COLD_WAIT_MS },
+        exec.signal,
+      );
       if (!collected) return decision;
       const relevant = sortDiagnostics(
         (collected.diagnostics ?? []).filter((d) => (d.severity ?? 1) <= 2),

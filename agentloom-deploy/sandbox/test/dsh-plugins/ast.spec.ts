@@ -103,6 +103,12 @@ describe('agentloom-ast', () => {
     expect(await runText('ast_grep', { pattern: 'missing($X)' })).toBe('No matches.');
   });
 
+  it('lang 为 auto、可选参数为空串（严格 schema 模型的填法）时仍跨语言搜索', async () => {
+    expect(
+      await runText('ast_grep', { pattern: '$F($X)', path: '', lang: 'auto', include: '' }),
+    ).toContain('Total: 3 matches in 2 files');
+  });
+
   it('ast_grep rejects paths outside the workspace', async () => {
     const result = await run('ast_grep', { pattern: '$X', path: '../' });
     expect(result.isError).toBe(true);

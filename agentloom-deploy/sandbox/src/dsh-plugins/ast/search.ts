@@ -93,8 +93,15 @@ async function walk(root: string, visit: (file: string) => void): Promise<void> 
  */
 export async function collectTargets(
   workdir: string,
-  query: TargetQuery,
+  rawQuery: TargetQuery,
 ): Promise<TargetCollection> {
+  // 严格 schema 的模型会把可选参数填成空串；lang 的 'auto' 与空串都表示按扩展名推断
+  const query: TargetQuery = {
+    ...rawQuery,
+    path: rawQuery.path || undefined,
+    lang: rawQuery.lang === 'auto' || rawQuery.lang === '' ? undefined : rawQuery.lang,
+    include: rawQuery.include || undefined,
+  };
   const root = resolveWorkspacePath(workdir, query.path ?? '.');
   if (query.lang !== undefined) assertLanguageUsable(query.lang);
   const info = await stat(root).catch(() => undefined);
