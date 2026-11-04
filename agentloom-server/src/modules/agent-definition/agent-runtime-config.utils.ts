@@ -119,6 +119,9 @@ export function cloneAgentRuntimeConfig(
     ...(runtimeConfig.nativeToolPolicy
       ? { nativeToolPolicy: { ...runtimeConfig.nativeToolPolicy } }
       : {}),
+    ...(runtimeConfig.builtinToolPolicy
+      ? { builtinToolPolicy: { ...runtimeConfig.builtinToolPolicy } }
+      : {}),
     ...(runtimeConfig.selfEvolutionPolicy
       ? { selfEvolutionPolicy: { ...runtimeConfig.selfEvolutionPolicy } }
       : {}),

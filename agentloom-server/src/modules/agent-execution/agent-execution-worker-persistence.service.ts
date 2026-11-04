@@ -707,6 +707,10 @@ export class AgentExecutionWorkerPersistenceService {
       writeEnabled: false,
       editEnabled: false,
       terminalEnabled: false,
+      lspEnabled: true,
+      astEnabled: true,
+      browserEnabled: false,
+      evalEnabled: false,
     } as const;
   }
 

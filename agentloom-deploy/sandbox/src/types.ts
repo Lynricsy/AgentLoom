@@ -153,6 +153,14 @@ export interface CreateSessionRequest {
     writeEnabled?: boolean;
     editEnabled?: boolean;
     terminalEnabled?: boolean;
+    /** VM 内置插件 agentloom-lsp；缺省启用 */
+    lspEnabled?: boolean;
+    /** VM 内置插件 agentloom-ast；缺省启用 */
+    astEnabled?: boolean;
+    /** VM 内置插件 agentloom-browser；缺省启用 */
+    browserEnabled?: boolean;
+    /** VM 内置插件 agentloom-eval；缺省启用，且要求 terminalEnabled */
+    evalEnabled?: boolean;
   };
   /** 画布 harness 节点编译出的 dsh 运行时定制（插件与 profile patch） */
   harness?: HarnessSessionConfig;

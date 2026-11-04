@@ -182,6 +182,20 @@ export const AgentNativeToolPolicySchema = z.object({
   writeEnabled: z.boolean(),
   editEnabled: z.boolean(),
   terminalEnabled: z.boolean(),
+  /** VM 内 LSP 工具（lsp）；缺省启用 */
+  lspEnabled: z.boolean().optional(),
+  /** VM 内 ast_grep / ast_edit；缺省启用 */
+  astEnabled: z.boolean().optional(),
+  /** VM 内 browser；缺省启用 */
+  browserEnabled: z.boolean().optional(),
+  /** VM 内持久 Python 内核 eval；缺省启用，且要求 terminalEnabled */
+  evalEnabled: z.boolean().optional(),
+});
+
+/** 服务端内置工具开关，两种运行态都生效；缺省全部启用 */
+export const AgentBuiltinToolPolicySchema = z.object({
+  webSearchEnabled: z.boolean(),
+  imageGenerationEnabled: z.boolean(),
 });
 
 export const AgentSelfEvolutionPolicySchema = z.object({
@@ -290,6 +304,7 @@ export const AgentRuntimeConfigSchema = z.object({
   skillIds: z.array(z.string()).optional(),
   outputSchema: JsonRecordSchema.optional(),
   nativeToolPolicy: AgentNativeToolPolicySchema.optional(),
+  builtinToolPolicy: AgentBuiltinToolPolicySchema.optional(),
   selfEvolutionPolicy: AgentSelfEvolutionPolicySchema.optional(),
   harness: HarnessConfigSchema.optional(),
 });
@@ -316,6 +331,9 @@ export type SandboxBindingRef = z.infer<typeof SandboxBindingRefSchema>;
 export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
 export type AgentNativeToolPolicy = z.infer<
   typeof AgentNativeToolPolicySchema
+>;
+export type AgentBuiltinToolPolicy = z.infer<
+  typeof AgentBuiltinToolPolicySchema
 >;
 export type AgentSelfEvolutionPolicy = z.infer<
   typeof AgentSelfEvolutionPolicySchema

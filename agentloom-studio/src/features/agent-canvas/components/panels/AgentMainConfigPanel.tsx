@@ -1,14 +1,22 @@
 import { memo, useCallback, type ComponentType, type ReactNode } from 'react'
 import {
+  Braces,
+  Calculator,
+  Code,
   Cpu,
   FilePenLine,
   FolderOpen,
+  Globe,
+  ImagePlus,
+  Search,
+  Server,
   Settings2,
   Sparkles,
   SquareTerminal,
   Wrench,
 } from 'lucide-react'
 import type {
+  AgentBuiltinToolPolicy,
   AgentNativeToolPolicy,
   AgentRuntimeMode,
   AgentSelfEvolutionPolicy,
@@ -34,15 +42,33 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
-function parseNativeToolPolicy(config: Record<string, unknown>): AgentNativeToolPolicy {
+function readBool(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback
+}
+
+function parseNativeToolPolicy(
+  config: Record<string, unknown>,
+): Required<AgentNativeToolPolicy> {
   const policy = asRecord(config.nativeToolPolicy)
 
   return {
-    readEnabled: typeof policy.readEnabled === 'boolean' ? policy.readEnabled : true,
-    writeEnabled: typeof policy.writeEnabled === 'boolean' ? policy.writeEnabled : true,
-    editEnabled: typeof policy.editEnabled === 'boolean' ? policy.editEnabled : true,
-    terminalEnabled:
-      typeof policy.terminalEnabled === 'boolean' ? policy.terminalEnabled : true,
+    readEnabled: readBool(policy.readEnabled, true),
+    writeEnabled: readBool(policy.writeEnabled, true),
+    editEnabled: readBool(policy.editEnabled, true),
+    terminalEnabled: readBool(policy.terminalEnabled, true),
+    lspEnabled: readBool(policy.lspEnabled, true),
+    astEnabled: readBool(policy.astEnabled, true),
+    browserEnabled: readBool(policy.browserEnabled, true),
+    evalEnabled: readBool(policy.evalEnabled, true),
+  }
+}
+
+function parseBuiltinToolPolicy(config: Record<string, unknown>): AgentBuiltinToolPolicy {
+  const policy = asRecord(config.builtinToolPolicy)
+
+  return {
+    webSearchEnabled: readBool(policy.webSearchEnabled, true),
+    imageGenerationEnabled: readBool(policy.imageGenerationEnabled, true),
   }
 }
 
@@ -145,6 +171,7 @@ export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
   onApply,
 }: AgentMainConfigPanelProps) {
   const nativeToolPolicy = parseNativeToolPolicy(config)
+  const builtinToolPolicy = parseBuiltinToolPolicy(config)
   const selfEvolutionPolicy = parseSelfEvolutionPolicy(config)
 
   const patchNativeToolPolicy = useCallback(
@@ -158,6 +185,19 @@ export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
       })
     },
     [config, nativeToolPolicy, onApply],
+  )
+
+  const patchBuiltinToolPolicy = useCallback(
+    (field: keyof AgentBuiltinToolPolicy, value: boolean) => {
+      onApply({
+        ...config,
+        builtinToolPolicy: {
+          ...builtinToolPolicy,
+          [field]: value,
+        },
+      })
+    },
+    [builtinToolPolicy, config, onApply],
   )
 
   const patchSelfEvolutionPolicy = useCallback(
@@ -232,8 +272,61 @@ export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
             onCheckedChange={(checked) =>
               patchNativeToolPolicy('terminalEnabled', checked)}
           />
+          <ToggleRow
+            title="代码智能（LSP）"
+            description="提供诊断、跳转定义、引用、重命名；写入文件后自动附带诊断。"
+            icon={Code}
+            checked={nativeToolPolicy.lspEnabled}
+            onCheckedChange={(checked) => patchNativeToolPolicy('lspEnabled', checked)}
+          />
+          <ToggleRow
+            title="结构化代码查改（AST）"
+            description="ast_grep 结构化搜索与 ast_edit 批量改写（改写受「文本编辑」约束）。"
+            icon={Braces}
+            checked={nativeToolPolicy.astEnabled}
+            onCheckedChange={(checked) => patchNativeToolPolicy('astEnabled', checked)}
+          />
+          <ToggleRow
+            title="浏览器"
+            description="在沙箱内驱动无头 Chromium 打开页面、截图、点击与执行脚本。"
+            icon={Globe}
+            checked={nativeToolPolicy.browserEnabled}
+            onCheckedChange={(checked) =>
+              patchNativeToolPolicy('browserEnabled', checked)}
+          />
+          <ToggleRow
+            title="Python 执行内核"
+            description="跨调用保持状态的 Python 内核，可在代码中回调其他工具；需开启「终端执行」。"
+            icon={Calculator}
+            disabled={!nativeToolPolicy.terminalEnabled}
+            checked={nativeToolPolicy.evalEnabled}
+            onCheckedChange={(checked) => patchNativeToolPolicy('evalEnabled', checked)}
+          />
         </SectionCard>
       )}
+
+      <SectionCard
+        title="内置服务工具"
+        description="由服务端提供、两种运行态都可用的工具。"
+        icon={Server}
+      >
+        <ToggleRow
+          title="网页搜索"
+          description="web_search：按部署配置的搜索后端链（DuckDuckGo 免 key）检索网页。"
+          icon={Search}
+          checked={builtinToolPolicy.webSearchEnabled}
+          onCheckedChange={(checked) =>
+            patchBuiltinToolPolicy('webSearchEnabled', checked)}
+        />
+        <ToggleRow
+          title="图像生成"
+          description="generate_image：用组织默认的图像模型生成图片；未配置图像模型时不出现该工具。"
+          icon={ImagePlus}
+          checked={builtinToolPolicy.imageGenerationEnabled}
+          onCheckedChange={(checked) =>
+            patchBuiltinToolPolicy('imageGenerationEnabled', checked)}
+        />
+      </SectionCard>
 
       <SectionCard
         title="自进化"

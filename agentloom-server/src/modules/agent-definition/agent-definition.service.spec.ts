@@ -1263,6 +1263,10 @@ describe('AgentDefinitionService', () => {
         writeEnabled: false,
         editEnabled: true,
         terminalEnabled: false,
+        lspEnabled: true,
+        astEnabled: true,
+        browserEnabled: true,
+        evalEnabled: true,
       });
       expect(config.selfEvolutionPolicy).toEqual({
         enabled: true,
@@ -1270,6 +1274,62 @@ describe('AgentDefinitionService', () => {
         externalEditing: false,
         sandboxManagement: true,
       });
+    });
+
+    it('builtinToolPolicy 在 no_sandbox 下也编译，缺省字段补 true', () => {
+      const config = service.buildRuntimeConfigFromNodes(
+        [
+          {
+            id: 'main',
+            type: 'agent',
+            data: {
+              nodeType: 'agent-main',
+              config: {
+                builtinToolPolicy: { webSearchEnabled: false },
+                nativeToolPolicy: { readEnabled: false },
+              },
+            },
+          },
+        ],
+        [],
+        undefined,
+        'no_sandbox',
+      );
+
+      expect(config.builtinToolPolicy).toEqual({
+        webSearchEnabled: false,
+        imageGenerationEnabled: true,
+      });
+      // 原生工具策略仅 sandbox 编译
+      expect(config.nativeToolPolicy).toBeUndefined();
+    });
+
+    it('sandbox 下只关闭 evalEnabled 时其余七项缺省为 true', () => {
+      const config = service.buildRuntimeConfigFromNodes(
+        [
+          {
+            id: 'main',
+            type: 'agent',
+            data: {
+              nodeType: 'agent-main',
+              config: { nativeToolPolicy: { evalEnabled: false } },
+            },
+          },
+        ],
+        [],
+      );
+
+      expect(config.nativeToolPolicy).toEqual({
+        readEnabled: true,
+        writeEnabled: true,
+        editEnabled: true,
+        terminalEnabled: true,
+        lspEnabled: true,
+        astEnabled: true,
+        browserEnabled: true,
+        evalEnabled: false,
+      });
+      expect(config.builtinToolPolicy).toBeUndefined();
     });
 
     it('应仅编译通过 agent-main 连接的节点', () => {

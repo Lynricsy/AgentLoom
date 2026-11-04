@@ -82,6 +82,7 @@ import type {
   AgentRoutingConfig,
   AgentModelConfig,
   AgentNativeToolPolicy,
+  AgentBuiltinToolPolicy,
   AgentSelfEvolutionPolicy,
   HarnessConfig,
   RuntimePluginRef,
@@ -756,6 +757,9 @@ export class AgentDefinitionService {
       : {};
     if (agentMainRuntimeConfig.nativeToolPolicy) {
       config.nativeToolPolicy = agentMainRuntimeConfig.nativeToolPolicy;
+    }
+    if (agentMainRuntimeConfig.builtinToolPolicy) {
+      config.builtinToolPolicy = agentMainRuntimeConfig.builtinToolPolicy;
     }
     if (agentMainRuntimeConfig.selfEvolutionPolicy) {
       config.selfEvolutionPolicy = agentMainRuntimeConfig.selfEvolutionPolicy;
@@ -2213,8 +2217,12 @@ export class AgentDefinitionService {
   private extractAgentMainRuntimeConfig(
     data: Record<string, any>,
     runtimeMode: AgentRuntimeMode,
-  ): Pick<AgentRuntimeConfig, 'nativeToolPolicy' | 'selfEvolutionPolicy'> {
+  ): Pick<
+    AgentRuntimeConfig,
+    'nativeToolPolicy' | 'selfEvolutionPolicy' | 'builtinToolPolicy'
+  > {
     const nativeToolPolicyRecord = this.asRecord(data.nativeToolPolicy);
+    const builtinToolPolicyRecord = this.asRecord(data.builtinToolPolicy);
     const selfEvolutionPolicyRecord = this.asRecord(data.selfEvolutionPolicy);
 
     const nativeToolPolicy =
@@ -2225,6 +2233,10 @@ export class AgentDefinitionService {
         nativeToolPolicyRecord.writeEnabled,
         nativeToolPolicyRecord.editEnabled,
         nativeToolPolicyRecord.terminalEnabled,
+        nativeToolPolicyRecord.lspEnabled,
+        nativeToolPolicyRecord.astEnabled,
+        nativeToolPolicyRecord.browserEnabled,
+        nativeToolPolicyRecord.evalEnabled,
       )
         ? ({
             readEnabled: this.readBoolean(
@@ -2243,7 +2255,36 @@ export class AgentDefinitionService {
               nativeToolPolicyRecord.terminalEnabled,
               true,
             ),
+            lspEnabled: this.readBoolean(nativeToolPolicyRecord.lspEnabled, true),
+            astEnabled: this.readBoolean(nativeToolPolicyRecord.astEnabled, true),
+            browserEnabled: this.readBoolean(
+              nativeToolPolicyRecord.browserEnabled,
+              true,
+            ),
+            evalEnabled: this.readBoolean(
+              nativeToolPolicyRecord.evalEnabled,
+              true,
+            ),
           } satisfies AgentNativeToolPolicy)
+        : undefined;
+
+    // 服务端内置工具两种运行态都可用，因此不受 runtimeMode 限制
+    const builtinToolPolicy =
+      builtinToolPolicyRecord &&
+      this.hasAnyBoolean(
+        builtinToolPolicyRecord.webSearchEnabled,
+        builtinToolPolicyRecord.imageGenerationEnabled,
+      )
+        ? ({
+            webSearchEnabled: this.readBoolean(
+              builtinToolPolicyRecord.webSearchEnabled,
+              true,
+            ),
+            imageGenerationEnabled: this.readBoolean(
+              builtinToolPolicyRecord.imageGenerationEnabled,
+              true,
+            ),
+          } satisfies AgentBuiltinToolPolicy)
         : undefined;
 
     const selfEvolutionPolicy =
@@ -2273,6 +2314,7 @@ export class AgentDefinitionService {
 
     return {
       ...(nativeToolPolicy ? { nativeToolPolicy } : {}),
+      ...(builtinToolPolicy ? { builtinToolPolicy } : {}),
       ...(selfEvolutionPolicy ? { selfEvolutionPolicy } : {}),
     };
   }

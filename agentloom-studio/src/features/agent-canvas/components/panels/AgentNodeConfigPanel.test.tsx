@@ -236,6 +236,21 @@ describe('AgentNodeConfigPanel', () => {
           writeEnabled: false,
           editEnabled: true,
           terminalEnabled: true,
+          lspEnabled: true,
+          astEnabled: true,
+          browserEnabled: true,
+          evalEnabled: true,
+        },
+      },
+    });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '网页搜索' }));
+
+    expect(mocks.updateNodeData).toHaveBeenLastCalledWith('main', {
+      config: {
+        builtinToolPolicy: {
+          webSearchEnabled: false,
+          imageGenerationEnabled: true,
         },
       },
     });
