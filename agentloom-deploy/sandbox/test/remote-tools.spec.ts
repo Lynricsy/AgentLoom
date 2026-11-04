@@ -173,7 +173,8 @@ describe('invokeRemoteTool', () => {
     function invokeWithImages(images: unknown[]) {
       workdir = mkdtempSync(join(tmpdir(), 'remote-tools-'));
       vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-        jsonResponse({ outcome: 'completed', result: { model: 'm', __agentloomImages: images } }),
+        // 与 server SandboxAgentAdapter 的真实完成响应同形：只有 result，没有 outcome
+        jsonResponse({ result: { model: 'm', __agentloomImages: images } }),
       );
       return invokeRemoteTool({
         config,

@@ -172,7 +172,9 @@ async function createRemoteToolResult(
           }
         : response.result;
 
-  if (response.outcome === 'completed' && isRecord(payload) && REMOTE_TOOL_IMAGES_FIELD in payload) {
+  // server 的完成响应只有 `{ result }`，outcome 缺省即 completed
+  const completed = response.outcome === undefined || response.outcome === 'completed';
+  if (completed && isRecord(payload) && REMOTE_TOOL_IMAGES_FIELD in payload) {
     return extractRemoteToolImages(payload, workdir);
   }
 

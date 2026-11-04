@@ -481,7 +481,6 @@ describe('AgentLoomBridge over unix socket', () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            outcome: 'completed',
             result: {
               model: 'gpt-image-1',
               __agentloomImages: [{ fileName: 'fox.png', mediaType: 'image/png', base64: PNG_BASE64 }],
