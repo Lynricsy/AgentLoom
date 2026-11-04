@@ -1,8 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+
+import { Injectable, Logger } from '@nestjs/common';
 import { jsonSchema, tool, type ToolSet } from 'ai';
 
+import { DomainException } from '../../common/exceptions/domain.exception';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
 import type { AgentBuiltinToolPolicy } from '../agent-definition/agent-runtime-config.interface';
+import { ImageGenerationService } from './image-generation/image-generation.service';
+import {
+  IMAGE_GENERATION_SIZES,
+  type GeneratedImage,
+  type GeneratedImageMediaType,
+  type ImageGenerationSize,
+  type ResolvedImageModel,
+} from './image-generation/image-generation.types';
 import {
   formatWebSearchFailures,
   WebSearchUnavailableException,
@@ -15,6 +27,7 @@ import {
 } from './web-search/web-search.types';
 
 export const WEB_SEARCH_TOOL_NAME = 'web_search';
+export const GENERATE_IMAGE_TOOL_NAME = 'generate_image';
 
 const WEB_SEARCH_QUERY_MAX_CHARS = 500;
 const WEB_SEARCH_DEFAULT_LIMIT = 8;
@@ -52,6 +65,49 @@ interface WebSearchToolInput {
   limit?: unknown;
 }
 
+const IMAGE_PROMPT_MAX_CHARS = 4000;
+const IMAGE_FILE_NAME_PATTERN = /^[A-Za-z0-9._-]{1,120}$/;
+/** no_sandbox 交付的预签名下载 URL 有效期（24 小时） */
+const IMAGE_URL_EXPIRY_SECONDS = 24 * 60 * 60;
+
+const IMAGE_FILE_EXTENSIONS: Record<GeneratedImageMediaType, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
+
+const GENERATE_IMAGE_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    prompt: {
+      type: 'string',
+      description: 'Detailed description of the image to generate.',
+      minLength: 1,
+      maxLength: IMAGE_PROMPT_MAX_CHARS,
+    },
+    size: {
+      type: 'string',
+      enum: [...IMAGE_GENERATION_SIZES],
+      default: '1024x1024',
+      description: 'Image size: square, landscape or portrait.',
+    },
+    file_name: {
+      type: 'string',
+      pattern: IMAGE_FILE_NAME_PATTERN.source,
+      description:
+        'Optional file name under /workspace/generated/ (sandbox sessions only), e.g. fox.png.',
+    },
+  },
+  required: ['prompt'],
+  additionalProperties: false,
+} satisfies Parameters<typeof jsonSchema>[0];
+
+interface GenerateImageToolInput {
+  prompt?: unknown;
+  size?: unknown;
+  file_name?: unknown;
+}
+
 export interface BuiltinToolSetParams {
   sessionId: string;
   tenantId: string;
@@ -71,7 +127,13 @@ export interface BuiltinToolsRegistration extends BuiltinToolSetParams {
  */
 @Injectable()
 export class BuiltinToolsProvider {
-  constructor(private readonly webSearchService: WebSearchService) {}
+  private readonly logger = new Logger(BuiltinToolsProvider.name);
+
+  constructor(
+    private readonly webSearchService: WebSearchService,
+    private readonly imageGenerationService: ImageGenerationService,
+    private readonly storageService: StorageService,
+  ) {}
 
   async register(params: BuiltinToolsRegistration): Promise<void> {
     const { runtime, ...toolSetParams } = params;
@@ -85,12 +147,149 @@ export class BuiltinToolsProvider {
     runtime.registerSessionToolProvider(params.sessionId, () => tools);
   }
 
-  buildToolSet(params: BuiltinToolSetParams): Promise<ToolSet> {
+  async buildToolSet(params: BuiltinToolSetParams): Promise<ToolSet> {
     const tools: ToolSet = {};
     if (params.policy?.webSearchEnabled !== false) {
       tools[WEB_SEARCH_TOOL_NAME] = this.createWebSearchTool();
     }
-    return Promise.resolve(tools);
+    const imageModel =
+      params.policy?.imageGenerationEnabled === false
+        ? null
+        : await this.resolveImageModel(params.tenantId);
+    if (imageModel) {
+      tools[GENERATE_IMAGE_TOOL_NAME] = this.createGenerateImageTool(
+        params,
+        imageModel,
+      );
+    }
+    return tools;
+  }
+
+  /** 解析失败只影响 generate_image，不阻断会话创建 */
+  private async resolveImageModel(
+    tenantId: string,
+  ): Promise<ResolvedImageModel | null> {
+    try {
+      const model =
+        await this.imageGenerationService.resolveTenantImageModel(tenantId);
+      if (!model) {
+        this.logger.debug(
+          `Tenant ${tenantId} has no enabled default image model; generate_image not registered`,
+        );
+      }
+      return model;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve default image model for tenant ${tenantId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  private createGenerateImageTool(
+    params: BuiltinToolSetParams,
+    model: ResolvedImageModel,
+  ) {
+    return tool({
+      description:
+        params.delivery === 'inline'
+          ? "Generate an image from a prompt with the organization's default image model. The file is saved under /workspace/generated/ and returned to you as an image when your model accepts images."
+          : "Generate an image from a prompt with the organization's default image model. Returns a download URL valid for 24 hours.",
+      inputSchema: jsonSchema(GENERATE_IMAGE_INPUT_SCHEMA),
+      execute: (input, options) =>
+        this.executeGenerateImage(
+          params,
+          model,
+          input as GenerateImageToolInput,
+          options.abortSignal,
+        ),
+    });
+  }
+
+  private async executeGenerateImage(
+    params: BuiltinToolSetParams,
+    model: ResolvedImageModel,
+    input: GenerateImageToolInput,
+    signal: AbortSignal | undefined,
+  ): Promise<Record<string, unknown>> {
+    const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : '';
+    if (!prompt) {
+      return { error: 'prompt is required' };
+    }
+    if (prompt.length > IMAGE_PROMPT_MAX_CHARS) {
+      return {
+        error: `prompt exceeds ${IMAGE_PROMPT_MAX_CHARS} characters`,
+      };
+    }
+    const size = IMAGE_GENERATION_SIZES.includes(
+      input.size as ImageGenerationSize,
+    )
+      ? (input.size as ImageGenerationSize)
+      : '1024x1024';
+    const fileName =
+      typeof input.file_name === 'string' && input.file_name.trim()
+        ? input.file_name.trim()
+        : undefined;
+    if (fileName !== undefined && !IMAGE_FILE_NAME_PATTERN.test(fileName)) {
+      return {
+        error: `file_name must match ${IMAGE_FILE_NAME_PATTERN.source}`,
+      };
+    }
+
+    try {
+      const images = await this.imageGenerationService.generate(
+        params.tenantId,
+        model,
+        { prompt, size },
+        signal,
+      );
+      return params.delivery === 'inline'
+        ? {
+            model: model.modelId,
+            __agentloomImages: images.map((image, index) => ({
+              fileName: buildImageFileName(fileName, image.mediaType, index),
+              mediaType: image.mediaType,
+              base64: image.data.toString('base64'),
+            })),
+          }
+        : {
+            model: model.modelId,
+            images: await Promise.all(
+              images.map((image) => this.storeImage(params, image)),
+            ),
+          };
+    } catch (error) {
+      return {
+        error:
+          error instanceof DomainException
+            ? error.detail
+            : error instanceof Error
+              ? error.message
+              : String(error),
+      };
+    }
+  }
+
+  private async storeImage(
+    params: BuiltinToolSetParams,
+    image: GeneratedImage,
+  ): Promise<Record<string, unknown>> {
+    const storageKey = `tenants/${params.tenantId}/generated-images/${params.sessionId}/${randomUUID()}.${IMAGE_FILE_EXTENSIONS[image.mediaType]}`;
+    await this.storageService.upload(
+      storageKey,
+      image.data,
+      image.data.length,
+      image.mediaType,
+    );
+    return {
+      url: await this.storageService.getPresignedUrl(
+        storageKey,
+        IMAGE_URL_EXPIRY_SECONDS,
+      ),
+      storageKey,
+      mediaType: image.mediaType,
+      bytes: image.data.length,
+    };
   }
 
   private createWebSearchTool() {
@@ -165,4 +364,24 @@ export function formatWebSearchOutcome(outcome: WebSearchOutcome): string {
     }
   });
   return lines.join('\n');
+}
+
+/**
+ * sandbox 交付的文件名：缺省 `image-<unix ms>.<ext>`；一次返回多张时从第二张起在扩展名前加 `-<n>`。
+ * guest 落盘时遇同名文件会再追加序号，这里只保证同一批次内不重名。
+ */
+function buildImageFileName(
+  requested: string | undefined,
+  mediaType: GeneratedImageMediaType,
+  index: number,
+): string {
+  const base =
+    requested ?? `image-${Date.now()}.${IMAGE_FILE_EXTENSIONS[mediaType]}`;
+  if (index === 0) {
+    return base;
+  }
+  const dot = base.lastIndexOf('.');
+  return dot > 0
+    ? `${base.slice(0, dot)}-${index + 1}${base.slice(dot)}`
+    : `${base}-${index + 1}`;
 }
