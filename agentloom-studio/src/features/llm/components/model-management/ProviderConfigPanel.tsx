@@ -434,6 +434,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
                 <AddModelForm
                   providerId={provider.id}
                   providerSlug={provider.slug}
+                  providerApiProtocol={provider.apiProtocol}
                   discoveredModels={discoveredModels}
                   onClose={() => setShowAddModel(false)}
                 />

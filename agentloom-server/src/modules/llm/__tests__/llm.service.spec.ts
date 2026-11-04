@@ -1,3 +1,5 @@
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -134,6 +136,11 @@ function updateDto(
   overrides: Record<string, unknown> = {},
 ): UpdateLlmModelConfigDto {
   return overrides as unknown as UpdateLlmModelConfigDto;
+}
+
+/** 把 drizzle where 条件渲染成参数化 SQL，便于断言按类型隔离 */
+function renderWhere(where: SQL) {
+  return new PgDialect().sqlToQuery(where);
 }
 
 describe('LlmService', () => {
@@ -442,6 +449,85 @@ describe('LlmService', () => {
       await expect(
         service.delete('non-existent', TENANT_ID),
       ).rejects.toBeInstanceOf(LlmModelConfigNotFoundException);
+    });
+  });
+
+  describe('image 模型类型', () => {
+    const IMAGE_CONFIG_ID = '00000000-0000-0000-0000-000000000101';
+
+    it('默认 image 模型只清除同类型默认，且不影响 chat 默认的解析', async () => {
+      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      // create：org lookup → 名称唯一 → clearDefaultInOrg → insert
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+      db.select.mockReturnValueOnce(createSelectChain([]));
+      const clearChain = createUpdateChain();
+      db.update.mockReturnValueOnce(clearChain);
+      const insertChain = createInsertChain([
+        mockConfig({
+          id: IMAGE_CONFIG_ID,
+          name: 'Image Config',
+          modelId: 'gpt-image-1',
+          modelType: 'image',
+          isDefault: true,
+        }),
+      ]);
+      db.insert.mockReturnValueOnce(insertChain);
+
+      const created = await service.create(
+        createDto({
+          name: 'Image Config',
+          modelId: 'gpt-image-1',
+          modelType: 'image',
+          isDefault: true,
+        }),
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(created.modelType).toBe('image');
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          modelType: 'image',
+          isDefault: true,
+          embeddingDimensions: null,
+        }),
+      );
+      const clearQuery = renderWhere(clearChain.where.mock.calls[0][0] as SQL);
+      expect(clearQuery.params).toEqual([ORG_ID, 'image', true]);
+
+      // findDefaultByType('image')：org lookup → join 查询
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+      const imageChain = createSelectChain([
+        mockJoinRow({
+          id: IMAGE_CONFIG_ID,
+          modelId: 'gpt-image-1',
+          modelType: 'image',
+          isDefault: true,
+        }),
+      ]);
+      db.select.mockReturnValueOnce(imageChain);
+
+      const imageDefault = await service.findDefaultByType(TENANT_ID, 'image');
+
+      expect(imageDefault?.id).toBe(IMAGE_CONFIG_ID);
+      expect(imageDefault?.modelType).toBe('image');
+      expect(
+        renderWhere(imageChain.where.mock.calls[0][0] as SQL).params,
+      ).toEqual([ORG_ID, 'image', true]);
+
+      // findDefaultByType('chat')：仍返回既有 chat 默认
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+      const chatChain = createSelectChain([mockJoinRow({ isDefault: true })]);
+      db.select.mockReturnValueOnce(chatChain);
+
+      const chatDefault = await service.findDefaultByType(TENANT_ID, 'chat');
+
+      expect(chatDefault?.id).toBe(CONFIG_ID);
+      expect(chatDefault?.modelType).toBe('chat');
+      expect(
+        renderWhere(chatChain.where.mock.calls[0][0] as SQL).params,
+      ).toEqual([ORG_ID, 'chat', true]);
     });
   });
 });

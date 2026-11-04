@@ -652,6 +652,13 @@
       "when": 1792511915268,
       "tag": "0092_tenant_quota_shared_minute_default",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1793760352922,
+      "tag": "0093_llm_model_type_image",
+      "breakpoints": true
     }
   ]
 }

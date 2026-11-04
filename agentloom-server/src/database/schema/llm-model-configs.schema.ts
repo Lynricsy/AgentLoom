@@ -16,7 +16,11 @@ import { llmProviders } from './llm-providers.schema';
 import { organizations } from './organizations.schema';
 import { createDirectTenantPolicies } from './rls-policies';
 
-export const llmModelTypeEnum = pgEnum('llm_model_type', ['chat', 'embedding']);
+export const llmModelTypeEnum = pgEnum('llm_model_type', [
+  'chat',
+  'embedding',
+  'image',
+]);
 
 export const metadataSourceEnum = pgEnum('metadata_source', [
   'api_discovery',

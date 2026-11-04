@@ -21,10 +21,13 @@ import { Switch } from "@/shared/ui/switch";
 import { useToast } from "@/shared/ui/toast";
 import { formatNumber } from "@/shared/lib/format";
 import { cn } from "@/shared/lib/utils";
-import type {
-  CreateLlmModelInput,
-  DiscoveredModel,
-  LiteLLMModelInfo,
+import {
+  supportsImageGeneration,
+  type ApiProtocol,
+  type CreateLlmModelInput,
+  type DiscoveredModel,
+  type LiteLLMModelInfo,
+  type LlmModelType,
 } from "../../types";
 import {
   useCreateLlmModel,
@@ -35,6 +38,8 @@ import { buildPricingBadges, ModelMetaChip } from "./modelMeta";
 interface AddModelFormProps {
   providerId: string;
   providerSlug: string;
+  /** 决定是否可添加图像生成模型（仅 OpenAI 兼容与 Gemini 协议） */
+  providerApiProtocol: ApiProtocol;
   discoveredModels: DiscoveredModel[];
   onClose: () => void;
 }
@@ -42,6 +47,7 @@ interface AddModelFormProps {
 export function AddModelForm({
   providerId,
   providerSlug,
+  providerApiProtocol,
   discoveredModels,
   onClose,
 }: AddModelFormProps) {
@@ -51,7 +57,8 @@ export function AddModelForm({
 
   const [name, setName] = useState("");
   const [modelId, setModelId] = useState("");
-  const [modelType, setModelType] = useState<"chat" | "embedding">("chat");
+  const [modelType, setModelType] = useState<LlmModelType>("chat");
+  const imageSupported = supportsImageGeneration(providerApiProtocol);
   const [isDefault, setIsDefault] = useState(false);
   const [metadata, setMetadata] = useState<LiteLLMModelInfo | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
@@ -288,7 +295,7 @@ export function AddModelForm({
             <Label className="text-xs">模型类型</Label>
             <Select
               value={modelType}
-              onValueChange={(v) => setModelType(v as "chat" | "embedding")}
+              onValueChange={(v) => setModelType(v as LlmModelType)}
             >
               <SelectTrigger aria-label="模型类型" className="h-8 text-xs">
                 <SelectValue placeholder="请选择模型类型" />
@@ -296,6 +303,9 @@ export function AddModelForm({
               <SelectContent>
                 <SelectItem value="chat">聊天</SelectItem>
                 <SelectItem value="embedding">Embedding</SelectItem>
+                {imageSupported ? (
+                  <SelectItem value="image">图像生成</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
           </div>

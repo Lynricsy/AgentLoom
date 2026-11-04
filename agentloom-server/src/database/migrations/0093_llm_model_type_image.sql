@@ -1,0 +1,1 @@
+ALTER TYPE "public"."llm_model_type" ADD VALUE 'image';

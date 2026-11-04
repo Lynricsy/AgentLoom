@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-const LLM_MODEL_TYPES = ['chat', 'embedding'] as const;
+const LLM_MODEL_TYPES = ['chat', 'embedding', 'image'] as const;
 
 export type LlmModelType = (typeof LLM_MODEL_TYPES)[number];
 

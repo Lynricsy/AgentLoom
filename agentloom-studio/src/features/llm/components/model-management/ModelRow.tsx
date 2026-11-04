@@ -47,7 +47,11 @@ export function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowP
             <ModelMetaChip tone="warning">默认</ModelMetaChip>
           )}
           <ModelMetaChip tone="primary">
-            {model.modelType === "embedding" ? "Embedding" : "聊天"}
+            {model.modelType === "embedding"
+              ? "Embedding"
+              : model.modelType === "image"
+                ? "图像生成"
+                : "聊天"}
           </ModelMetaChip>
           {activeCapabilities.map(({ key, label, icon: Icon }) => (
             <ModelMetaChip key={key} tone="neutral" icon={Icon}>

@@ -25,6 +25,19 @@ export const API_PROTOCOL_VALUES: readonly ApiProtocol[] = [
   "cohere",
 ];
 
+/** 各协议是否可承载图像生成模型（OpenAI Images API 与 Gemini generateContent） */
+const IMAGE_GENERATION_PROTOCOL_SUPPORT: Record<ApiProtocol, boolean> = {
+  openai_chat: true,
+  openai_responses: true,
+  anthropic: false,
+  google: true,
+  cohere: false,
+};
+
+export function supportsImageGeneration(protocol: ApiProtocol): boolean {
+  return IMAGE_GENERATION_PROTOCOL_SUPPORT[protocol] === true;
+}
+
 /** 模型能力（生成模型） */
 export type ModelCapabilities = CreateLlmModelConfigDtoCapabilities;
 
@@ -61,7 +74,7 @@ export interface LlmModelConfigEntity {
   providerId: string;
   name: string;
   modelId: string;
-  modelType: "chat" | "embedding";
+  modelType: LlmModelType;
   isEnabled: boolean;
   isDefault: boolean;
   capabilities: ModelCapabilities;
@@ -172,7 +185,7 @@ export type ModelThinkingCapability =
  */
 export type LlmProvider = string;
 
-export const LLM_MODEL_TYPES = ["chat", "embedding"] as const;
+export const LLM_MODEL_TYPES = ["chat", "embedding", "image"] as const;
 
 export type LlmModelType = (typeof LLM_MODEL_TYPES)[number];
 
@@ -514,7 +527,10 @@ export function parseLlmModelConfig(value: unknown): LlmModelConfig | null {
       parseNullableString(source.llmConfigId) ?? parseNullableString(source.id),
     name: parseString(source.name) ?? modelName,
     provider,
-    modelType: source.modelType === "embedding" ? "embedding" : "chat",
+    modelType:
+      source.modelType === "embedding" || source.modelType === "image"
+        ? source.modelType
+        : "chat",
     modelName,
     parameters: normalizeLlmParameters(source.parameters),
     apiKeyId:

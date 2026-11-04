@@ -45,6 +45,7 @@ import {
   type LlmProvider,
   type LlmProviderEntity,
   type LlmProviderInfo,
+  supportsImageGeneration,
 } from "../types";
 import {
   useCreateLlmModel,
@@ -169,16 +170,20 @@ function buildDialogPayload(
     providerId: providerEntity.id,
     modelId: values.modelName.trim(),
     modelType: values.modelType,
-    parameters: {
-      temperature: values.temperature,
-      maxTokens: values.maxTokens
-        ? Number.parseInt(values.maxTokens, 10)
-        : undefined,
-      topP: values.topP,
-      frequencyPenalty: values.frequencyPenalty,
-      presencePenalty: values.presencePenalty,
-      stop: values.stop,
-    },
+    // 图像生成模型不使用 chat 采样参数
+    parameters:
+      values.modelType === "image"
+        ? {}
+        : {
+            temperature: values.temperature,
+            maxTokens: values.maxTokens
+              ? Number.parseInt(values.maxTokens, 10)
+              : undefined,
+            topP: values.topP,
+            frequencyPenalty: values.frequencyPenalty,
+            presencePenalty: values.presencePenalty,
+            stop: values.stop,
+          },
     isDefault: values.isDefault,
     timeoutMs: values.timeoutMs,
   };
@@ -316,6 +321,20 @@ export function LlmModelConfigDialog({
             models: [] as string[],
           }))
         : [...LLM_PROVIDERS];
+
+    if (selectedModelType === "image") {
+      // 图像生成仅支持 OpenAI 兼容与 Gemini 协议；静态目录无协议信息时不过滤
+      const entities = providersQuery.data;
+      if (!entities || entities.length === 0) {
+        return source;
+      }
+      const allowed = new Set(
+        entities
+          .filter((entity) => supportsImageGeneration(entity.apiProtocol))
+          .map((entity) => entity.slug),
+      );
+      return source.filter((provider) => allowed.has(provider.id));
+    }
 
     if (selectedModelType !== "embedding") {
       return source;
@@ -531,10 +550,17 @@ export function LlmModelConfigDialog({
                         <SelectItem value="embedding">
                           Embedding / 向量化
                         </SelectItem>
+                        <SelectItem value="image">图像生成</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
                 />
+                {selectedModelType === "image" ? (
+                  <p className="text-2xs text-muted-foreground">
+                    仅支持 OpenAI 兼容与 Gemini 协议的提供商；默认图像模型供 Agent
+                    的 generate_image 工具使用。
+                  </p>
+                ) : null}
               </div>
 
               {/* Provider 选择 */}
@@ -690,7 +716,7 @@ export function LlmModelConfigDialog({
                     </p>
                   )}
                 </div>
-              ) : (
+              ) : selectedModelType === "image" ? null : (
                 <div className="rounded-lg border border-border">
                   <Button
                     variant="ghost"
@@ -841,7 +867,9 @@ export function LlmModelConfigDialog({
                   <p className="text-2xs text-muted-foreground">
                     {selectedModelType === "embedding"
                       ? "默认 Embedding 模型会在新建知识库时自动选中"
-                      : "默认配置会在新建 LLM 节点时自动选中"}
+                      : selectedModelType === "image"
+                        ? "默认图像模型供 Agent 的 generate_image 工具使用"
+                        : "默认配置会在新建 LLM 节点时自动选中"}
                   </p>
                 </div>
                 <Controller

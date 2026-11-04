@@ -3185,7 +3185,8 @@ export interface CreateLlmModelConfigDto {
  */
 export const CreateLlmModelConfigDtoModelTypeEnum = {
     Chat: 'chat',
-    Embedding: 'embedding'
+    Embedding: 'embedding',
+    Image: 'image'
 } as const;
 export type CreateLlmModelConfigDtoModelTypeEnum = typeof CreateLlmModelConfigDtoModelTypeEnum[keyof typeof CreateLlmModelConfigDtoModelTypeEnum];
 
@@ -10084,7 +10085,8 @@ export interface UpdateLlmModelConfigDto {
  */
 export const UpdateLlmModelConfigDtoModelTypeEnum = {
     Chat: 'chat',
-    Embedding: 'embedding'
+    Embedding: 'embedding',
+    Image: 'image'
 } as const;
 export type UpdateLlmModelConfigDtoModelTypeEnum = typeof UpdateLlmModelConfigDtoModelTypeEnum[keyof typeof UpdateLlmModelConfigDtoModelTypeEnum];
 

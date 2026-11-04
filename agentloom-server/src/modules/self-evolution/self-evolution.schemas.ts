@@ -159,7 +159,7 @@ export const ModelCreateDtoSchema = z
     name: z.string().min(1),
     providerId: z.string().min(1),
     modelId: z.string().min(1),
-    modelType: z.enum(['chat', 'embedding']).default('chat'),
+    modelType: z.enum(['chat', 'embedding', 'image']).default('chat'),
     parameters: GenericRecordSchema.default({}),
     capabilities: ModelCapabilitiesSchema.default({}),
     isDefault: z.boolean().default(false),
