@@ -19,6 +19,7 @@ AgentLoom 的 Agent 循环、沙箱运行态与微虚拟机都建立在外部项
 | GrokSearchMCP（`grok-search`） | `https://github.com/Lynricsy/GrokSearchMCP` | `agentloom-deploy/sandbox/package.json` | 预装进 guest 镜像的 stdio MCP server，`agentloom-deploy/sandbox/src/mcp-client.ts` 把 `npx -y grok-search` 改写为本地二进制 | — | `0.3.0`（提交 3caaf763，2026-03-29） |
 | A2A 协议（JSON-RPC 绑定，仅入站） | `https://a2a-protocol.org/latest/specification/` | `agentloom-server/src/modules/a2a/a2a.types.ts` 的 `A2A_PROTOCOL_VERSION` | `agentloom-server/src/modules/a2a/` | [A2A 入站接入](/api/a2a)、[ADR-0005](/dev/decisions/0005-a2a-inbound) | 规范 `1.0`（2026-10-15） |
 | TypeSafe Jev（HTTP API `POST /v1/systemone`，仅影子模式） | `https://docs.typesafe.ai/api` | 环境变量 `APP_TYPESAFE_MODEL`（默认 `jev-1.13.0`，`agentloom-server/src/config/env.schema.ts`） | `agentloom-server/src/modules/decision/providers/jev-client.ts` | [决策服务](/dev/server/decision) | `jev-1.13.0`（2026-10-15） |
+| oh-my-pi | `https://github.com/can1357/oh-my-pi` | 无（只借鉴工具设计与参数形状，不引入包） | `agentloom-deploy/sandbox/src/dsh-plugins/`、`agentloom-server/src/modules/builtin-tools/` | [Agent 运行态](/dev/server/agent-runtime#内置工具)、[ADR 0011](/dev/decisions/0011-builtin-agent-tools) | `main` 的 `packages/coding-agent@18.16.0`（2026-11-04） |
 
 登记标准：AgentLoom 在其 API 或协议之上写了适配层，或把它预装进运行镜像，上游的行为变化或新能力会直接改变平台能力。框架与工具库（NestJS、React、Drizzle 等）按普通依赖升级，不在此登记。
 
@@ -27,3 +28,7 @@ AgentLoom 的 Agent 循环、沙箱运行态与微虚拟机都建立在外部项
 | 上游 | 能力 | 评估版本 | 不合入的理由 | 重新评估的条件 |
 | --- | --- | --- | --- | --- |
 | pi | 会话 compaction | `0.84.4` | 升级 `0.84.4` 时只做 scope 迁移与 breaking 适配，保持行为不变（见提交 af15d2e4） | 长对话的上下文溢出成为实际问题，或 `no_sandbox` 运行态需要与 sandbox 运行态对齐上下文管理 |
+| oh-my-pi | hashline `edit` | `18.16.0` | 依赖 Rust crate `pi-edit`，移植需要用 TypeScript 与 tree-sitter 重写，而 dsh 已有 `edit` / `str_replace_editor` 且配合 `ast_edit` 与写后 LSP 诊断已够用 | 模型在常规 `edit` 上的行定位失败率成为主要瓶颈 |
+| oh-my-pi | memory `retain` / `recall` | `18.16.0` | AgentLoom 已有图结构记忆模块 `agent-memory` 与会话内记忆工具，再加一套键值记忆会让提示词与检索职责重叠 | 现有 `agent-memory` 无法覆盖会话级轻量键值记忆场景 |
+| oh-my-pi | `security_scan` | `18.16.0` | 与 oh-my-pi 的会话结构及外部扫描规则耦合 | 需要内置静态安全扫描且确定规则来源与误报基线 |
+| oh-my-pi | `collab`、`computer`、`tts`、advisor、TTSR、ACP | `18.16.0` | 与 oh-my-pi 自有云服务、宿主桌面环境或会话协议强耦合；AgentLoom 已有独立的 `team`、`acp` 与无头 `browser` | — |

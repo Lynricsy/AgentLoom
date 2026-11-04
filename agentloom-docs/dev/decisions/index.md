@@ -18,6 +18,7 @@ docType: index
 | [0008](/dev/decisions/0008-sandbox-stdio-mcp-in-guest) | 有沙箱 Agent 的 stdio MCP 在 guest 内启动 | 已实施 | 2026-10-20 |
 | [0009](/dev/decisions/0009-plugin-billing-ledger-by-value) | 插件计费账本按值引用插件，新版本就地发布 | 已实施 | 2026-10-20 |
 | [0010](/dev/decisions/0010-tenantless-request-db-fail-closed) | 无租户请求访问租户数据时 fail-closed | 已实施 | 2026-10-20 |
+| [0011](/dev/decisions/0011-builtin-agent-tools) | Agent 内置工具：VM 内 Cordis 插件与服务端 SessionToolProvider 双通道及策略边界 | 已实施 | 2026-11-04 |
 
 ## 模板
 

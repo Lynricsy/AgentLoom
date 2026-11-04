@@ -20,7 +20,8 @@ docType: howto
 
 | | 有沙箱 | 无沙箱 |
 | --- | --- | --- |
-| 内置文件读写、编辑、终端工具 | 有，可在 Agent Main 的「原生工具」中逐项开关 | 无 |
+| 内置文件读写、编辑、终端工具，以及代码智能、结构化代码查改、浏览器、Python 内核 | 有，可在 Agent Main 的「原生工具」中逐项开关，见 [使用 Agent 内置工具](/guide/agents/builtin-tools) | 无 |
+| 网页搜索、图像生成 | 有，在 Agent Main 的「内置服务工具」中开关 | 有，同左 |
 | 画布上的 Sandbox、Workspace 节点 | 可用 | 不可用，Agent Main 没有「沙箱」端口 |
 | stdio MCP 服务器 | 在该对话的沙箱里启动，命令中的 `/workspace` 即沙箱工作区，见 [stdio 服务器在哪里运行](/guide/integrations/mcp-tools#stdio-服务器在哪里运行) | 不支持 |
 | 调用子 Agent | 可调用有沙箱或无沙箱子 Agent | 只能调用无沙箱子 Agent；调用有沙箱子 Agent 时运行失败，错误为 `无 sandbox Agent 不支持调用有 sandbox 的子 Agent` |
@@ -50,7 +51,8 @@ docType: howto
 
 点击 Agent Main 可设置：
 
-- 「原生工具」（仅有沙箱 Agent）：「文件读取」「文件写入」「文本编辑」「终端执行」。
+- 「原生工具」（仅有沙箱 Agent）：「文件读取」「文件写入」「文本编辑」「终端执行」「代码智能（LSP）」「结构化代码查改（AST）」「浏览器」「Python 执行内核」。
+- 「内置服务工具」：「网页搜索」「图像生成」，各工具的用法见 [使用 Agent 内置工具](/guide/agents/builtin-tools)。
 - 「自进化」：「启用自进化」后 Agent 才能使用自进化内置 Skill 和 orchestration 接口；可分别允许「资源管理」「外部编辑」「沙箱管理」。
 
 ## 整理布局

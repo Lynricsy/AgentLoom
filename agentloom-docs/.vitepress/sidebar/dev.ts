@@ -85,6 +85,7 @@ const dev: DefaultTheme.SidebarItem[] = [
       { text: '0008 沙箱 stdio MCP 在 guest 内启动', link: '/dev/decisions/0008-sandbox-stdio-mcp-in-guest' },
       { text: '0009 插件账本按值引用、新版本就地发布', link: '/dev/decisions/0009-plugin-billing-ledger-by-value' },
       { text: '0010 无租户请求 fail-closed', link: '/dev/decisions/0010-tenantless-request-db-fail-closed' },
+      { text: '0011 Agent 内置工具的双通道与策略边界', link: '/dev/decisions/0011-builtin-agent-tools' },
     ],
   },
 ]

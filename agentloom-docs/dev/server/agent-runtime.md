@@ -122,19 +122,49 @@ sequenceDiagram
 
 平台层把 dsh-base 改造成适合 microVM 的形态：
 
-| 条目                                                                                                                                 | 处理                                                                               | 原因                                                                                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sandbox-policy`                                                                                                                     | `mode: danger-full-access`，`workspaceRoot` 为会话 cwd                             | microVM 本身是隔离边界，dsh 内置的进程沙箱不再叠加                                                                                                       |
-| `approval`                                                                                                                           | `policy: ask`                                                                      | 审批请求交给 bridge，转成 AgentLoom 的审批卡片                                                                                                           |
-| `system-prompt`                                                                                                                      | `personaPrefix` 为 Agent 的系统提示词，不加 dsh 自身身份段                         | 提示词由画布决定                                                                                                                                         |
-| `session-persistence-jsonl`                                                                                                          | 写到 `dsh-home/sessions`                                                           | 只是会话内的临时记录，会话销毁时随目录删除；权威记录仍在 PostgreSQL                                                                                      |
-| `agent-default-model`、`llm-pi-ai`                                                                                                   | 会话模型；`models.providers` 每项转成一条 `llm-pi-ai` 路由，密钥只经环境变量传入   | 子 Agent 等未显式选模型的入口也用会话模型；密钥不落盘                                                                                                    |
-| `permission`                                                                                                                         | 预设表换成只有一个 `agentloom`（`danger-full-access` + `ask`）                     | dsh-base 的预设表没有这个组合，原样挂载会报错；禁用它又会让依赖 `permissionPresets` 的插件（如 `@deepseek-ai/dsh-experimental-auto-review`）一直等待服务 |
-| `skill-filesystem`                                                                                                                   | 只扫描会话目录下的 `skills/`                                                       | 技能只来自画布绑定                                                                                                                                       |
-| DeepSeek 账号与原生模型、遥测、web 工具、`web-fetch-http`、`session-title-llm`、`plugin-manager`、`settings`、`config-editor`、`hmr` | `disabled: true`                                                                   | 会外连 DeepSeek 服务或允许运行期改写 profile                                                                                                             |
-| `insert`                                                                                                                             | `agentloom-bridge`（绝对路径）与每个 MCP server 一条 `@deepseek-ai/dsh-mcp-client` | MCP 不支持 SSE transport，SSE 类型的 server 被跳过并写 stderr 警告                                                                                       |
+| 条目 | 处理 | 原因 |
+| --- | --- | --- |
+| `sandbox-policy` | `mode: danger-full-access`，`workspaceRoot` 为会话 cwd | microVM 本身是隔离边界，dsh 内置的进程沙箱不再叠加 |
+| `approval` | `policy: ask` | 审批请求交给 bridge，转成 AgentLoom 的审批卡片 |
+| `system-prompt` | `personaPrefix` 为 Agent 的系统提示词，不加 dsh 自身身份段 | 提示词由画布决定 |
+| `session-persistence-jsonl` | 写到 `dsh-home/sessions` | 只是会话内的临时记录，会话销毁时随目录删除；权威记录仍在 PostgreSQL |
+| `agent-default-model`、`llm-pi-ai` | 会话模型；`models.providers` 每项转成一条 `llm-pi-ai` 路由，密钥只经环境变量传入 | 子 Agent 等未显式选模型的入口也用会话模型；密钥不落盘 |
+| `permission` | 预设表换成只有一个 `agentloom`（`danger-full-access` + `ask`） | dsh-base 的预设表没有这个组合，原样挂载会报错；禁用它又会让依赖 `permissionPresets` 的插件（如 `@deepseek-ai/dsh-experimental-auto-review`）一直等待服务 |
+| `skill-filesystem` | 只扫描会话目录下的 `skills/` | 技能只来自画布绑定 |
+| DeepSeek 账号与原生模型、遥测、web 工具、`web-fetch-http`、`session-title-llm`、`plugin-manager`、`settings`、`config-editor`、`hmr` | `disabled: true` | 会外连 DeepSeek 服务或允许运行期改写 profile |
+| `insert` | `agentloom-bridge`（绝对路径）、按原生工具策略插入的内置插件（见下节）、每个 MCP server 一条 `@deepseek-ai/dsh-mcp-client` | MCP 不支持 SSE transport，SSE 类型的 server 被跳过并写 stderr 警告 |
 
 禁用条目的完整列表是 `profile-writer.ts` 的 `DISABLED_BASE_ROWS`。runtime 插件与用户 patch 叠在平台层之后，可以覆盖平台层的任何条目；插件包的来源、校验与下发见 [Runtime 插件](/dev/server/runtime-plugins)。
+
+#### VM 内置插件
+
+`agentloom-deploy/sandbox/src/dsh-plugins/` 下的四个 Cordis 插件与 bridge 一样随 `@agentloom/sandbox` 构建（`agentloom-deploy/sandbox/tsup.config.ts` 的入口 `dsh-plugins/<name>/index`，`onSuccess` 为每个插件写 `peerDependencies: { '@deepseek-ai/cordis' }` 的 `package.json`）。它们的依赖（`@ast-grep/napi` 与各语言包、`puppeteer-core`、`vscode-jsonrpc`、`vscode-languageserver-protocol`）写在 `agentloom-deploy/sandbox/package.json`，随 rootfs 装进 `/opt/agentloom-sandbox/node_modules`，插件按原生解析命中同一份安装。不走 runtime 插件通道的原因见 [ADR 0011](/dev/decisions/0011-builtin-agent-tools)。
+
+guest 的 `server.ts` 算出 `dist/dsh-plugins` 的绝对路径（`pluginsDir`）交给 `writeDshProfile`；`buildBuiltinPluginRows` 按会话请求的 `nativeToolPolicy` 生成 insert 行，排在 bridge 之后、MCP 条目之前：
+
+| 条目 id | 工具 | 插入条件 | `config` |
+| --- | --- | --- | --- |
+| `agentloom-lsp` | `lsp` | `lspEnabled !== false` | `workdir`、`allowEdits`（`editEnabled !== false`） |
+| `agentloom-ast` | `ast_grep`、`ast_edit` | `astEnabled !== false` | 同上 |
+| `agentloom-browser` | `browser` | `browserEnabled !== false` | `workdir`、`stateDir`（会话目录下 `browser/`）、`chromiumPath`（`/usr/bin/chromium`） |
+| `agentloom-eval` | `eval` | `evalEnabled !== false` 且 `terminalEnabled !== false` | `workdir`、`stateDir`（会话目录下 `eval/`）、`pythonPath`（`python3`） |
+
+- **关闭即不插入**：与读写编辑终端四项靠 bridge 的 guard 拒绝不同，这四项关闭时条目不进 profile，工具根本不存在，模型调用得到 dsh 的未知工具错误。
+- **激活核对**：插入的条目 id 以 `{ id, plugin: id }` 排在 runtime 插件条目之前交给 bridge 的 [激活核对](/dev/server/runtime-plugins#激活核对)，内置插件加载失败时会话创建以 422 失败（`runtime 插件未能加载:` 后列出 `agentloom-lsp` 等条目），而不是静默缺席。
+- **路径边界**：插件接受的路径一律经 `resolveWorkspacePath(workdir, input)`（`agentloom-deploy/sandbox/src/dsh-plugins/shared/workspace-path.ts`）解析，边界是会话 `workdir`，与平台层 `sandbox-policy` 的 `workspaceRoot` 相同（生产即 `/workspace`），越界报 `path must be under <workdir>/ — got: <resolved>`。
+- **写盘约束**：`ast_edit` 的 `dry_run=false` 与 `lsp` 的 `rename` / `code_actions` 带 `apply=true` 在 `allowEdits` 为假时返回固定文案（`… is disabled by the agent's native tool policy (editEnabled=false)`）；允许时以临时文件加 rename 原子写回。
+- **图片输出**：`browser` 截图（写到 `<workdir>/browser-output/`）与 `eval` 的 `show()`（写到 `<workdir>/eval-output/`）经 `agentloom-deploy/sandbox/src/dsh-plugins/shared/image-output.ts` 的 `attachImages` 处理：当前路由模型的 `inputModalities` 含 `image`、且 `attachments` 服务已挂载时存为附件并在 `render` 中输出 image 块，否则只回文本里的文件路径。工具输出 schema 为 `{ text, images? }`，与远程工具相同。
+
+各插件的实现要点：
+
+| 插件 | 机制 |
+| --- | --- |
+| `agentloom-lsp` | `vscode-jsonrpc` 客户端经 `ctx.subprocess.spawn` 连接 language server 的 stdio。server 表在 `lsp/servers.ts`：`typescript-language-server`、`pyright-langserver`（rootfs 预装）、`gopls`、`rust-analyzer`；二进制先找项目根的 `node_modules/.bin`，再查 `PATH`。实例按（server, 项目根）缓存，项目根为文件向上（不越过 `workdir`）第一个含 root marker 的目录，空闲 10 分钟关闭。`code_actions` 只保留带 `edit`（或可经 `codeAction/resolve` 取回 `edit`）的动作，按 `query`（序号或标题片段）选择动作（省略 `query` 且 `apply=true` 时取首选或首个动作）。`lsp/diagnostics.ts` 挂 `tools/post-execute`：`write`、`edit`、`str_replace_editor` 成功后最多等 1.5 s 新一轮诊断，有错误或警告时在结果末尾追加 `[lsp diagnostics for …]` 文本块（≤ 20 条） |
+| `agentloom-ast` | `@ast-grep/napi`，内置 TypeScript / Tsx / JavaScript / Html / Css，其他语言经 `registerDynamicLanguage` 注册 `@ast-grep/lang-*` 预编译解析器。目录遍历跳过 `node_modules`、`.git`、`dist`、`build`、`target`、`.venv`、`__pycache__` 与大于 1 MiB 的文件；`ast_edit` 自行展开 `rewrite` 中的 `$NAME` / `$$$NAME` 元变量，单次将被改写的文件超过 200 个或替换超过 2000 处时报错要求缩小范围 |
+| `agentloom-browser` | `puppeteer-core` 启动 `chromiumPath`，参数含 `--no-sandbox`、`--disable-dev-shm-usage`、`--no-zygote`，Chromium profile 在 `stateDir` 下；启动失败时追加 `--single-process` 重试一次，仍失败返回 `Chromium failed to launch (…)`。导航只接受 `http:`、`https:`、`data:`；页面级错误以 `error: …` 文本返回而不是工具错误；空闲 10 分钟关闭浏览器 |
+| `agentloom-eval` | 每会话一个 Python 子进程运行 `eval/runner.py`（tsup 以文本内联，首次启动写到 `stateDir`），stdin/stdout 走 NDJSON；10 s 内没有 `ready` 握手即失败。同一时间只执行一个 cell；超时先向 runner 发 `interrupt` 请求、由 runner 读线程对主线程发 `SIGINT` 自中断，5 s 内没有结果则终止进程，下次调用自动重启并在结果首行注明 `[kernel restarted — previous state was lost]`。cell 内的 `tool()` 经 `127.0.0.1` 随机端口的 HTTP 回环（每会话随机 Bearer 令牌，请求体 ≤ 1 MiB）调用 `ctx.tools.execute`，以当前 `eval` 调用为 `parent`；harness 拒绝带 `parent` 的嵌套调用时去掉 `parent` 重试，仍失败返回 `tool re-entry unsupported by harness` |
+
+rootfs 为这些插件预装 `chromium`、`ttf-dejavu`、`noto-fonts-cjk`、`typescript`、`typescript-language-server`、`pyright`（`agentloom-deploy/firecracker/rootfs.Dockerfile`），体积见 [Firecracker 沙箱](/deploy/firecracker)。用户在 Harness 中挂载的 runtime 插件叠在平台层之后，可以用 `- id: agentloom-lsp` 等写法覆盖或禁用这些条目。
 
 #### agentloom-bridge
 
@@ -142,7 +172,8 @@ sequenceDiagram
 
 - **敏感配置走 socket**：远程工具描述（含会话回调令牌）与原生工具策略作为 `initialize` 参数下发，不写进 patch 文件，因为 Agent 的终端能读到会话目录。
 - **事件映射**：dsh 的会话事件与助手流帧被映射为 guest 原有的 `SandboxAgentEvent`（`agentloom-deploy/sandbox/src/dsh-bridge/event-mapper.ts`），再由 `agentloom-deploy/sandbox/src/event-stream.ts` 翻译为 SSE。`turn/end` 的 `completed`、`aborted` 分别对应 `done` 的 `end_turn`、`cancelled`；`error` 产生一条错误消息后结束。
-- **原生工具策略**：经 `ctx.tools.guard` 拒绝被关闭的工具，模型收到「该工具已被 Agent 原生工具策略禁用」。读取关闭 `read`、`read_image`、`glob`、`grep`；写入关闭 `write`；编辑关闭 `edit`、`str_replace_editor`；终端关闭 `bash` 与五个 `pty_*` 工具。dsh 的 `skill` 工具不受策略约束。
+- **原生工具策略**：经 `ctx.tools.guard` 拒绝被关闭的工具，模型收到「该工具已被 Agent 原生工具策略禁用」。读取关闭 `read`、`read_image`、`glob`、`grep`；写入关闭 `write`；编辑关闭 `edit`、`str_replace_editor`；终端关闭 `bash` 与五个 `pty_*` 工具。dsh 的 `skill` 工具不受策略约束。`lspEnabled`、`astEnabled`、`browserEnabled`、`evalEnabled` 四项不经 guard，而是决定 [VM 内置插件](#vm-内置插件) 是否插入。
+- **远程工具图片通道**：服务端工具经回调返回的对象含数组字段 `__agentloomImages`（元素 `{ fileName, mediaType, base64 }`，`fileName` 匹配 `^[A-Za-z0-9._-]{1,120}$`，`mediaType` 为 `image/png`、`image/jpeg`、`image/webp`、`image/gif`，解码后 ≤ 20 MiB）时，`agentloom-deploy/sandbox/src/remote-tools.ts` 把图片写到 `<workdir>/generated/`（同名时在扩展名前加 `-<n>`，文件模式 `0644`），文本与 `details` 换成不含 base64 的 `files` 列表，非法条目跳过并在文本末尾追加 `[image skipped: <原因>]`。bridge 的远程工具以 `{ text, images? }` 为输出，模型可接收图像时再经 `attachImages` 附上 image 块；`resultOverrides` 仍是不含 base64 的 `details`。
 - **思考强度**：`initialize` 的 `thinkingLevel` 来自会话 `settings.defaultThinkingLevel`。bridge 用 `ctx.llm.resolveModelInfo` 读取该路由声明的 `reasoning.efforts`，包含该值才作为 `reasoningEffort` 交给 `ctx.llm.resolveCallConfig` 与 `ctx.agents.create`；不包含时经 `ctx.logger` 告警（含强度与 `provider/model`）并省略，沿用 adapter 默认。dsh 对不受支持的强度会在请求前报 `UNSUPPORTED_REASONING_EFFORT`，所以不能原样透传。
 - **PTY**：`pty_spawn`、`pty_write`、`pty_read`、`pty_list`、`pty_kill` 由 bridge 注册，PTY 事件经 `event` 通知进入 `/v1/prompt` 流；guest 的 `/v1/pty/*` 路由经 bridge 代理到最近打开的会话。
 - **进程收尾**：`dispose` 依次请求 `session/dispose`、`shutdown`，再 `SIGTERM`，3 s 后 `SIGKILL`；最后一个 socket 连接断开时 dsh 自行退出，guest 进程被杀后不留孤儿进程。
@@ -226,12 +257,12 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 
 运行态在父子之间的组合规则：
 
-| 父 Agent 实际运行态 | 子 Agent `runtime_mode` | 结果                                                                                                                  |
-| ------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| sandbox             | `sandbox`               | 子 Agent 使用自己的 sandbox 配置                                                                                      |
-| sandbox             | `no_sandbox`            | 复用父 Agent 的 sandbox 绑定执行，原生工具策略降为只读（`buildReadOnlyNativeToolPolicy`：只开读，关闭写、编辑、终端） |
-| 进程内              | `no_sandbox`            | 进程内执行                                                                                                            |
-| 进程内              | `sandbox`               | 拒绝，抛出「无 sandbox Agent 不支持调用有 sandbox 的子 Agent」                                                        |
+| 父 Agent 实际运行态 | 子 Agent `runtime_mode` | 结果 |
+| --- | --- | --- |
+| sandbox | `sandbox` | 子 Agent 使用自己的 sandbox 配置 |
+| sandbox | `no_sandbox` | 复用父 Agent 的 sandbox 绑定执行，原生工具策略降为只读（`buildReadOnlyNativeToolPolicy`：开读、`lsp`、`ast`，关闭写、编辑、终端、`browser`、`eval`；`allowEdits` 随编辑关闭而为假） |
+| 进程内 | `no_sandbox` | 进程内执行 |
+| 进程内 | `sandbox` | 拒绝，抛出「无 sandbox Agent 不支持调用有 sandbox 的子 Agent」 |
 
 对话路径的判定在 `agentloom-server/src/modules/agent-execution/agent-execution-worker-persistence.service.ts:832-866`，工作流路径的判定在 `agentloom-server/src/modules/execution/workflow-agent-adapter.ts:183-219`。拒绝最后一种组合的原因是：进程内父 Agent 没有可交给子 Agent 的 VM 绑定。
 
@@ -267,6 +298,44 @@ Agent 可以通过会话工具调用子 Agent。`SubAgentToolsProvider`（`agent
 | 工作流 agent 节点      | `WorkflowAgentAdapter` 合并 `skillIds` 与上游技能后内联 + 注册 `load_skill`；`agent-task.worker.ts` 对上游技能同样内联 + 注册 `load_skill`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 技能解析失败只记录 warning 并退回基础提示词，不会中断执行。
+
+## 内置工具
+
+Agent 不挂画布节点也带有两组内置工具，各走一条通道（取舍见 [ADR 0011](/dev/decisions/0011-builtin-agent-tools)，用户侧说明见 [使用 Agent 内置工具](/guide/agents/builtin-tools)）：
+
+| 通道 | 工具 | 运行态 | 开关 |
+| --- | --- | --- | --- |
+| VM 内 Cordis 插件（[VM 内置插件](#vm-内置插件)） | `lsp`、`ast_grep`、`ast_edit`、`browser`、`eval` | 只有 `sandbox` | `nativeToolPolicy.lspEnabled` / `astEnabled` / `browserEnabled` / `evalEnabled` |
+| 服务端 `SessionToolProvider`（`agentloom-server/src/modules/builtin-tools/`） | `web_search`、`generate_image` | 两种 | `builtinToolPolicy.webSearchEnabled` / `imageGenerationEnabled` |
+
+### 策略字段与编译
+
+契约在 `agentloom-contracts/src/agent-runtime-config.ts`：`AgentNativeToolPolicySchema` 在 `readEnabled`、`writeEnabled`、`editEnabled`、`terminalEnabled` 之外增加四个可选布尔 `lspEnabled`、`astEnabled`、`browserEnabled`、`evalEnabled`；`AgentBuiltinToolPolicySchema` 为 `webSearchEnabled`、`imageGenerationEnabled`，挂在 `AgentRuntimeConfig.builtinToolPolicy`（可选，不用 `.default()`，因为运行时配置会进入版本快照与响应）。
+
+`AgentDefinitionService.extractAgentMainRuntimeConfig`（`agentloom-server/src/modules/agent-definition/agent-definition.service.ts`）读取 `agent-main` 节点 `data`：
+
+- `nativeToolPolicy` 只在 `sandbox` 运行态编译，任一字段存在时输出八个字段，缺省值都是 `true`。它经 `/v1/session` 透传到 guest 的 `CreateSessionRequest.nativeToolPolicy`（`agentloom-deploy/sandbox/src/types.ts`），前四项由 bridge 的 guard 执行，后四项由 `buildBuiltinPluginRows` 决定是否插入插件；`eval` 还要求 `terminalEnabled` 不为假。
+- `builtinToolPolicy` 不受运行态限制，任一字段存在时输出两个字段，缺省 `true`。
+
+Studio 的 Agent Main 面板（`agentloom-studio/src/features/agent-canvas/components/panels/AgentMainConfigPanel.tsx`）在「原生工具」卡增加四个开关（「Python 执行内核」在「终端执行」关闭时禁用），另有不受运行态限制的「内置服务工具」卡。
+
+### 服务端内置工具
+
+`BuiltinToolsModule` 导出 `BuiltinToolsProvider`、`WebSearchService`、`ImageGenerationService`。`BuiltinToolsProvider.register({ runtime, sessionId, tenantId, policy, delivery })` 构建 ToolSet 后以 `runtime.registerSessionToolProvider` 注册；`runtime` 不支持会话工具或 ToolSet 为空时不注册。`delivery` 在会话实际使用 sandbox 运行时为 `inline`，否则为 `storage`。
+
+注册点都紧跟在 `load_skill` 的注册之后：
+
+| 路径 | 位置 | `policy` |
+| --- | --- | --- |
+| 对话（新建与恢复会话） | `AgentExecutionWorkerRuntimeService.prepareRuntimeSession` → `AgentExecutionWorkerPersistenceService.registerBuiltinToolsProvider` | `runtimeConfig.builtinToolPolicy` |
+| 子 Agent | `AgentExecutionWorkerPersistenceService` 建子会话处 | 子 Agent 的 `runtimeConfig.builtinToolPolicy` |
+| 工作流 Agent 节点 | `WorkflowAgentAdapter.execute`（经执行模块 `AgentAdapterFactory` 注入） | 路由后的 `runtimeConfig.builtinToolPolicy` |
+| 旧 agent-task 节点 | `AgentTaskWorkerSupportService.registerBuiltinToolsProvider`（三处会话入口） | 无画布配置，按缺省全部启用 |
+
+各处都以可选依赖注入（worker 工厂的 `{ token, optional: true }`、`@Optional()`），未注入时跳过。sandbox 会话里这两个工具与其他服务端工具一样被序列化为远程工具，经回调执行。
+
+- **`web_search`**：`WebSearchService` 按 `APP_WEB_SEARCH_PROVIDERS`（默认 `duckduckgo`）的顺序尝试 `isConfigured()` 为真的后端，单个后端 15 s 超时，首个成功即返回，失败的记入 `failures`；全部失败抛 `WebSearchUnavailableException`（502），工具把它转为 `web search failed: …` 文本。后端实现在 `web-search/providers/`：DuckDuckGo 抓取 `html.duckduckgo.com/html/` 并解析 `result__a` / `result__snippet`（跳过广告，`uddg=` 链接解码，遇到 `anomaly-modal` 或无结果判为失败）；Tavily、Brave、Exa 分别用 `APP_WEB_SEARCH_TAVILY_API_KEY`、`APP_WEB_SEARCH_BRAVE_API_KEY`、`APP_WEB_SEARCH_EXA_API_KEY`。摘要截到 240 字符。
+- **`generate_image`**：注册时 `ImageGenerationService.resolveTenantImageModel` 在租户事务内取 `LlmService.findDefaultByType(tenantId, 'image')`（`llm_model_type` 枚举的 `image` 值），配置或服务商被禁用时视为没有；没有默认图像模型或 `imageGenerationEnabled` 为假时 ToolSet 不含该工具，解析出错只记 warning 并跳过该工具。调用时在租户事务内解密密钥、事务外请求（120 s 超时）：`openai_chat` / `openai_responses` 走 `<baseUrl>/v1/images/generations`（`appendTerminalPath` 幂等补 `/v1`，`dall-e` 模型加 `response_format: b64_json`，只给 URL 时下载字节）；`google` 走 `/v1beta/models/<model>:generateContent`（`baseUrl` 已以 `/v1` 或 `/v1beta` 结尾时不补），取所有 `inlineData`，尺寸转成提示词末尾的 `Aspect ratio:`；其他协议抛 `ImageGenerationUnsupportedProtocolException`（422），非 2xx 抛 `ImageGenerationFailedException`（502）。工具不抛错，错误以 `{ error }` 返回。`inline` 交付返回 `{ model, __agentloomImages }`，由 guest 按上文的远程工具图片通道落盘；`storage` 交付上传到 `tenants/<tenantId>/generated-images/<sessionId>/<uuid>.<ext>`，返回 24 小时预签名 URL。
 
 ## 对话跨实例派发
 

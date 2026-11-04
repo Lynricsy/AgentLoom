@@ -111,6 +111,7 @@ agentloom-server/src/
 - `knowledge`：知识库、文档解析与向量化、RAG 检索，前缀 `/knowledge-bases`，Socket.IO 命名空间 `/knowledge`；向量存储在 Qdrant。
 - `plugin`：`.alp` 插件的上传验签、WASM 沙箱执行、开发者密钥、使用量与收益结算，前缀 `/plugins`、`/plugins/developer-keys`、`/plugins/marketplace`。内部机制见 [插件系统](/dev/server/plugins)。
 - `runtime-plugin`：sandbox 运行态 Agent 的 runtime 插件（DeepSeek Harness 的 Cordis 插件包）上传验签、存储与启停，前缀 `/runtime-plugins`；上传入口与 `plugin` 共用签名校验。机制见 [Runtime 插件](/dev/server/runtime-plugins)。
+- `builtin-tools`：Agent 的服务端内置工具（`web_search` 多后端网页搜索与 `generate_image` 图像生成），以 `SessionToolProvider` 同时覆盖 `sandbox` 与 `no_sandbox` 运行态。本模块没有 controller，机制见 [Agent 运行态](/dev/server/agent-runtime#内置工具)。
 
 #### 智能路由策略
 

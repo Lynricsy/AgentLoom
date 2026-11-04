@@ -94,7 +94,7 @@ Agent 画布上，`runtime-plugin` 节点经 `plugins-in` 端口连到 `harness`
 
 ### 激活核对
 
-dsh 只把一组全局必需条目（`agent-loop` 等）未激活视为启动失败；其他条目导入失败、`apply` 抛错或等不到依赖的服务时，只在 stderr 打一行 `dsh: warning: N entries did not activate`，会话照常创建，插件静默缺席。因此 `writeDshProfile` 记下每个启用插件 patch 插入的条目 id（含 `cordis:group` 子条目），随 `initialize` 交给 bridge；bridge 等 Loader 就绪后按 dsh 启动审计的同一判据（`agentloom-deploy/sandbox/src/dsh-bridge/loader-audit.ts`）逐个核对，任一未激活就让 `initialize` 失败：
+dsh 只把一组全局必需条目（`agent-loop` 等）未激活视为启动失败；其他条目导入失败、`apply` 抛错或等不到依赖的服务时，只在 stderr 打一行 `dsh: warning: N entries did not activate`，会话照常创建，插件静默缺席。因此 `writeDshProfile` 记下平台层按原生工具策略插入的四个 VM 内置插件（见 [Agent 运行态 · VM 内置插件](/dev/server/agent-runtime#vm-内置插件)）与每个启用 runtime 插件 patch 插入的条目 id（含 `cordis:group` 子条目），随 `initialize` 交给 bridge；bridge 等 Loader 就绪后按 dsh 启动审计的同一判据（`agentloom-deploy/sandbox/src/dsh-bridge/loader-audit.ts`）逐个核对，任一未激活就让 `initialize` 失败：
 
 ```text
 runtime 插件未能加载:
