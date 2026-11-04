@@ -34,6 +34,8 @@ interface FakeHost extends BridgeHost {
   reasoningEffortsSpy: Mock;
   warnSpy: Mock;
   inactiveEntriesSpy: Mock;
+  modelAcceptsImagesSpy: Mock;
+  saveImagesSpy: Mock;
 }
 
 function createFakeHost(): FakeHost {
@@ -46,6 +48,16 @@ function createFakeHost(): FakeHost {
   const reasoningEffortsSpy = vi.fn(async (): Promise<readonly string[]> => []);
   const warnSpy = vi.fn();
   const inactiveEntriesSpy = vi.fn(async (): Promise<InactiveEntry[]> => []);
+  const modelAcceptsImagesSpy = vi.fn(async () => false);
+  const saveImagesSpy = vi.fn(async (inputs: readonly unknown[]) =>
+    inputs.map((_input, index) => ({
+      attachmentId: `att-${index}`,
+      mediaType: 'image/png' as const,
+      bytes: 8,
+      width: 1,
+      height: 1,
+    })),
+  );
   return {
     tools,
     guards,
@@ -56,6 +68,10 @@ function createFakeHost(): FakeHost {
     reasoningEffortsSpy,
     warnSpy,
     inactiveEntriesSpy,
+    modelAcceptsImagesSpy,
+    saveImagesSpy,
+    modelAcceptsImages: modelAcceptsImagesSpy,
+    saveImages: saveImagesSpy as unknown as BridgeHost['saveImages'],
     awaitLoader: vi.fn(async () => undefined),
     resolveCallConfig: resolveSpy,
     resolveReasoningEfforts: reasoningEffortsSpy,
@@ -196,7 +212,7 @@ describe('AgentLoomBridge over unix socket', () => {
       name: 'lookup_memory',
       description: '检索记忆',
       parameters: { type: 'object', properties: { q: { type: 'string' } } },
-      output: { schema: { type: 'string' } },
+      output: { schema: { type: 'object' } },
     });
     await expect(client.request('initialize', { cwd: '/', provider: 'p', model: 'm' })).rejects.toThrow(
       'already initialized',
@@ -425,10 +441,11 @@ describe('AgentLoomBridge over unix socket', () => {
     });
 
     const tool = host.tools.get('apply_change')!;
-    const text = await tool.execute(
+    const value = (await tool.execute(
       { proposal: 1 },
       { callId: 'c9', agent: { session: { id: 's1' } }, signal: new AbortController().signal } as never,
-    );
+    )) as { text: string };
+    const text = value.text;
     bridge.handleSessionEvent(
       's1',
       sessionEvent('tool/result', {
@@ -440,8 +457,8 @@ describe('AgentLoomBridge over unix socket', () => {
     await flush();
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(text).toBe(JSON.stringify({ ok: true }, null, 2));
-    expect(tool.output.render({}, text)).toEqual([{ type: 'text', text }]);
+    expect(value).toEqual({ text: JSON.stringify({ ok: true }, null, 2) });
+    expect(tool.output.render({}, value as never)).toEqual([{ type: 'text', text }]);
     expect(eventsOf()).toContainEqual({
       type: 'tool_execution_update',
       toolCallId: 'c9',
@@ -454,6 +471,63 @@ describe('AgentLoomBridge over unix socket', () => {
       toolName: undefined,
       result: { ok: true },
       isError: false,
+    });
+  });
+
+  describe('远程工具结果附带图片', () => {
+    const PNG_BASE64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64');
+
+    async function runImageTool(): Promise<{ text: string; images?: unknown[] }> {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            outcome: 'completed',
+            result: {
+              model: 'gpt-image-1',
+              __agentloomImages: [{ fileName: 'fox.png', mediaType: 'image/png', base64: PNG_BASE64 }],
+            },
+          }),
+        ),
+      );
+      await initializeAndCreate({
+        cwd: dir,
+        remoteToolExecution: {
+          sessionId: 's1',
+          callbackUrl: 'http://callback.local/tool',
+          callbackToken: 'token',
+          tools: [{ name: 'generate_image', label: 'generate_image', description: 'd', parameters: {} }],
+        },
+      });
+      return (await host.tools.get('generate_image')!.execute(
+        { prompt: 'fox' },
+        {
+          callId: 'c1',
+          // 无路由头与 agent 选项时回落到会话路由
+          agent: { session: { id: 's1', requestHeader: () => undefined }, options: {} },
+          signal: new AbortController().signal,
+        } as never,
+      )) as { text: string; images?: unknown[] };
+    }
+
+    it('模型接受图像时渲染出 image block，文本只含落盘路径', async () => {
+      host.modelAcceptsImagesSpy.mockResolvedValue(true);
+      const value = await runImageTool();
+
+      expect(value.text).toContain(join(dir, 'generated', 'fox.png'));
+      expect(value.text).not.toContain(PNG_BASE64);
+      expect(host.modelAcceptsImagesSpy).toHaveBeenCalledWith({ provider: 'openai', model: 'gpt-x' });
+      const blocks = host.tools.get('generate_image')!.output.render({}, value as never);
+      expect(blocks.filter((block) => block.type === 'image')).toHaveLength(1);
+    });
+
+    it('模型不接受图像时只回文本', async () => {
+      host.modelAcceptsImagesSpy.mockResolvedValue(false);
+      const value = await runImageTool();
+
+      expect(value.images).toBeUndefined();
+      expect(host.saveImagesSpy).not.toHaveBeenCalled();
+      const blocks = host.tools.get('generate_image')!.output.render({}, value as never);
+      expect(blocks).toEqual([{ type: 'text', text: value.text }]);
     });
   });
 

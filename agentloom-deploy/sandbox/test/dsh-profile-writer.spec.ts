@@ -15,6 +15,8 @@ import {
 import type { CreateSessionRequest } from '../src/types.js';
 
 const BRIDGE_ENTRY = '/opt/agentloom-sandbox/dist/dsh-bridge/index.js';
+const PLUGINS_DIR = '/opt/agentloom-sandbox/dist/dsh-plugins';
+const BUILTIN_IDS = ['agentloom-lsp', 'agentloom-ast', 'agentloom-browser', 'agentloom-eval'];
 
 let agentDir: string;
 
@@ -104,6 +106,7 @@ describe('writeDshProfile', () => {
       provider: 'openai',
       model: 'gpt-x',
       bridgeEntry: BRIDGE_ENTRY,
+      pluginsDir: PLUGINS_DIR,
       request: {
         ...baseRequest,
         mcpServers: {
@@ -154,7 +157,8 @@ describe('writeDshProfile', () => {
         },
       },
     });
-    expect(profile.pluginEntries).toEqual([]);
+    // 内置插件同样交给 bridge 核对激活
+    expect(profile.pluginEntries).toEqual(BUILTIN_IDS.map((id) => ({ id, plugin: id })));
     expect(byId.get('skill-filesystem')).toEqual({
       id: 'skill-filesystem',
       config: {
@@ -195,6 +199,30 @@ describe('writeDshProfile', () => {
         config: { socketPath: profile.socketPath, workdir: '/workspace/' },
       },
       {
+        id: 'agentloom-lsp',
+        name: `${PLUGINS_DIR}/lsp/index.js`,
+        config: { workdir: '/workspace/', allowEdits: true },
+      },
+      {
+        id: 'agentloom-ast',
+        name: `${PLUGINS_DIR}/ast/index.js`,
+        config: { workdir: '/workspace/', allowEdits: true },
+      },
+      {
+        id: 'agentloom-browser',
+        name: `${PLUGINS_DIR}/browser/index.js`,
+        config: {
+          workdir: '/workspace/',
+          stateDir: join(agentDir, 'browser'),
+          chromiumPath: '/usr/bin/chromium',
+        },
+      },
+      {
+        id: 'agentloom-eval',
+        name: `${PLUGINS_DIR}/eval/index.js`,
+        config: { workdir: '/workspace/', stateDir: join(agentDir, 'eval'), pythonPath: 'python3' },
+      },
+      {
         id: 'mcp-files',
         name: '@deepseek-ai/dsh-mcp-client',
         config: {
@@ -225,11 +253,58 @@ describe('writeDshProfile', () => {
       provider: 'openai',
       model: 'gpt-x',
       bridgeEntry: BRIDGE_ENTRY,
+      pluginsDir: PLUGINS_DIR,
       request: { ...baseRequest, runtimeApiKeys: {} },
     });
 
     expect(profile.env).not.toHaveProperty('AGENTLOOM_PROVIDER_OPENAI_API_KEY');
     expect(providerApiKeyEnv('my-provider.v2')).toBe('AGENTLOOM_PROVIDER_MY_PROVIDER_V2_API_KEY');
+  });
+
+  it('终端执行关闭时不插入 eval；编辑关闭时 lsp/ast 不允许写盘；浏览器可单独关闭', async () => {
+    const noTerminal = await writeDshProfile({
+      agentDir,
+      cwd: '/workspace/',
+      provider: 'openai',
+      model: 'gpt-x',
+      bridgeEntry: BRIDGE_ENTRY,
+      pluginsDir: PLUGINS_DIR,
+      request: { ...baseRequest, nativeToolPolicy: { terminalEnabled: false } },
+    });
+    expect(insertRows(parsePatch(noTerminal.patchPath)).map((row) => row.id)).toEqual([
+      'agentloom-bridge',
+      'agentloom-lsp',
+      'agentloom-ast',
+      'agentloom-browser',
+    ]);
+
+    const noBrowserNoEdit = await writeDshProfile({
+      agentDir,
+      cwd: '/workspace/',
+      provider: 'openai',
+      model: 'gpt-x',
+      bridgeEntry: BRIDGE_ENTRY,
+      pluginsDir: PLUGINS_DIR,
+      request: { ...baseRequest, nativeToolPolicy: { browserEnabled: false, editEnabled: false } },
+    });
+    const rows = insertRows(parsePatch(noBrowserNoEdit.patchPath));
+    expect(rows.map((row) => row.id)).toEqual([
+      'agentloom-bridge',
+      'agentloom-lsp',
+      'agentloom-ast',
+      'agentloom-eval',
+    ]);
+    expect(rows.find((row) => row.id === 'agentloom-lsp')?.config).toMatchObject({
+      allowEdits: false,
+    });
+    expect(rows.find((row) => row.id === 'agentloom-ast')?.config).toMatchObject({
+      allowEdits: false,
+    });
+    expect(noBrowserNoEdit.pluginEntries.map((entry) => entry.id)).toEqual([
+      'agentloom-lsp',
+      'agentloom-ast',
+      'agentloom-eval',
+    ]);
   });
 
   it('应按 平台层 → 插件层 → 用户 patch 顺序叠加，并链接 / 绝对化 / 合并插件条目', async () => {
@@ -250,6 +325,7 @@ describe('writeDshProfile', () => {
       provider: 'openai',
       model: 'gpt-x',
       bridgeEntry: BRIDGE_ENTRY,
+      pluginsDir: PLUGINS_DIR,
       installNpmPackage,
       request: {
         ...baseRequest,
@@ -314,9 +390,15 @@ describe('writeDshProfile', () => {
     expect(tail[1]).toEqual({ id: 'tool-todo', disabled: true });
     expect(tail[2]).toEqual({ insert: [{ id: 'npm-bundle', name: join(npmRoot, 'lib/index.js') }] });
     expect(tail[3]).toEqual({ id: 'tool-skill', disabled: true });
-    expect(insertRows(patch).map((row) => row.id)).toEqual(['agentloom-bridge', 'demo', 'npm-bundle']);
-    // 停用节点不参与；bridge 据此核对每个插件条目是否激活。
+    expect(insertRows(patch).map((row) => row.id)).toEqual([
+      'agentloom-bridge',
+      ...BUILTIN_IDS,
+      'demo',
+      'npm-bundle',
+    ]);
+    // 停用节点不参与；bridge 据此核对每个插件条目（内置插件在前）是否激活。
     expect(profile.pluginEntries).toEqual([
+      ...BUILTIN_IDS.map((id) => ({ id, plugin: id })),
       { id: 'demo', plugin: 'com.example.demo' },
       { id: 'npm-bundle', plugin: '@acme/dsh-bundle@1.2.3' },
     ]);
@@ -329,6 +411,7 @@ describe('writeDshProfile', () => {
       provider: 'openai',
       model: 'gpt-x',
       bridgeEntry: BRIDGE_ENTRY,
+      pluginsDir: PLUGINS_DIR,
       installNpmPackage: async (request) => {
         writeFiles(join(request.prefix, 'node_modules', request.name), {
           'package.json': JSON.stringify({ name: request.name, main: 'lib/index.js' }),
@@ -367,6 +450,7 @@ describe('writeDshProfile', () => {
         provider: 'openai',
         model: 'gpt-x',
         bridgeEntry: BRIDGE_ENTRY,
+        pluginsDir: PLUGINS_DIR,
         installNpmPackage: async () => {
           throw new Error('runtime 插件 bad-pkg@9.9.9 安装失败: 404 Not Found');
         },
@@ -396,6 +480,7 @@ describe('writeDshProfile', () => {
         provider: 'openai',
         model: 'gpt-x',
         bridgeEntry: BRIDGE_ENTRY,
+        pluginsDir: PLUGINS_DIR,
         installNpmPackage: vi.fn(),
         request: { ...baseRequest, harness: { engine: 'dsh', plugins: [plugin] } },
       }),
@@ -410,6 +495,7 @@ describe('writeDshProfile', () => {
         provider: 'openai',
         model: 'gpt-x',
         bridgeEntry: BRIDGE_ENTRY,
+        pluginsDir: PLUGINS_DIR,
         request: { ...baseRequest, harness: { engine: 'dsh', profilePatch: 'id: x\n', plugins: [] } },
       }),
     ).rejects.toThrow('必须是 YAML 列表');
@@ -438,6 +524,7 @@ describe('writeDshProfile reasoningEfforts', () => {
       provider: 'gateway',
       model: 'thinker',
       bridgeEntry: BRIDGE_ENTRY,
+      pluginsDir: PLUGINS_DIR,
       request: {
         sessionId: 's1',
         models: {

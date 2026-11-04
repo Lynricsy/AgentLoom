@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -157,6 +160,61 @@ describe('invokeRemoteTool', () => {
     await expect(
       invokeRemoteTool({ config, toolName: 't', toolCallId: 'c', input: {}, onUpdate: vi.fn() }),
     ).rejects.toThrow('Remote tool callback failed with status 502');
+  });
+
+  describe('__agentloomImages 图片通道', () => {
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]);
+    let workdir: string;
+
+    afterEach(() => {
+      rmSync(workdir, { recursive: true, force: true });
+    });
+
+    function invokeWithImages(images: unknown[]) {
+      workdir = mkdtempSync(join(tmpdir(), 'remote-tools-'));
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        jsonResponse({ outcome: 'completed', result: { model: 'm', __agentloomImages: images } }),
+      );
+      return invokeRemoteTool({
+        config,
+        toolName: 'generate_image',
+        toolCallId: 'c',
+        input: {},
+        workdir,
+        onUpdate: vi.fn(),
+      });
+    }
+
+    it('应把图片写到 generated/，同名追加序号，文本与 details 不含 base64', async () => {
+      const base64 = PNG.toString('base64');
+      const result = await invokeWithImages([
+        { fileName: 'fox.png', mediaType: 'image/png', base64 },
+        { fileName: 'fox.png', mediaType: 'image/png', base64 },
+      ]);
+
+      const first = join(workdir, 'generated', 'fox.png');
+      const second = join(workdir, 'generated', 'fox-1.png');
+      expect(result.images?.map((image) => image.path)).toEqual([first, second]);
+      expect(readFileSync(second)).toEqual(PNG);
+      expect(result.text).not.toContain(base64);
+      expect(result.details).toEqual({
+        model: 'm',
+        files: [
+          { path: first, mediaType: 'image/png', bytes: PNG.length },
+          { path: second, mediaType: 'image/png', bytes: PNG.length },
+        ],
+      });
+    });
+
+    it('非法文件名应跳过并在文本末尾提示', async () => {
+      const result = await invokeWithImages([
+        { fileName: '../escape.png', mediaType: 'image/png', base64: PNG.toString('base64') },
+      ]);
+
+      expect(result.images).toBeUndefined();
+      expect(result.details).toEqual({ model: 'm', files: [] });
+      expect(result.text).toMatch(/\[image skipped: invalid fileName "\.\.\/escape\.png"\]$/);
+    });
   });
 });
 

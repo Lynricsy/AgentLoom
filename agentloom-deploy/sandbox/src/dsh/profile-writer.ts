@@ -1,7 +1,8 @@
 /**
  * 为单个 AgentLoom 会话生成 dsh home 与 `agentloom` profile：
  * - profile 只挂 `@deepseek-ai/dsh-base` bundle，平台层用 cordis.patch.yml 覆盖；
- * - agentloom-bridge 以绝对路径 insert（它的依赖按原生解析命中同一份安装）；
+ * - agentloom-bridge 与内置插件（lsp/ast/browser/eval）以绝对路径 insert
+ *   （它们的依赖按原生解析命中同一份安装），内置插件按原生工具策略条件插入；
  * - runtime 插件（已签名包 / npm 包）链接进 profile node_modules，使其
  *   peerDependencies 经 dsh 运行时解析命中同一份 dsh 包；
  * - patch 叠加顺序：平台层 → 插件层（按画布顺序）→ 用户 profile patch。
@@ -19,6 +20,16 @@ import type { RuntimePluginEntry } from './bridge-protocol.js';
 
 export const DSH_PROFILE_NAME = 'agentloom';
 export const DSH_BRIDGE_ROW_ID = 'agentloom-bridge';
+/** VM 内置 Cordis 插件的 insert 行 id（同时作为 dist/dsh-plugins/<key> 目录名） */
+export const BUILTIN_PLUGIN_ROW_IDS = {
+  lsp: 'agentloom-lsp',
+  ast: 'agentloom-ast',
+  browser: 'agentloom-browser',
+  eval: 'agentloom-eval',
+} as const;
+export type BuiltinPluginKey = keyof typeof BUILTIN_PLUGIN_ROW_IDS;
+/** rootfs 中 Chromium 的安装路径（rootfs.Dockerfile 的 chromium 包） */
+const CHROMIUM_PATH = '/usr/bin/chromium';
 export const NPM_INSTALL_TIMEOUT_MS = 180_000;
 /** 与 server RUNTIME_PLUGIN_NPM_NAME_PATTERN 同款 */
 export const RUNTIME_PLUGIN_NPM_NAME_PATTERN =
@@ -80,6 +91,8 @@ export interface WriteDshProfileParams {
   model: string;
   /** dist/dsh-bridge/index.js 的绝对路径 */
   bridgeEntry: string;
+  /** dist/dsh-plugins 的绝对路径 */
+  pluginsDir: string;
   installNpmPackage?: NpmInstaller;
 }
 
@@ -99,7 +112,7 @@ export function providerApiKeyEnv(provider: string): string {
 }
 
 export async function writeDshProfile(params: WriteDshProfileParams): Promise<DshProfile> {
-  const { agentDir, cwd, request, provider, model, bridgeEntry } = params;
+  const { agentDir, cwd, request, provider, model, bridgeEntry, pluginsDir } = params;
   const dshHome = path.join(agentDir, 'dsh-home');
   const profileDir = path.join(dshHome, 'profiles', DSH_PROFILE_NAME);
   const socketPath = path.join(agentDir, 'bridge.sock');
@@ -115,6 +128,12 @@ export async function writeDshProfile(params: WriteDshProfileParams): Promise<Ds
   );
 
   const { providers, env } = buildProviderRoutes(request);
+  const builtinRows = buildBuiltinPluginRows({
+    pluginsDir,
+    agentDir,
+    cwd,
+    policy: request.nativeToolPolicy,
+  });
   const document = new YAML.Document(
     buildPlatformRows({
       agentDir,
@@ -125,12 +144,14 @@ export async function writeDshProfile(params: WriteDshProfileParams): Promise<Ds
       model,
       providers,
       bridge: { entry: bridgeEntry, socketPath },
+      builtinRows,
     }),
   );
   const rows = document.contents;
   if (!isSeq(rows)) throw new Error('平台层 cordis patch 必须是 YAML 列表');
 
-  const pluginEntries: RuntimePluginEntry[] = [];
+  // 内置插件同样交给 bridge 核对激活：加载失败即会话创建失败，而不是静默缺席
+  const pluginEntries: RuntimePluginEntry[] = builtinRows.map(({ id }) => ({ id, plugin: id }));
   for (const plugin of request.harness?.plugins ?? []) {
     if (!plugin.enabled) continue;
     const pluginRows = await loadPluginRows(plugin, {
@@ -244,6 +265,55 @@ function readInlineApiKey(value: unknown): string | undefined {
   return /^[A-Z][A-Z0-9_]*$/.test(value) ? undefined : value;
 }
 
+/**
+ * 按原生工具策略生成内置插件的 insert 行。缺省全部启用；改写类动作受 editEnabled
+ * 约束，eval 需要终端执行权限。
+ */
+export function buildBuiltinPluginRows(options: {
+  pluginsDir: string;
+  agentDir: string;
+  cwd: string;
+  policy: CreateSessionRequest['nativeToolPolicy'];
+}): Array<{ id: string; name: string; config: Record<string, unknown> }> {
+  const { pluginsDir, agentDir, cwd, policy } = options;
+  const allowEdits = policy?.editEnabled !== false;
+  const entry = (key: BuiltinPluginKey) => path.join(pluginsDir, key, 'index.js');
+  const rows: Array<{ id: string; name: string; config: Record<string, unknown> }> = [];
+  if (policy?.lspEnabled !== false) {
+    rows.push({
+      id: BUILTIN_PLUGIN_ROW_IDS.lsp,
+      name: entry('lsp'),
+      config: { workdir: cwd, allowEdits },
+    });
+  }
+  if (policy?.astEnabled !== false) {
+    rows.push({
+      id: BUILTIN_PLUGIN_ROW_IDS.ast,
+      name: entry('ast'),
+      config: { workdir: cwd, allowEdits },
+    });
+  }
+  if (policy?.browserEnabled !== false) {
+    rows.push({
+      id: BUILTIN_PLUGIN_ROW_IDS.browser,
+      name: entry('browser'),
+      config: {
+        workdir: cwd,
+        stateDir: path.join(agentDir, 'browser'),
+        chromiumPath: CHROMIUM_PATH,
+      },
+    });
+  }
+  if (policy?.evalEnabled !== false && policy?.terminalEnabled !== false) {
+    rows.push({
+      id: BUILTIN_PLUGIN_ROW_IDS.eval,
+      name: entry('eval'),
+      config: { workdir: cwd, stateDir: path.join(agentDir, 'eval'), pythonPath: 'python3' },
+    });
+  }
+  return rows;
+}
+
 function buildPlatformRows(options: {
   agentDir: string;
   dshHome: string;
@@ -253,8 +323,10 @@ function buildPlatformRows(options: {
   model: string;
   providers: Record<string, Record<string, unknown>>;
   bridge: { entry: string; socketPath: string };
+  builtinRows: unknown[];
 }): unknown[] {
-  const { agentDir, dshHome, cwd, request, provider, model, providers, bridge } = options;
+  const { agentDir, dshHome, cwd, request, provider, model, providers, bridge, builtinRows } =
+    options;
   return [
     // microVM 本身就是隔离边界；审批策略保持 ask，由 bridge 应答者转给 AgentLoom。
     { id: 'sandbox-policy', config: { mode: 'danger-full-access', workspaceRoot: cwd } },
@@ -301,6 +373,7 @@ function buildPlatformRows(options: {
           name: bridge.entry,
           config: { socketPath: bridge.socketPath, workdir: cwd },
         },
+        ...builtinRows,
         ...buildMcpRows(request.mcpServers ?? {}),
       ],
     },

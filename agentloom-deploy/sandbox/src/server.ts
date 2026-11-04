@@ -252,6 +252,7 @@ export async function startServer() {
         process.env['AGENTLOOM_DSH_BIN'] ?? require.resolve('@deepseek-ai/dsh/lib/bin.js'),
       // 从 src/（tsx 开发）与 dist/（生产）运行时都指向构建产物。
       bridgeEntry: fileURLToPath(new URL('../dist/dsh-bridge/index.js', import.meta.url)),
+      pluginsDir: fileURLToPath(new URL('../dist/dsh-plugins', import.meta.url)),
       onPtyBridgeChange: (bridge, state) => {
         if (state === 'opened') currentPtyBridge = bridge;
         else if (currentPtyBridge === bridge) currentPtyBridge = null;

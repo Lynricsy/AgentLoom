@@ -126,6 +126,7 @@ describe('createDshSessionFactory', () => {
     const factory = createDshSessionFactory({
       dshBin: '/opt/dsh/lib/bin.js',
       bridgeEntry: '/opt/bridge/index.js',
+      pluginsDir: '/opt/plugins',
       spawn: spawn as unknown as typeof spawnProcess,
       onPtyBridgeChange: (_bridge, state) => ptyChanges.push(state),
     });
@@ -152,6 +153,11 @@ describe('createDshSessionFactory', () => {
       model: 'gpt-x',
       remoteToolExecution: request.remoteToolExecution,
       nativeToolPolicy: { terminalEnabled: false },
+      // 终端关闭时不插入 eval，其余内置插件交给 bridge 核对激活
+      pluginEntries: ['agentloom-lsp', 'agentloom-ast', 'agentloom-browser'].map((id) => ({
+        id,
+        plugin: id,
+      })),
     });
     expect(ptyChanges).toEqual(['opened']);
 
@@ -199,6 +205,7 @@ describe('createDshSessionFactory', () => {
     const factory = createDshSessionFactory({
       dshBin: '/opt/dsh/lib/bin.js',
       bridgeEntry: '/opt/bridge/index.js',
+      pluginsDir: '/opt/plugins',
       spawn: spawn as unknown as typeof spawnProcess,
     });
 
@@ -213,6 +220,7 @@ describe('createDshSessionFactory', () => {
     const factory = createDshSessionFactory({
       dshBin: '/opt/dsh/lib/bin.js',
       bridgeEntry: '/opt/bridge/index.js',
+      pluginsDir: '/opt/plugins',
       spawn: vi.fn(() => child as unknown as ChildProcess) as unknown as typeof spawnProcess,
       startupTimeoutMs: 150,
     });
@@ -233,6 +241,7 @@ describe('createDshSessionFactory', () => {
     const factory = createDshSessionFactory({
       dshBin: '/opt/dsh/lib/bin.js',
       bridgeEntry: '/opt/bridge/index.js',
+      pluginsDir: '/opt/plugins',
       spawn: spawn as unknown as typeof spawnProcess,
     });
 
@@ -259,7 +268,14 @@ describe('createDshSessionFactory', () => {
     expect(error).toMatchObject({ statusCode: 422, message: expect.stringContaining(reason) });
     expect(requests[0]).toMatchObject({
       method: 'initialize',
-      params: { pluginEntries: [{ id: 'demo', plugin: 'com.acme.demo' }] },
+      params: {
+        pluginEntries: [
+          ...['agentloom-lsp', 'agentloom-ast', 'agentloom-browser'].map(
+            (id) => ({ id, plugin: id }),
+          ),
+          { id: 'demo', plugin: 'com.acme.demo' },
+        ],
+      },
     });
     expect(child.kill).toHaveBeenCalledWith('SIGKILL');
     expect(existsSync(join(sessionRoot, 'sess-1'))).toBe(false);
@@ -270,6 +286,7 @@ describe('createDshSessionFactory', () => {
     const factory = createDshSessionFactory({
       dshBin: '/opt/dsh/lib/bin.js',
       bridgeEntry: '/opt/bridge/index.js',
+      pluginsDir: '/opt/plugins',
       spawn: spawn as unknown as typeof spawnProcess,
     });
 
@@ -285,6 +302,7 @@ describe('createDshSessionFactory', () => {
     const factory = createDshSessionFactory({
       dshBin: '/opt/dsh/lib/bin.js',
       bridgeEntry: '/opt/bridge/index.js',
+      pluginsDir: '/opt/plugins',
       spawn: vi.fn(() => {
         servers.push(startFakeBridge(join(sessionRoot, 'sess-1', 'bridge.sock'), requests));
         return child as unknown as ChildProcess;
@@ -308,6 +326,7 @@ describe('createDshSessionFactory', () => {
     const factory = createDshSessionFactory({
       dshBin: '/opt/dsh/lib/bin.js',
       bridgeEntry: '/opt/bridge/index.js',
+      pluginsDir: '/opt/plugins',
       spawn: vi.fn(() => {
         servers.push(startFakeBridge(join(sessionRoot, 'sess-1', 'bridge.sock'), requests));
         return child as unknown as ChildProcess;

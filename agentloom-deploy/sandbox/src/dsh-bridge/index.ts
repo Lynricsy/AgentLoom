@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-user-approval';
 import Schema from '@deepseek-ai/schemastery';
 import { AgentLoomBridge, listenBridgeSocket } from './bridge.js';
 import { findInactiveEntries, type LoaderLike } from './loader-audit.js';
+import { createImageAttachmentHost } from '../dsh-plugins/shared/image-output.js';
 
 export const name = 'agentloom-bridge';
 export const inject = ['agents', 'tools', 'llm'];
@@ -35,6 +36,8 @@ export function apply(ctx: Context, config: Config): void {
   let shutdown: Promise<void> | undefined;
   const bridge = new AgentLoomBridge(
     {
+      // attachments 不进 inject：服务缺席时 bridge 仍须激活，远程工具图片降级为纯文本
+      ...createImageAttachmentHost(ctx),
       awaitLoader: async () => {
         await ctx.get('loader')?.await();
       },

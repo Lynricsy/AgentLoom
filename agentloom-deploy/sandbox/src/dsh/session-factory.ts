@@ -53,6 +53,8 @@ export interface DshSessionFactoryOptions {
   dshBin: string;
   /** dist/dsh-bridge/index.js 的绝对路径 */
   bridgeEntry: string;
+  /** dist/dsh-plugins 的绝对路径（内置 Cordis 插件目录） */
+  pluginsDir: string;
   /** 会话的 PTY 代理打开 / 关闭时回调（/v1/pty/* 指向最近打开的那个） */
   onPtyBridgeChange?: (bridge: PtyBridge, state: 'opened' | 'closed') => void;
   /** 测试注入点 */
@@ -130,6 +132,7 @@ export function createDshSessionFactory(options: DshSessionFactoryOptions): Sess
         provider,
         model,
         bridgeEntry: options.bridgeEntry,
+        pluginsDir: options.pluginsDir,
         ...(options.installNpmPackage ? { installNpmPackage: options.installNpmPackage } : {}),
       });
 

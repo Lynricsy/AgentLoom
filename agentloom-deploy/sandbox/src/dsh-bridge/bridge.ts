@@ -15,7 +15,12 @@ import {
   type JsonRpcTransportPeer,
 } from '@deepseek-ai/dsh-sdk-protocol';
 import type { SessionEvent } from '@deepseek-ai/dsh-session';
-import type { ToolDefinition, ToolGuard, ToolRunContext } from '@deepseek-ai/dsh-tools';
+import {
+  valueSchemaSpecToJsonSchema,
+  type ToolDefinition,
+  type ToolGuard,
+  type ToolRunContext,
+} from '@deepseek-ai/dsh-tools';
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval';
 import {
   BRIDGE_EVENT_NOTIFICATION,
@@ -34,6 +39,14 @@ import {
   normalizeRemoteToolParameters,
 } from '../remote-tools.js';
 import type { RemoteToolExecutionConfig, SandboxAgentEvent } from '../types.js';
+import {
+  attachImages,
+  execModelRoute,
+  renderTextWithImages,
+  TEXT_WITH_IMAGES_OUTPUT_SCHEMA,
+  type ImageAttachmentHost,
+  type TextWithImages,
+} from '../dsh-plugins/shared/image-output.js';
 import {
   mapAssistantFrame,
   mapSessionEvent,
@@ -60,7 +73,7 @@ export interface BridgeAgentHandle {
   dispose(): Promise<void>;
 }
 
-export interface BridgeHost {
+export interface BridgeHost extends ImageAttachmentHost {
   /** 等待 Loader 把整棵插件树挂载完成 */
   awaitLoader(): Promise<void>;
   /** 校验 provider/model（及思考强度）路由可用（凭据缺失、强度不受支持等会在此抛错） */
@@ -398,7 +411,7 @@ export class AgentLoomBridge {
     for (const descriptor of config.tools) {
       this.disposers.push(
         this.host.registerTool(
-          textTool(
+          remoteTool(
             descriptor.name,
             descriptor.description,
             normalizeRemoteToolParameters(descriptor.parameters),
@@ -411,6 +424,7 @@ export class AgentLoomBridge {
                 toolCallId,
                 input: args,
                 signal: exec.signal,
+                workdir: this.route?.cwd ?? this.workdir,
                 onUpdate: (update) => {
                   if (!sessionId) return;
                   this.notify(sessionId, {
@@ -422,7 +436,21 @@ export class AgentLoomBridge {
                 },
               });
               this.resultOverrides.set(toolCallId, { result: result.details });
-              return result.text;
+              if (!result.images) return { text: result.text };
+              // 图片已落盘且路径在文本里；模型可接收图像时再附 image block
+              const sessionRoute = this.route
+                ? { provider: this.route.provider, model: this.route.model }
+                : undefined;
+              const images = await attachImages(
+                this.host,
+                execModelRoute(exec) ?? sessionRoute,
+                result.images.map((image) => ({
+                  data: image.data,
+                  mediaType: image.mediaType,
+                  name: path.basename(image.path),
+                })),
+              );
+              return { text: result.text, ...(images ? { images } : {}) };
             },
           ),
         ),
@@ -576,6 +604,25 @@ function textTool(
     output: {
       schema: { type: 'string' },
       render: (_args, value) => [{ type: 'text', text: String(value) }],
+    },
+    execute: async (args, exec) => run(args, exec),
+  };
+}
+
+/** 远程工具定义：输出 `{ text, images? }`，渲染为 text 块 + image 块 */
+function remoteTool(
+  name: string,
+  description: string,
+  parameters: Record<string, unknown>,
+  run: (args: unknown, exec: ToolRunContext) => Promise<TextWithImages>,
+): ToolDefinition {
+  return {
+    name,
+    description,
+    parameters,
+    output: {
+      schema: valueSchemaSpecToJsonSchema(TEXT_WITH_IMAGES_OUTPUT_SCHEMA),
+      render: (_args, value) => renderTextWithImages(value as unknown as TextWithImages),
     },
     execute: async (args, exec) => run(args, exec),
   };
