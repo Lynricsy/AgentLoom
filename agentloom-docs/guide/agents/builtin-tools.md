@@ -39,6 +39,8 @@ Agent 不连任何画布节点也带有一组内置工具：有沙箱 Agent 在�
 - 「图像生成」打开但组织没有默认图像模型时，`generate_image` 不出现。
 - 有沙箱 Agent 调用的无沙箱子 Agent 复用父 Agent 的沙箱，按只读策略运行：保留 `lsp`、`ast_grep`、`ast_edit`（不能写盘），不加载 `browser` 与 `eval`。
 
+沙箱规格建议：`lsp`（TypeScript 语言服务）、`browser`（Chromium）与 `eval` 在沙箱 VM 内常驻进程，建议在 Agent 的沙箱配置中把内存设为 2 GiB 或以上。新建 Agent 的默认规格是 512 MiB，此时 TypeScript 语言服务可能被内核 OOM 终止，写入后不再附带诊断，Chromium 也可能无法启动；不需要这些工具时可在 Agent Main 中关闭它们。
+
 ## 配置图像模型
 
 1. 在左侧导航「资源」组打开「LLM 模型」，打开「添加模型配置」对话框。
@@ -165,6 +167,7 @@ language server 按文件扩展名选择：TypeScript / JavaScript 用 `typescri
 | `lsp` 返回 `No language server available for .go. Available: …` | 该扩展名的 language server 不在沙箱里。TypeScript / Python 之外的语言需要在工作区安装对应 server |
 | `web_search` 返回 `web search failed: duckduckgo: blocked or empty` | DuckDuckGo 拦截了部署的出口 IP；按 [配置网页搜索后端](#配置网页搜索后端) 配置带 key 的后端 |
 | `generate_image` 返回 `{"error": "默认图像模型的提供商协议 … 不支持图像生成…"}` | 默认图像模型的服务商不是 OpenAI 兼容或 Gemini 协议，换一个模型配置设为默认 |
+| 写入 `.ts` 后不再附带诊断，`lsp` 的 `diagnostics` 返回 `No diagnostics published …` 或旧结果 | 沙箱内存不足，TypeScript 语言服务被 OOM 终止；把沙箱内存调到 2 GiB 或以上 |
 | `generate_image` 返回 `{"error": "模型未返回图片"}` 或带 HTTP 状态码的错误 | 模型拒绝了提示词或服务商报错，按错误内容调整提示词或检查服务商额度 |
 | `eval` 返回 `Execution interrupted (timeout)` | 代码超过 `timeout`；调大 `timeout`。下一次调用内核仍可用，若结果首行为 `[kernel restarted — …]` 则之前的变量已丢失 |
 | 对话开始时报 `runtime 插件未能加载:` 且列出 `agentloom-lsp`、`agentloom-ast`、`agentloom-browser` 或 `agentloom-eval` | 沙箱镜像与 guest 服务版本不一致或镜像损坏；重新构建 Firecracker 产物。临时绕过可在 Agent Main 关闭对应开关后重新发布 |
